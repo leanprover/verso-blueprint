@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import VersoBlueprintTests.BlueprintNativeFixture
 import VersoBlueprintTests.Blueprint.Support
+import VersoBlueprint.Commands.Summary.Collect
 import VersoBlueprint.Vbp
 import VersoBlueprint.PreviewManifest.BlockRender
 import VersoBlueprintTests.BlueprintProofLeanRefs.Provider
@@ -21,6 +22,8 @@ theorem inferredDependency : True := True.intro
 theorem attachedResult : True := inferredDependency
 
 theorem admittedAttachedResult : True := by sorry
+
+theorem dependentAttachedResult : True := True.intro
 
 -- Synthetic provider observations exercise replay and deduplication independently
 -- of the classifier. Neither facet, input order, batching nor exact replay may
@@ -97,6 +100,11 @@ theorem admittedAttachedResult : True := by sorry
   unless observed.associatedExternalRefs[0]!.provedStatus == unverified do
     throw <| IO.userError "Inline provider inventory discarded external lookup evidence"
 
+/--
+warning: Label «proof.attachments.mixed»: external Lean name 'No.Such.AttachedResult' could not be resolved in current namespace/open declarations; keeping parsed name
+-/
+#guard_msgs in
+set_option verso.blueprint.externalCode.strictResolve false in
 #docs (Manual) proofReferencesDoc "Proof references" :=
 :::::::
 :::lemma_ "proof.helper.owner" (lean := "Nat.add_comm")
@@ -119,6 +127,15 @@ A statement with an incomplete associated proof.
 :::
 :::proof "proof.attachments.admitted" (lean := "admittedAttachedResult") (autoDeps := false)
 The attached proof hole remains visible in its provider snapshot.
+:::
+:::lemma_ "proof.attachments.mixed"
+A proof with a resolved declaration and a missing association.
+:::
+:::proof "proof.attachments.mixed" (lean := "attachedResult, No.Such.AttachedResult") (autoDeps := false)
+Both associations contribute to native membership.
+:::
+:::lemma_ "proof.attachments.mixedDependent" (lean := "dependentAttachedResult") (uses := "proof.attachments.mixed") (autoDeps := false)
+A dependent statement needs the full target's statement contract.
 :::
 :::lemma_ "proof.attachments.both" (lean := "attachedResult")
 The same declaration can be mentioned on both facets.
@@ -303,6 +320,47 @@ run_meta do
         (declarations[0]!.getObjValAs? String "facet").toOption == some "proof" &&
         (declarations[0]!.getObjValAs? String "association").toOption == some "external" do
       throw <| IO.userError "Status query lost proof association provenance"
+  let mixedLabel := "proof.attachments.mixed"
+  let .ok (some mixedQuery) := VersoBlueprint.Vbp.parseQueryPlan ["status", mixedLabel]
+    | throw <| IO.userError "Mixed proof status query failed to parse"
+  let mixed := mixedQuery.run files.manifest
+  let .ok validation := mixed.getObjVal? "validation"
+    | throw <| IO.userError "Mixed proof lost its captured assessment"
+  for (field, value) in #[("captured", true), ("hasNativeDeclarations", true), ("hasNativeBodyRequirement", true),
+      ("nativeStatementComplete", false), ("nativeProofComplete", false), ("requiredComplete", false)] do
+    unless (validation.getObjValAs? Bool field).toOption == some value do
+      throw <| IO.userError s!"Incorrect mixed proof status for {field}"
+  let .ok diagnostics := validation.getObjVal? "details" >>= (·.getObjValAs? (Array Json) "sourceDiagnostics")
+    | throw <| IO.userError "Mixed proof status omitted capture diagnostics"
+  unless diagnostics.any (fun diagnostic =>
+      (diagnostic.getObjValAs? String "code").toOption == some "missing-declaration" &&
+      (diagnostic.getObjValAs? String "subject").toOption == some "No.Such.AttachedResult") do
+    throw <| IO.userError "Mixed proof status omitted its missing native declaration"
+  let .ok declarations := mixed.getObjValAs? (Array Json) "sourceDeclarationSnapshots"
+    | throw <| IO.userError "Mixed proof status omitted declaration inventory"
+  unless declarations.size == 2 do
+    throw <| IO.userError "Mixed proof status lost an ordinary external association"
+
+open Lean Elab Command in
+run_cmd liftTermElabM do
+  let .ok snapshot ← Realizations.Capture.capture
+    | throwError "Mixed proof capture failed"
+  let mixedLabel := Name.mkSimple "proof.attachments.mixed"
+  let dependent := Name.mkSimple "proof.attachments.mixedDependent"
+  let graph := Graph.buildModel snapshot #[dependent]
+  let some mixed := graph.nodes.find? (·.label == mixedLabel)
+    | throwError "Mixed proof is missing from the dependency graph"
+  unless mixed.statementStatus == .ready && mixed.proofStatus == .incomplete &&
+      mixed.actionableStage == some "statement" do
+    throwError "Graph treated the missing mixed member as complete"
+  unless graph.nodes.any (fun node => node.label == dependent &&
+      node.assessment.any (fun assessment => assessment.nativeLocallyComplete &&
+        !assessment.statementDependenciesComplete && !assessment.requiredComplete)) do
+    throwError "Graph lost the dependent statement's failed target selection"
+  let summary ← liftM (m := CoreM) (Commands.buildSummary snapshot)
+  unless summary.missingLeanDecls.countP (·.label == mixedLabel) == 1 &&
+      summary.actionablePriorities.any (fun item => item.label == mixedLabel && item.stage == "statement") do
+    throwError "Summary lost the missing declaration or counted the mixed node as closed"
 
 /--
 error: Label «proof.duplicate» has duplicate external Lean reference 'Nat.add' (canonical 'Nat.add'); previously declared as 'Nat.add'

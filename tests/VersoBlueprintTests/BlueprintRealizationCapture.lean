@@ -46,7 +46,7 @@ theorem groupedComplete : True := True.intro
 theorem groupedAdmitted : True := by sorry
 
 /-- A multi-declaration target requires every selected declaration. -/
-@[blueprint "capture.groupedDependent" (proofUses := ["capture.grouped"])]
+@[blueprint "capture.groupedDependent" (uses := ["capture.grouped"]) (proofUses := ["capture.grouped"])]
 theorem groupedDependent : True := True.intro
 
 private def ensure (condition : Bool) (message : String) : TermElabM Unit :=
@@ -899,22 +899,60 @@ run_cmd liftTermElabM do
       "An unreadable recorded owning path blocked a passed native check"
   finally setEnv env
 
+-- A proposition definition genuinely has one statement contract.
+@[blueprint "capture.propositionOnly"]
+def propositionOnly : Prop := True
 
--- A valid, absent native name remains a missing-declaration diagnosis, not
--- a wrong-owner/unsupported-name failure or borrowed sibling observation.
+-- A checked sibling cannot certify an absent member on either placement or
+-- supply its contract to a dependent label.
 run_cmd liftTermElabM do
   let env ← getEnv
   try
-    Environment.modify fun state => Id.run do
-      let target := Name.mkSimple "capture.dependent"
-      let some node := state.inventory.get? target | return state
-      let associations := node.nativeAssociations.map fun association => { association with
-        reference := { association.reference with canonical := `RealizationCaptureFixture.absentNative } }
-      return { state with inventory := state.inventory.insert target { node with nativeAssociations := associations } }
-    let snapshot ← obtain (← Capture.capture)
-    ensure (snapshot.diagnostics.any (·.code == "missing-declaration")) "Missing native declaration diagnostic was lost"
-    ensure (!(snapshot.registry.resultForRequirement (key "capture.dependent" `RealizationCaptureFixture.absentNative)).complete)
-      "Missing native declaration borrowed completion"
+    let target := Name.mkSimple "capture.grouped"
+    let dependent := Name.mkSimple "capture.groupedDependent"
+    let absentName := `RealizationCaptureFixture.absentNative
+    let absent : ObjectKey := ⟨⟨`lean, `blueprintFixtures⟩, absentName.toString⟩
+    for placement in #[`statement, `proof] do
+      setEnv env
+      Environment.modify fun state => Id.run do
+        let some node := state.inventory.get? target | return state
+        let associations := node.nativeAssociations.map fun association =>
+          if association.reference.canonical == ``groupedAdmitted then
+            { association with placement, reference := { association.reference with canonical := absentName } }
+          else association
+        return { state with inventory := state.inventory.insert target { node with nativeAssociations := associations } }
+      let snapshot ← obtain (← Capture.capture)
+      let missingRole := (⟨target, `lean⟩ : RealizationKey).forRole placement
+      let missingResult := snapshot.registry.resultFor (.declaration missingRole absent)
+      ensure (missingResult.status == .blocked && missingResult.diagnostics.any (·.code == "missing-declaration") &&
+        (snapshot.registry.resultFor (.realization missingRole)).status == .blocked)
+        "The missing declaration and its enclosing realization must retain blocked availability"
+      ensure ((snapshot.registry.resultForRequirement (key "capture.grouped" ``groupedComplete)).complete)
+        "The checked sibling must retain its precise passed proof"
+      let mixed := snapshot.assessmentFor target
+      ensure (mixed.hasNativeDeclarations && mixed.hasNativeBodyRequirement &&
+        !mixed.nativeStatementComplete && !mixed.nativeProofComplete &&
+        !mixed.nativeLocallyComplete && !mixed.requiredComplete)
+        "The aggregate cannot count an unclassified declaration as a completed sibling or statement-only proposition"
+      ensure (Graph.actionableStageForAssessment? mixed == some "statement")
+        "The incomplete native statement must remain visible in the graph work queue"
+      let selected := snapshot.uses.filter fun use => use.source == dependent && use.reference.label == target
+      ensure (selected.size == 2 && selected.all (fun use =>
+        match use.selected with
+        | .error diagnostic => diagnostic.code == "missing-declaration" && diagnostic.message.contains absent.native
+        | .ok _ => false))
+        "Both use axes must identify the same missing target declaration"
+      let dependentView := snapshot.assessmentFor dependent
+      ensure (dependentView.nativeLocallyComplete && dependentView.selectedLeanUseCount == 2 &&
+        !dependentView.statementDependenciesComplete && !dependentView.proofDependenciesComplete &&
+        !dependentView.requiredComplete)
+        "Failed target selection must block the dependent closure without erasing its local checks"
+      let proposition := snapshot.assessmentFor (Name.mkSimple "capture.propositionOnly")
+      ensure (proposition.hasNativeDeclarations && proposition.nativeStatementComplete &&
+        !proposition.hasNativeBodyRequirement && !proposition.nativeProofComplete &&
+        proposition.nativeLocallyComplete && proposition.requiredComplete &&
+        (Graph.actionableStageForAssessment? proposition).isNone)
+        "A classified proposition definition must retain its legitimate statement-only completion"
   finally setEnv env
 
 -- Rejected imported state cannot escape as a successful partial registry.

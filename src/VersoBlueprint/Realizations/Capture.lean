@@ -93,45 +93,35 @@ contributions. Full authored alternatives remain available in `registry`. -/
 def Snapshot.nativeRealizationsFor (snapshot : Snapshot) (label : Name) : Array Realization :=
   ordinaryNativeRealizations snapshot.registry.contributions label
 
+private def nativeValidator (role : Name) : Name :=
+  if role == `statement then NativeLean.statementValidator else NativeLean.bodyValidator
+
 /-- Derive a consumer view from the same admitted snapshot. No source/status
 fallbacks, new checker invocation or second dependency evaluator occur here. -/
 def Snapshot.assessmentFor (snapshot : Snapshot) (label : Name) : NodeAssessment := Id.run do
   let registry := snapshot.registry
   let nativeModels := snapshot.nativeRealizationsFor label
-  let declarations := canonical (nativeModels.flatMap (·.declarations))
-  let hasNativeDeclarations := !declarations.isEmpty
-  let statementDeclarations := (nativeModels.filter (·.role == `statement)).flatMap fun model =>
-    model.declarations.map (fun declaration => (model.key, declaration))
-  let proofDeclarations := (nativeModels.filter (·.role == `proof)).flatMap fun model =>
-    model.declarations.map (fun declaration => (model.key, declaration))
-  let implementationDeclarations := (nativeModels.filter (·.role == `implementation)).flatMap fun model =>
-    model.declarations.map (fun declaration => (model.key, declaration))
-  let locallyComplete (role validator : Name) (selected : Array (RealizationKey × Declaration)) :=
-    !selected.isEmpty && selected.all fun (owner, declaration) =>
-      let requirement : RequirementKey := ⟨.declaration owner declaration.object, role⟩
-      (registry.realization? owner).any (fun model => model.role == role &&
-        model.declarations.any (·.object == declaration.object)) &&
-        (registry.requirement? requirement).any (fun value =>
-          value.expected == .check validator && value.coverage == .dependencyClosure) &&
-        (registry.localResult requirement).complete
+  let objects := canonical (nativeModels.flatMap fun model => model.declarations.map (·.object))
+  let checks := nativeModels.flatMap fun model => model.declarations.map fun declaration =>
+    let key : RequirementKey := ⟨.declaration model.key declaration.object, model.role⟩
+    let contract := (registry.requirement? key).filter fun value =>
+      declaration.required.contains key && value.expected == .check (nativeValidator model.role) &&
+        value.coverage == .dependencyClosure
+    (model.role, contract.map (·.key))
+  -- A declaration retained at its fallback placement may have no classified
+  -- role. Every selected declaration must have its native contract before a
+  -- sibling can contribute to a complete node summary.
+  let coversDeclarations := !checks.isEmpty && checks.all (·.2.isSome)
+  let locallyComplete (selected : Array (Name × Option RequirementKey)) :=
+    coversDeclarations && !selected.isEmpty &&
+      selected.all fun (_, key) => key.any fun key => (registry.localResult key).complete
   -- The legacy summary's proof field means native body completeness. A
   -- computational definition supplies a value, not a mathematical proof edge.
-  let implementationComplete := locallyComplete `implementation NativeLean.bodyValidator implementationDeclarations
-  let statementComplete := !(statementDeclarations.isEmpty && implementationDeclarations.isEmpty) &&
-    (statementDeclarations.isEmpty || locallyComplete `statement NativeLean.statementValidator statementDeclarations) &&
-    (implementationDeclarations.isEmpty || implementationComplete)
-  let bodyComplete := !(proofDeclarations.isEmpty && implementationDeclarations.isEmpty) &&
-    (proofDeclarations.isEmpty || locallyComplete `proof NativeLean.bodyValidator proofDeclarations) &&
-    (implementationDeclarations.isEmpty || implementationComplete)
-  let nativeRequirementKeys := canonical (nativeModels.flatMap (·.requirements)) |>.filter fun key =>
-    match registry.requirement? key with
-    | none => false
-    | some requirement =>
-      requirement.coverage == .dependencyClosure && (match requirement.expected with
-        | .check validator => validator == NativeLean.statementValidator || validator == NativeLean.bodyValidator
-        | _ => false)
-  let nativeLocalComplete := hasNativeDeclarations && !nativeRequirementKeys.isEmpty &&
-    nativeRequirementKeys.all fun key => (registry.resultForRequirement key).complete
+  let bodyChecks := checks.filter (·.1 != `statement)
+  let statementComplete := locallyComplete (checks.filter (·.1 != `proof))
+  let bodyComplete := locallyComplete bodyChecks
+  let requiredComplete := coversDeclarations &&
+    checks.all fun (_, key) => key.any fun key => (registry.resultForRequirement key).complete
   let uses := snapshot.uses.filter (·.source == label)
   let selected := uses.filter fun use => nativeModels.any fun model =>
     use.context == some model.context &&
@@ -147,18 +137,16 @@ def Snapshot.assessmentFor (snapshot : Snapshot) (label : Name) : NodeAssessment
     let sourceDocuments := nodeModels.flatMap (·.documents) ++
       (registry.objects.filter (fun object => nodeObjects.contains object.key)).filterMap (·.document)
     return (snapshot.sourceDiagnostics.documents.filter (fun (document, _) => sourceDocuments.contains document)).map (·.2)
-  let objects := canonical (declarations.map (·.object))
   let diagnostics := canonical (
     (snapshot.sourceDiagnostics.nodes.filter (·.1 == label)).map (·.2) ++
     documentDiagnostics)
   return {
-    hasNativeDeclarations
+    hasNativeDeclarations := !objects.isEmpty
     hasAxiomLike := snapshot.nativeChecks.any (fun checked => objects.contains checked.declaration && checked.status.isAxiomLike)
     nativeStatementComplete := statementComplete
-    hasNativeBodyRequirement := nativeRequirementKeys.any fun key =>
-      (registry.requirement? key).any (·.expected == .check NativeLean.bodyValidator)
+    hasNativeBodyRequirement := bodyChecks.any (·.2.isSome)
     nativeProofComplete := bodyComplete
-    requiredComplete := nativeLocalComplete
+    requiredComplete
     selectedLeanUseCount := selected.size
     statementDependenciesComplete := dependenciesComplete true
     proofDependenciesComplete := dependenciesComplete false
@@ -168,7 +156,7 @@ def Snapshot.assessmentFor (snapshot : Snapshot) (label : Name) : NodeAssessment
         ("declarations", toJson objects),
         ("statementComplete", toJson statementComplete),
         ("bodyComplete", toJson bodyComplete),
-        ("requiredComplete", toJson nativeLocalComplete)]),
+        ("requiredComplete", toJson requiredComplete)]),
       ("uses", toJson (uses.map fun use => Json.mkObj [
         ("source", toJson use.source), ("targetContext", toJson use.context),
         ("realization", toJson use.realization), ("role", toJson use.role),
@@ -661,7 +649,7 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
         for role in nativeRoles do
           unless (rolesForName declaration.name).contains role do continue
           let key : RequirementKey := ⟨.declaration (base.forRole role) witness, role⟩
-          let validator := if role == `statement then NativeLean.statementValidator else NativeLean.bodyValidator
+          let validator := nativeValidator role
           let prerequisites := if role == `proof then
             #[⟨.declaration (base.forRole `statement) witness, `statement⟩] else #[]
           collected := { collected with
@@ -802,6 +790,10 @@ private def selectTarget (collected : Collected) (context : Context) (axis : Nam
       if model.role == role then (model.declarations.find? (·.object == object)).map (model, ·) else none
   let mut required := #[]
   for object in objects do
+    let some checked := collected.nativeChecks.find? (·.declaration == object)
+      | return ← fail "unavailable-native-contract" s!"No current checked classification for '{object.native}'"
+    if checked.status.isMissing then
+      return ← fail "missing-declaration" s!"'{object.native}' is absent from the current checked environment"
     let role := if !(owners `implementation object).isEmpty then `implementation
       else if axis == `proof && !(owners `proof object).isEmpty then `proof
       else `statement
@@ -811,12 +803,11 @@ private def selectTarget (collected : Collected) (context : Context) (axis : Nam
         "Dependency declaration belongs to several ordinary native realizations of the selected role"
     let some (model, declaration) := selectedOwners[0]?
       | return ← fail "invalid-native-contract" "Dependency declaration has no contract for its selected role"
-    let validator := if role == `statement then NativeLean.statementValidator else NativeLean.bodyValidator
+    let validator := nativeValidator role
     let key : RequirementKey := ⟨.declaration model.key object, role⟩
     let contracts := canonical ((input.requirements.filter (·.value.key == key)).map (·.value))
     let expectedProjection := if role == `statement then .statement else .implementation
-    let roleMatches := (collected.nativeChecks.find? (·.declaration == object)).any (·.roles.contains role)
-    unless roleMatches && declaration.projection == expectedProjection && contracts.size == 1 &&
+    unless checked.roles.contains role && declaration.projection == expectedProjection && contracts.size == 1 &&
         contracts[0]!.expected == .check validator && contracts[0]!.coverage == .dependencyClosure &&
         declaration.required.contains key do
       return ← fail "invalid-native-contract" "Dependency requires its exact selected native role and completeness contract"
@@ -885,7 +876,7 @@ private def connectUses (collected : Collected) (uses : Array SelectedUse) : Col
     for declaration in model.declarations do
       let subject := Subject.declaration model.key declaration.object
       let name := model.role
-      let validator := if name == `statement then NativeLean.statementValidator else NativeLean.bodyValidator
+      let validator := nativeValidator name
       let key : RequirementKey := ⟨subject, name⟩
       unless nativeContracts[key]? == some validator do continue
       let edges := relevant
