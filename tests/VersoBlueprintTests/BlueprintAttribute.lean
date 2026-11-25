@@ -8,8 +8,10 @@ import VersoBlueprintTests.BlueprintAttribute.Reexport
 import VersoBlueprintTests.BlueprintAttribute.HybridProvider
 import VersoBlueprintTests.BlueprintAttribute.DefaultLabelProvider
 import VersoBlueprintTests.BlueprintAttribute.ProjectionGraft
+import VersoBlueprint.Realizations.Capture
 
 open Lean
+open Lean.Elab Command Term
 open Informal
 
 namespace Verso.VersoBlueprintTests.BlueprintAttribute
@@ -52,13 +54,13 @@ private def isBlueprintAttrRef (expectedDecl : Name) (expectedKind : Informal.Da
     pure (
       theoremNode.kind == .theorem &&
       theoremNode.hasAssociatedCode &&
-      (theoremNode.proseView `verso `statement).isSome &&
+      (theoremNode.proseView `markdown `statement).isSome &&
       definitionNode.kind == .definition &&
       definitionNode.hasAssociatedCode &&
-      (definitionNode.proseView `verso `statement).isSome &&
+      (definitionNode.proseView `markdown `statement).isSome &&
       inductiveNode.kind == .definition &&
       inductiveNode.hasAssociatedCode &&
-      (inductiveNode.proseView `verso `statement).isSome &&
+      (inductiveNode.proseView `markdown `statement).isSome &&
       undocumentedNode.kind == .definition &&
       undocumentedNode.hasAssociatedCode
     )
@@ -174,7 +176,7 @@ private def isBlueprintAttrRef (expectedDecl : Name) (expectedKind : Informal.Da
 
 /-- Imported statement payloads should keep empty deps and at least one preview source. -/
 private def importedStatementExportOk (node : Informal.Data.NodeInventory) : Bool :=
-  match node.proseView `verso `statement with
+  match node.proseView `markdown `statement with
   | some st => (node.usesOn `statement).isEmpty &&
       (!st.previewBlocks.isEmpty || !st.elabStx.isEmpty)
   | none => false
@@ -195,7 +197,50 @@ private def importedStatementExportOk (node : Informal.Data.NodeInventory) : Boo
       importedStatementExportOk theoremNode &&
       importedStatementExportOk definitionNode &&
       importedStatementExportOk inductiveNode &&
-      (undocumentedNode.proseView `verso `statement).isNone
+      (undocumentedNode.defaultProseView `statement).isNone
+
+#docs (Verso.Genre.Manual) proofForMarkdownDocstring "Proof for Markdown docstring" :=
+:::::::
+:::proof "attr.exported.theorem"
+A Verso proof of the Markdown statement.
+:::
+:::::::
+
+/-- error: Label «attr.exported.theorem» already defined -/
+#guard_msgs in
+#docs (Verso.Genre.Manual) competingStatement "Competing statement" :=
+:::::::
+:::theorem "attr.exported.theorem"
+A competing Verso statement.
+:::
+:::::::
+
+run_cmd liftTermElabM do
+  let markdownLabel := Name.mkSimple "attr.exported.theorem"
+  let versoLabel := Name.mkSimple "attr.hybrid.verso_docstring"
+  let raw := Realizations.Capture.Raw.ofState (← importedState)
+  let plan := Realizations.Capture.plan { raw with
+    nodes := raw.nodes.filter fun (label, _) => label == markdownLabel || label == versoLabel }
+  let snapshot ← match ← Realizations.Capture.observe plan with
+    | .ok observations =>
+      match Realizations.Capture.evaluate plan observations with
+      | .ok snapshot => pure snapshot
+      | .error issues => throwError "Docstring capture failed: {repr issues}"
+    | .error issues => throwError "Docstring observation failed: {repr issues}"
+  unless snapshot.diagnostics.isEmpty do
+    throwError "Docstring capture reported diagnostics: {repr snapshot.diagnostics}"
+  for (label, format, role, marker) in #[
+      (markdownLabel, `markdown, `statement, " Exported theorem used to verify `@[blueprint]` persistence across imports. "),
+      (markdownLabel, `verso, `proof, "A Verso proof of the Markdown statement."),
+      (versoLabel, `verso, `statement, "A *structurally emphasized Verso docstring body*")] do
+    let key := Realizations.RealizationKey.forRole ⟨label, format⟩ role
+    let some model := snapshot.registry.realization? key
+      | throwError "Missing {format} {role} realization for {label}"
+    let some document := snapshot.registry.documents.find? fun doc => model.documents.contains doc.key
+      | throwError "Missing document for {format} {role} of {label}"
+    unless model.context.language == format && document.key.context == model.context &&
+        document.text.contains marker && (format != `markdown || document.text == marker) do
+      throwError "Captured {format} {role} lost its source context or bytes: {repr document}"
 
 /- Bare attributes use qualified declaration names and retain explicit dependencies. -/
 /-- info: true -/

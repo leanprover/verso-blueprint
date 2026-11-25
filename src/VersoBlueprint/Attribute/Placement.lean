@@ -49,7 +49,7 @@ private meta def attributeNodeOccurrence? (cfg : BlueprintNodeConfig) :
   let some node ← Environment.getNodeInventory? label | return none
   if !nodeHasBlueprintAttributeAttachments node then return none
   let statementStxs ←
-    match node.proseView `verso `statement with
+    match node.defaultProseView `statement with
     | none => pure #[]
     | some statement =>
       if statement.previewBlocks.isEmpty then

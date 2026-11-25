@@ -111,7 +111,7 @@ private def nodeFacetPreview? (node : Data.NodeInventory) (facet : PreviewCache.
   let facetName := match facet with
     | .statement => `statement
     | .proof => `proof
-  let informalData ← node.proseView `verso facetName
+  let informalData ← node.defaultProseView facetName
   match nonEmptyOrNone informalData.previewBlocks with
   | some blocks => some { blocks }
   | none =>

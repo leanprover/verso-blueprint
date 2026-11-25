@@ -66,6 +66,13 @@ def NodeInventory.proseView (node : NodeInventory) (realization role : Name) : O
   | none => return if useDeclarations.isEmpty then none
     else some { stx := .missing, useDeclarations }
 
+/-- The ordinary displayed prose for a role, including Markdown declaration
+docstrings. Prefer a Verso body when present, then Markdown, then placeholders. -/
+def NodeInventory.defaultProseView (node : NodeInventory) (role : Name) : Option InformalData :=
+  let verso := node.proseView `verso role
+  let markdown := node.proseView `markdown role
+  verso.filter (·.hasBody) <|> markdown.filter (·.hasBody) <|> verso <|> markdown
+
 /-- Native source snapshots at one presentation placement, across all realizations.
 The original association inventory retains the realization and context. -/
 def NodeInventory.nativeRefsOn (node : NodeInventory) (placement : Name) : Array ExternalRef :=
@@ -131,8 +138,8 @@ def NodeInventory.leanDecls (node : NodeInventory) : Array Name :=
 def NodeInventory.hasAssociatedCode (node : NodeInventory) : Bool :=
   !node.nativeAssociations.isEmpty || !node.inlineCodes.isEmpty
 
-def NodeInventory.hasStatementBody (node : NodeInventory) : Bool := (node.proseView `verso `statement).any (·.hasBody)
+def NodeInventory.hasStatementBody (node : NodeInventory) : Bool := (node.defaultProseView `statement).any (·.hasBody)
 
-def NodeInventory.hasProofBody (node : NodeInventory) : Bool := (node.proseView `verso `proof).any (·.hasBody)
+def NodeInventory.hasProofBody (node : NodeInventory) : Bool := (node.defaultProseView `proof).any (·.hasBody)
 
 end Informal.Data

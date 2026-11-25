@@ -37,7 +37,7 @@ run_cmd liftTermElabM do
 
   let complete := snapshot.assessmentFor (Name.mkSimple "capture.complete")
   let dependent := snapshot.assessmentFor (Name.mkSimple "capture.dependent")
-  let proseStatement := (⟨Name.mkSimple "capture.complete", `verso⟩ : RealizationKey).forRole `statement
+  let proseStatement := (⟨Name.mkSimple "capture.complete", `markdown⟩ : RealizationKey).forRole `statement
   ensure ((snapshot.registry.realization? proseStatement).isSome &&
     (snapshot.registry.resultFor (.realization proseStatement)).status == .unassessed)
     "The real docstring must remain present and unassessed without an authored review"

@@ -131,11 +131,10 @@ private def elabBlueprintConfig (decl : Name) : Syntax → CoreM BlueprintAttrCo
 private def statementFromDocstring? (decl : Name) (ref : Syntax) :
     CoreM (Option (Data.InformalBody × Array Data.UseRef × Name)) := do
   let env ← getEnv
-  let internalDoc? ← liftM <| findInternalDocString? env decl
-  let (elabStx, deps) ←
-    match internalDoc? with
-    | none => pure (#[], #[])
-    | some (.inl doc) => do
+  let some internalDoc ← liftM <| findInternalDocString? env decl | return none
+  let (elabStx, deps, format) ←
+    match internalDoc with
+    | .inl doc => do
       let elabStx ← do
         let doc := doc.trimAscii.toString
         if doc.isEmpty then
@@ -148,17 +147,17 @@ private def statementFromDocstring? (decl : Name) (ref : Syntax) :
                 (handleHeaders := Verso.Genre.Manual.Markdown.strongEmphHeaders))
           | none =>
             pure #[← `(Verso.Doc.Block.para #[Verso.Doc.Inline.text $(quote doc)])]
-      pure (elabStx, #[])
-    | some (.inr doc) =>
-      Informal.Docstring.versoDocstringToManualBlocksStx doc
+      pure (elabStx, #[], `markdown)
+    | .inr doc => do
+      let (elabStx, deps) ← Informal.Docstring.versoDocstringToManualBlocksStx doc
+      pure (elabStx, deps, `verso)
   if elabStx.isEmpty then
     pure none
   else
     pure <| some ({
       stx := ref
       elabStx := elabStx.map (·.raw)
-    }, deps, if internalDoc?.any (fun doc => match doc with | .inl _ => true | .inr _ => false)
-      then `markdown else `verso)
+    }, deps, format)
 
 private def labelsForManualTarget
     (currentDecl currentLabel : Name) (target : AutoDepTarget) : CoreM (Array Data.Label) := do
@@ -242,7 +241,7 @@ private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref
     priority := none
     source }
   let sources ← docstring?.toArray.mapM fun (body, _, format) =>
-    Environment.sourceAt label `verso (some `statement) format (.prose body) ref
+    Environment.sourceAt label format (some `statement) format (.prose body) ref
   discard <| Environment.contributeAttribute fact {
     sources
     uses := deps }

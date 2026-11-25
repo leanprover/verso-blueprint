@@ -489,24 +489,16 @@ def checkLabelAndNesting (label : Label) (kind : Data.InProgressKind) : m Bool :
   match (kind, inventory.get? label, activeDirective.isNone) with
   | (.statement _, none, true) => return true
   | (.statement _, some node, true) =>
-    let statementCanBeFilled :=
-      match (node.proseView `verso `statement) with
-      | none => true
-      | some statement => !statement.hasBody
-    if statementCanBeFilled then
+    if !node.hasStatementBody then
       return true
     else do
       logError m!"Label {label} already defined"
       return false
   | (.proof, some node, true) =>
-    let proofCanBeFilled :=
-      match (node.proseView `verso `proof) with
-      | none => true
-      | some proof => !proof.hasBody
-    if !proofCanBeFilled then
+    if node.hasProofBody then
       logError m!"Label {label} already has a proof"
       return false
-    else if (node.proseView `verso `statement).isNone then
+    else if (node.defaultProseView `statement).isNone then
       logError m!"Cannot add proof for {label}: statement/dependencies are missing"
       return false
     else
