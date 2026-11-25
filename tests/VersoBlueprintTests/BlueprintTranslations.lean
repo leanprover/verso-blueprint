@@ -52,6 +52,13 @@ def mockOwnType : Observation := .check {
     ((r.resultForRequirement lintKey).complete &&
       (r.resultFor (.translation relationKey)).status == Status.unassessed &&
       hasIssue (r.resultFor (.translation relationKey)) "missing-mathematical-support")
+  let lintFailed ← withMockEvidence lintOnly `lintFailed lintKey
+    (.check { validator := `lean.lint, outcome := .failed })
+  let r ← registry lintFailed
+  let result := r.resultFor (.translation relationKey)
+  expect "proves: missing mathematical support preserves the failed check reason"
+    (result.status == .unassessed && !result.localComplete &&
+      hasIssue result "missing-mathematical-support" && hasIssue result "check-not-passed")
 
   let supportKey : RequirementKey := ⟨.translation relationKey, `own_type_support⟩
   let aliceReview : RequirementKey := ⟨.translation relationKey, `alice_mathematical_review⟩
@@ -115,6 +122,37 @@ def mockOwnType : Observation := .check {
       ((r.resultForRequirement support).complete &&
         (r.resultFor (.claim extraClaim)).complete == (outcome == .passed) &&
         (r.resultFor (.translation relationKey)).complete == (outcome == .passed))
+
+-- A missing claim contract keeps the translation unassessed while other claims
+-- retain their own rejected and blocked assessments.
+#eval show IO Unit from do
+  let blockedClaim : ClaimKey := ⟨translationKey, `blockedClaim⟩
+  let blockedReview : RequirementKey := ⟨.claim blockedClaim, `correspondence_review⟩
+  for name in #[`a_uncontracted, `z_uncontracted] do
+    let uncontractedClaim : ClaimKey := ⟨translationKey, name⟩
+    let input : Input := { fixture with
+      claims := fixture.claims ++ #[
+        contribution `blockedClaim {
+          key := blockedClaim, interpretation := "Provider assessment", required := #[blockedReview] },
+        contribution `uncontractedClaim { key := uncontractedClaim, interpretation := "Unassessed claim" }]
+      requirements := fixture.requirements.push <| contribution `blockedReview {
+        key := blockedReview, expected := .review `statement_correspondence `MockReviewer } }
+    let input ← withMockEvidence input `rejectedClaimReview reviewKey
+      (.review { criterion := `statement_correspondence, reviewer := `MockReviewer, outcome := .failed })
+    let input ← withMockEvidence input `unavailableClaimReview blockedReview
+      (.review { criterion := `statement_correspondence, reviewer := `MockReviewer, outcome := .unavailable })
+    for input in #[input, reverseInput input] do
+      let r ← registry input
+      let rejected := r.resultFor (.claim claimKey)
+      let blocked := r.resultFor (.claim blockedClaim)
+      let result := r.resultFor (.translation translationKey)
+      expect "mixed claims: sibling review outcomes remain independent"
+        (rejected.status == .pending && hasIssue rejected "review-not-accepted" &&
+          blocked.status == .blocked && hasIssue blocked "validation-unavailable" &&
+          (r.resultFor (.claim uncontractedClaim)).status == .unassessed)
+      expect "mixed claims: unassessed translation includes both sibling reasons"
+        (result.status == .unassessed && !result.localComplete &&
+          result.diagnostics == canonical (rejected.diagnostics ++ blocked.diagnostics))
 
 -- P05/P06: independent MaxNat-shaped goal descriptors, not actual project checks.
 #eval show IO Unit from do
@@ -188,6 +226,31 @@ def mockOwnType : Observation := .check {
   expect "P08/P21: independent proof retained despite missing other member"
     ((r.resultForRequirement proofKey).complete &&
       (r.resultFor (.realization leanProofKey)).status == Status.blocked)
+
+-- Reversing owned declaration order preserves the contracted sibling's reason.
+#eval show IO Unit from do
+  let uncontractedObject := { leanObject with native := "Fixture.uncontracted" }
+  for reverse in #[false, true] do
+    let input : Input := { fixture with
+      objects := fixture.objects.push <| contribution `uncontractedObject {
+        key := uncontractedObject, resolution := .resolved }
+      realizations := fixture.realizations.map fun c =>
+        if c.value.key == leanProofKey then
+          let declarations := c.value.declarations.push { object := uncontractedObject }
+          { c with value := { c.value with declarations := if reverse then declarations.reverse else declarations } }
+        else c }
+    for (outcome, status, code) in #[(Outcome.failed, Status.pending, "proof-not-complete"),
+        (.unavailable, .blocked, "validation-unavailable")] do
+      let observed ← withMockEvidence input `contractedProof proofKey
+        (.proof { witness := leanObject, actualType := some goal, outcome, coverage := .dependencyClosure })
+      let r ← registry observed
+      let contracted := r.resultFor (.declaration leanProofKey leanObject)
+      let result := r.resultFor (.realization leanProofKey)
+      expect "mixed declarations: sibling proof outcomes remain independent"
+        (contracted.status == status && hasIssue contracted code &&
+          (r.resultFor (.declaration leanProofKey uncontractedObject)).status == .unassessed)
+      expect "mixed declarations: unassessed realization includes the sibling reason"
+        (result.status == .unassessed && !result.localComplete && result.diagnostics == contracted.diagnostics)
 
 -- P12/P13: prerequisite cycles cannot manufacture closure; correspondence can cycle.
 #eval show IO Unit from do

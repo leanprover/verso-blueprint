@@ -73,19 +73,30 @@ private def checked (edges : Array (Array Nat)) (passed : Nat → Bool := fun _ 
   ensure (result.status == .blocked && result.localComplete &&
     (changed.localResult (requirement 0)).status == .pending)
     "A fresh evidence snapshot must invalidate closure while retaining local success"
+  let leafDiagnostics := (changed.localResult (requirement 0)).diagnostics
+  let prerequisiteSubjects := canonical ((Array.range 63).map fun n => (toJson (requirement (n + 1))).compress)
+  ensure (result.diagnostics == canonical result.diagnostics && result.diagnostics.size == 64 &&
+    result.diagnostics.filter (·.code == "check-not-passed") == leafDiagnostics &&
+    (result.diagnostics.filter (·.code == "unfinished-prerequisite")).map (·.subject) == prerequisiteSubjects)
+    "Shared prerequisite paths must retain every distinct unfinished reason and one copy of its original cause"
   ensure ((r.resultForRequirement (requirement 63)).complete) "Readmission must not mutate the old admitted snapshot"
 
 #eval show IO Unit from do
   -- The cycle has an unfinished external prerequisite; both cycle members must
   -- retain that actual cause, independent of DFS/query/inventory order.
-  let input ← checked #[#[1], #[0, 2], #[], #[0, 1]] (· != 2)
+  let input ← checked #[#[1, 2], #[0, 2], #[], #[0, 1]] (· != 2)
   let r ← obtain (admit input)
+  let subjects (indices : Array Nat) := canonical (indices.map fun n => (toJson (requirement n)).compress)
+  let externalDiagnostics := (r.localResult (requirement 2)).diagnostics
   for n in #[0, 1, 3] do
     let result := r.resultForRequirement (requirement n)
+    let diagnosticSubjects (code : String) := (result.diagnostics.filter (·.code == code)).map (·.subject)
+    let unfinished := if n == 3 then #[0, 1, 3] else #[n]
     ensure (result.status == .blocked && result.localComplete &&
-      result.diagnostics.any (·.code == "requirement-cycle") &&
-      result.diagnostics.any (·.subject == (toJson (Name.num `mockEvidence 2)).compress))
-      "Cycle closure must preserve local evidence and the external unfinished cause"
+      result.diagnostics.filter (·.code == "check-not-passed") == externalDiagnostics &&
+      diagnosticSubjects "requirement-cycle" == subjects #[0, 1] &&
+      diagnosticSubjects "unfinished-prerequisite" == subjects unfinished)
+      "Cycle closure must preserve local evidence, each member's marker, and the shared external cause"
   ensure ((r.localResult (requirement 2)).status == .pending) "Cycle cannot overwrite external local status"
   let self ← checked #[#[0], #[]]
   let self ← obtain (admit self)

@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 import VersoBlueprint.Validation
 import VersoBlueprint.Util.SHA256
 import VersoBlueprint.Validation.BindingEncoding
+import Std.Data.TreeSet.Basic
 
 /-! Pure admission and validation for canonical Blueprint capture. Admission
 checks supplied observations; it does not authenticate their providers. Production
@@ -527,7 +528,7 @@ private structure Components where
   finished : Array (Array RequirementKey) := #[]
 
 /-- Tarjan's walk visits every requirement/edge once. Components are emitted
-prerequisite-first, so closure evaluation never replays shared diamond paths. -/
+prerequisite-first, so closure evaluation reuses previously evaluated results. -/
 private partial def visitComponent (r : Registry) (key : RequirementKey) : StateM Components Unit := do
   let index := (← get).next
   modify fun state => { state with
@@ -559,31 +560,36 @@ private def Registry.computeResults (r : Registry) : Std.HashMap RequirementKey 
       unless (← get).indices.contains requirement.key do visitComponent r requirement.key
   let (_, components) := build.run {}
   let mut results : Std.HashMap RequirementKey Result := {}
+  let prerequisites (key : RequirementKey) :=
+    (r.requirement? key).map (·.prerequisites) |>.getD #[]
+  let localResult (key : RequirementKey) := r.localValues[key]?.getD { status := .blocked }
   for component in components.finished do
-    let members := component.foldl (fun out key => out.insert key) ({} : Std.HashSet RequirementKey)
-    let cyclic := component.size > 1 || component.any fun key =>
-      (r.requirement? key).any (·.prerequisites.contains key)
-    let cycleDiagnostics := if cyclic then component.map fun key =>
-        issue "requirement-cycle" key "Recursive validation requirement"
-      else #[]
+    let first := component[0]!
+    let firstPrerequisites := prerequisites first
+    let cyclic := component.size > 1 || firstPrerequisites.contains first
+    let external :=
+      if cyclic then
+        let members := component.foldl (fun out key => out.insert key) ({} : Std.HashSet RequirementKey)
+        canonical ((component.flatMap prerequisites).filter (fun key => !members.contains key))
+      else firstPrerequisites
+    let prerequisiteResults := external.map fun dependency =>
+      results[dependency]?.getD { status := .blocked }
+    if !cyclic && prerequisiteResults.all (·.complete) then
+      results := results.insert first (localResult first)
+      continue
+    -- Share cycle reasons across members and deduplicate prerequisite reasons
+    -- as they are collected. The ordered set uses the same order as `canonical`.
+    let mut diagnostics : Std.TreeSet Diagnostic := {}
     for key in component do
-      let own := r.localValues[key]?.getD { status := .blocked }
-      let dependencies := if cyclic then component.flatMap (fun member =>
-          ((r.requirement? member).map (·.prerequisites)).getD #[])
-        else ((r.requirement? key).map (·.prerequisites)).getD #[]
-      let external := dependencies.filter (fun dependency => !members.contains dependency)
-      let prerequisiteResults := external.map fun dependency =>
-        results[dependency]?.getD { status := .blocked }
-      if !cyclic && prerequisiteResults.all (·.complete) then
-        results := results.insert key own
-      else
-        let cycleLocalDiagnostics := if cyclic then component.flatMap fun member =>
-          (r.localValues[member]?.getD { status := .blocked }).diagnostics else #[]
-        results := results.insert key { own with
-          status := .blocked
-          diagnostics := canonical <| own.diagnostics ++ cycleLocalDiagnostics ++ cycleDiagnostics ++
-            prerequisiteResults.flatMap (·.diagnostics) ++
-            #[issue "unfinished-prerequisite" key "A selected prerequisite requirement is unfinished"] }
+      diagnostics := diagnostics.insertMany (localResult key).diagnostics
+      if cyclic then
+        diagnostics := diagnostics.insert (issue "requirement-cycle" key "Recursive validation requirement")
+    for prerequisite in prerequisiteResults do
+      diagnostics := diagnostics.insertMany prerequisite.diagnostics
+    for key in component do
+      let unfinished := issue "unfinished-prerequisite" key "A selected prerequisite requirement is unfinished"
+      results := results.insert key { localResult key with
+        status := .blocked, diagnostics := (diagnostics.insert unfinished).toArray }
   return results
 
 /-- Cached local suitability and closure are derived from the same immutable
@@ -648,10 +654,15 @@ def Registry.resultFor (r : Registry) (subject : Subject) : Result := Id.run do
     else r.subjectContentIssues subject
   if !unavailable.isEmpty then return { status := .blocked, diagnostics := unavailable }
   let keys := canonical (r.requiredFor subject)
+  let results := keys.map (r.resultForRequirement ·)
+  -- A missing contract changes the aggregate status, but existing contracts
+  -- still report their own validation failures.
+  let diagnostics := canonical (results.flatMap (·.diagnostics))
+  let unassessed : Result := { status := .unassessed, diagnostics }
   -- Every required declaration needs its own explicit validation contract.
   if let .realization key := subject then
     if (r.realization? key).any (·.declarations.any (·.required.isEmpty)) then
-      return { status := .unassessed }
+      return unassessed
   if let .translation key := subject then
     let relation := (r.translation? key).get!
     if relation.kind == `proves then
@@ -661,21 +672,21 @@ def Registry.resultFor (r : Registry) (subject : Subject) : Result := Id.run do
           | .review criterion _ => criterion == `mathematicalProof &&
               (req.key.subject == subject || req.key.subject.translation? == some relation.key)
           | _ => false
-      unless supported do return { status := .unassessed, diagnostics := #[issue
-        "missing-mathematical-support" key "A proves contract requires exact formal or mathematical review support"] }
+      unless supported do
+        return { unassessed with diagnostics := canonical (diagnostics.push (issue
+          "missing-mathematical-support" key "A proves contract requires exact formal or mathematical review support")) }
     else if !(r.claims.any (·.key.translation == key)) then
-      return { status := .unassessed }
+      return unassessed
     -- Native support establishes the P/S connection, not additional authored
     -- claims. Every attached claim needs its own assessment contract.
     if r.claims.any (fun c => c.key.translation == key && c.required.isEmpty) then
-      return { status := .unassessed }
-  if keys.isEmpty then return { status := .unassessed }
-  let results := keys.map (r.resultForRequirement ·)
+      return unassessed
+  if keys.isEmpty then return unassessed
   return {
     status := if results.all (·.complete) then .complete
       else if results.any (·.status == .blocked) then .blocked else .pending
     localComplete := results.all (·.localComplete)
-    diagnostics := canonical (results.flatMap (·.diagnostics)) }
+    diagnostics }
 
 /-- Select by identity and validation name, never by which alternative is complete.
 The future default-Lean adapter supplies its explicit default realization name. -/
