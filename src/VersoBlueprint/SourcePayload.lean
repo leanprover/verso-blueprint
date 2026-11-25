@@ -299,7 +299,11 @@ def ExternalDeclLookupError.message : ExternalDeclLookupError → String
   | .notPresentAtRegistration => "name was not present during directive/code-block registration"
   | .notFoundInEnvironment => "name is not present in current environment"
 
-deriving instance ToJson, FromJson for Except
+deriving instance ToJson for Except
+
+-- The derived decoder uses the combined universe of Except's parameters.
+set_option linter.checkUnivs false in
+deriving instance FromJson for Except
 
 instance [Quote ε] [Quote α] : Quote (Except ε α) where
   quote

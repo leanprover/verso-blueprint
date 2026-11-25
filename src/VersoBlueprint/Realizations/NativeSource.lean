@@ -350,14 +350,16 @@ def prepareDocumented (request : Request) (sourcePath : String)
     toPrepared := prepared, document := { key := ⟨⟨`lean, request.project⟩, sourcePath⟩, text }
     format, rawDocstring }
 
-/-- Evidence-free source model. No node lookup, admission or Blueprint
-association is established by constructing it. The caller retains its producer
-origin and separately admits the complete collected batch. -/
+/-- Source contributions for the caller-supplied node. The caller merges them
+into the complete batch for admission. Validation requirements and observations
+are added separately. -/
 structure PreparedModel where
   input : Input
   origin : Origin
   witness : ObjectKey
+  /-- Base key for the role-qualified native realizations in `input`. -/
   leanKey : RealizationKey
+  /-- Exact key of the separately owned prose statement realization. -/
   informalKey : RealizationKey
   moduleName : Name
   sourcePath : String

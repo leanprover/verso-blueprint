@@ -46,8 +46,8 @@ deriving Repr, Inhabited
 def NodeInventory.toConcept (node : NodeInventory) (label : Name) (title : String) : Realizations.Node :=
   { toNodeMetadata := node.toNodeMetadata, label, title }
 
-/-- Effective edge metadata for presentation. This is intentionally an aggregate;
-validation consumes the original scoped `uses`, never this flattened view. -/
+/-- Effective edge metadata for presentation. Validation consumes the original
+scoped {name}`NodeInventory.uses` declarations. -/
 def NodeInventory.usesOn (node : NodeInventory) (role : Name) : Array UseRef :=
   UseRef.mergeByLabel #[] ((node.uses.filter (·.role == role)).map (·.reference))
 

@@ -63,6 +63,13 @@ Today a Blueprint project usually owns three things:
 - a generator entry point that resolves forward references, computes metadata,
   and writes the generated output under `_out/`
 
+Every module that registers Blueprint sources needs a stable logical project
+name. Add `set_option verso.blueprint.project "MyProject"` after importing
+Blueprint. To share the setting across producing modules, put
+`weak.verso.blueprint.project` in the package's `leanOptions`. Use the same
+canonical Lean name throughout the project. See the
+[source project configuration](doc/MANUAL.md#compiled-code-tagged-with-blueprint).
+
 `verso-blueprint` provides the Blueprint directives, rendering commands, preview
 runtime, and support library code. The starter layout in
 [project_template/](./project_template/) shows the recommended shape.

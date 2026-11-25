@@ -28,14 +28,16 @@ architecture narrative. Those live in
 
 ### Realizations and Translation Semantics
 
-The [frozen first-phase design](design/REALIZATIONS_AND_TRANSLATIONS.md) separates
-nodes, named informal/formal realizations, typed validation requirements, and
-directed translation relationships. It is planned behavior. Start with canonical
-source, current proof checks, coherent contribution admission, and one shared
-graph/query completion projection. Richer prerequisite kinds, external artifact
-import, and task/Beam integrations are deferred. Coordinate the declaration
-identity boundary with the independent Verso LSP/rendering lane before migrating
-producers.
+The first phase captures canonical source, named realizations, directed
+translations, and typed requirements in one admitted snapshot. Graph and
+query completion use that snapshot's current native checks and explicit
+prerequisites. The [realization design](design/REALIZATIONS_AND_TRANSLATIONS.md)
+describes the implemented model and its trust boundary.
+
+Remaining work includes richer prerequisite kinds, foreign source and proof
+providers, external artifact imports, and task and Beam integrations. The
+[consumer pilot contracts](design/REALIZATIONS_AND_TRANSLATIONS.md#consumer-pilot-contracts-and-pending-extensions)
+track open design work on source relocation and shared prerequisite queries.
 
 ### Verification of Accepted Blueprint Data
 

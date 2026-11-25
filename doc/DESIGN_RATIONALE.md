@@ -316,7 +316,7 @@ The same flow can be read as four contracts:
    own body. Prerequisite completion remains a separate gate, so a proof becoming
    admitted preserves its statement review without completing a proof-dependent
    claim. Selected prose and foreign sources remain conservatively byte-bound.
-   The [freshness contract](design/REALIZATIONS_AND_TRANSLATIONS.md#freshness-and-trust-boundary)
+   The [freshness contract](design/REALIZATIONS_AND_TRANSLATIONS.md#bindings-and-prerequisites)
    specifies exact scope, structural-equality limits and binding migration.
 
    SHA-256 Merkle fingerprints are freshness descriptors, not proof certificates
