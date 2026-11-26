@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import VersoBlueprint.ExternalRefSnapshot
 import VersoBlueprint.Informal.ExternalCode
+import VersoBlueprintTests.SorryImport.Provider
 
 namespace Verso.VersoBlueprintTests.ExternalDeclRender
 
@@ -316,5 +317,45 @@ private def htmlTestContext :
       (match missing.render with
       | .error _ => true
       | .ok _ => false)
+
+/-- Resolve a compiled declaration from outside the consumer root. A foreign
+library search location with the same module's trace name must not own it. -/
+private def importedSourceLinkControl : CoreM Bool := IO.FS.withTempDir fun consumer => do
+  let workspace ← Informal.workspaceRoot
+  let relative := "tests/VersoBlueprintTests/SorryImport/Provider.lean"
+  let source ← IO.FS.realPath (workspace / relative)
+  let mod := `VersoBlueprintTests.SorryImport.Provider
+  let shadowTrace := Lean.modToFilePath consumer mod "trace"
+  IO.FS.createDirAll (shadowTrace.parent.getD consumer)
+  IO.FS.writeFile shadowTrace "{}"
+  let searchPath ← Lean.searchPathRef.get
+  Lean.searchPathRef.set (consumer :: searchPath)
+  try
+    let reference := Informal.Data.ExternalRef.ofName `sorryImportCompleteDef
+    let automatic ← Informal.externalRefSnapshot {} consumer reference
+    let template := "https://source.example.invalid/{repoRelpath}#L{line}"
+    let options := ({} : Options).set `verso.blueprint.externalCode.sourceLinkTemplate template
+    let custom ← Informal.externalRefSnapshot options consumer reference
+    let some range := automatic.range? | return false
+    let gitRoot? ← Informal.Git.toplevelAt? workspace
+    let repository? ← liftM <| gitRoot?.bindM Informal.Git.repositoryInfoAtRoot?
+    let repoRelative := (gitRoot?.map fun root =>
+      (source.toString.drop (root.toString.length + 1)).toString).getD source.toString
+    let expectedCustom := s!"https://source.example.invalid/{repoRelative}#L{range.pos.line}"
+    let lineFragment := if range.endPos.line > range.pos.line then
+      s!"#L{range.pos.line}-L{range.endPos.line}" else s!"#L{range.pos.line}"
+    let expectedAutomatic := repository?.map fun repository =>
+      s!"{repository.githubUrl}/blob/{repository.commit}/{repoRelative}{lineFragment}"
+    let html := (Informal.ExternalCode.renderPreviewHtml #[custom]).asString
+    return automatic.provenance == .outWorkspace mod (some source.toString) &&
+      custom.provenance == automatic.provenance && automatic.selectionRange?.isSome &&
+      automatic.sourceHref? == expectedAutomatic && custom.sourceHref? == some expectedCustom &&
+      html.contains s!"href=\"{expectedCustom}\""
+  finally
+    Lean.searchPathRef.set searchPath
+
+/-- info: true -/
+#guard_msgs in
+#eval importedSourceLinkControl
 
 end Verso.VersoBlueprintTests.ExternalDeclRender

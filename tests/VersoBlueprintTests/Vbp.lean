@@ -1690,4 +1690,70 @@ info: true -/
   let code ← VersoBlueprint.Vbp.Main.main ["check", "--site", site.toString, "--typo"]
   pure (code == 2)
 
+open Verso Genre Manual in
+#docs (Manual) originalRouteDoc "Route audit" :=
+:::::::
+# Old Chapter
+
+An original chapter.
+
+## Old Section
+
+A section under the original chapter.
+
+# Removed Chapter
+
+A chapter that is removed on rebuild.
+:::::::
+
+open Verso Genre Manual in
+#docs (Manual) rebuiltRouteDoc "Route audit" :=
+:::::::
+# Renamed Chapter
+
+The current chapter.
+:::::::
+
+-- Generate two revisions into the same output, then exercise the CLI on the
+-- actual xrefs and pages. These chapters carry no Blueprint previews.
+open Verso Genre Manual in
+#eval show IO Unit from do
+  let site ← freshVbpFixtureRoot
+  let html := site / "html-multi"
+  let config : Verso.Genre.Manual.RenderConfig := {
+    destination := site, htmlDepth := 2, emitHtmlSingle := .no, features := {} }
+  let generate text := Informal.PreviewManifest.blueprintMainWithPreviewData text []
+    (by exact extension_impls%) (config := config)
+  let (_, code) ← IO.FS.withIsolatedStreams <|
+    generate originalRouteDoc.toPart
+  unless code == 0 do throw <| IO.userError "Initial route fixture failed to render"
+  let custom := html / "custom" / "index.html"
+  IO.FS.createDirAll (html / "custom")
+  let userHtml := "<!DOCTYPE html><html><title>Unmanaged page</title></html>"
+  IO.FS.writeFile custom userHtml
+  let embedded := html / "embedded" / "chapter" / "index.html"
+  let embeddedHtml ← IO.FS.readFile (html / "Old-Chapter" / "index.html")
+  IO.FS.createDirAll (html / "embedded" / "chapter")
+  IO.FS.writeFile embedded embeddedHtml
+  let check := fun path => IO.FS.withIsolatedStreams <|
+    VersoBlueprint.Vbp.Main.main ["check", "--site", path.toString]
+  let (initial, code) ← check site
+  unless code == 0 do throw <| IO.userError s!"Current generated routes failed the CLI audit: {initial}"
+  let (_, code) ← IO.FS.withIsolatedStreams <|
+    generate rebuiltRouteDoc.toPart
+  unless code == 0 && (← (html / "Renamed-Chapter" / "index.html").pathExists) do
+    throw <| IO.userError "Renamed route fixture failed to render"
+  for path in #[site, html] do
+    let (result, code) ← check path
+    let reports := Json.parse result >>= (·.getObjValAs? (Array String) "errors")
+    unless code == 1 && reports.toOption == some #[
+        "stale generated HTML route: /Old-Chapter/",
+        "stale generated HTML route: /Old-Chapter/Old-Section/",
+        "stale generated HTML route: /Removed-Chapter/"] do
+      throw <| IO.userError s!"Wrong stale-route CLI result: {result}"
+  unless (← IO.FS.readFile custom) == userHtml && (← IO.FS.readFile embedded) == embeddedHtml &&
+      (← (html / "Old-Chapter" / "index.html").pathExists) &&
+      (← (html / "Removed-Chapter" / "index.html").pathExists) do
+    throw <| IO.userError "Route audit modified site content"
+
 end Verso.VersoBlueprintTests.Vbp

@@ -594,6 +594,58 @@ def checkGeneratedData (data : PersistedGeneratedData) : Array String :=
   let errors := checkManifestGroupIntegrity manifest errors
   manifest.graphs.foldl (fun errors graph => checkGraphPreviewKeys index graph errors) errors
 
+/-- Current Verso section routes also cover pages with no Blueprint previews. -/
+private def currentSectionRoutes (xref : Json) : Except String (Std.HashSet String) := do
+  let domain ← xref.getObjVal? Verso.Genre.Manual.sectionDomain.toString
+  let contents ← (← domain.getObjVal? "contents").getObj?
+  let mut routes : Std.HashSet String := {}
+  for (_, targets) in contents.toList do
+    for target in ← targets.getArr? do
+      routes := routes.insert (← target.getObjValAs? String "address")
+  return routes
+
+/-- Identify a stock Verso manual page from its head and the relative base it
+uses to address this site. The read is bounded, including for user HTML. -/
+private def hasVersoPageHeader (path : FilePath) (depth : Nat) : IO Bool := do
+  let header ← IO.FS.withFile path .read (·.read 4096)
+  let signature := ("<!DOCTYPE html>\n<html>\n  <head>\n    <script>\n      (function(){\n" ++
+    "  const {protocol:proto, host:hostName, pathname:path, search:srch, hash:hsh} = window.location;").toUTF8
+  unless (header.extract 0 signature.size).data == signature.data do return false
+  let relativeRoot := "./" ++ String.join (List.replicate depth "../")
+  let base := s!"<base href=\"{relativeRoot}\">".toUTF8
+  for offset in [signature.size:header.size - base.size + 1] do
+    if header[offset]? == some '<'.toUInt8 && (header.extract offset (offset + base.size)).data == base.data then
+      return true
+  return false
+
+/-- Report known Verso manual pages outside the current section routes. This
+audit reads regular index files in the selected HTML tree and leaves the tree
+untouched. Artifact-only directories have no Verso cross-reference table. -/
+def checkHtmlRoutes (site : FilePath) : IO (Array String) := do
+  let html ← htmlDirForSite site
+  let xrefPath := html / "xref.json"
+  let .ok metadata ← xrefPath.symlinkMetadata.toBaseIO | return #[]
+  unless metadata.type == .file do return #[]
+  let .ok routes := Json.parse (← IO.FS.readFile xrefPath) >>= currentSectionRoutes
+    | throw <| IO.userError s!"cannot read Verso section routes from {xrefPath}"
+  -- A current root entry distinguishes a manual from an unrelated xref table.
+  unless routes.contains "/" do return #[]
+  let mut pending := #[(html, "/", 0)]
+  let mut stale := #[]
+  repeat
+    let some (directory, route, depth) := pending.back? | break
+    pending := pending.pop
+    for entry in ← directory.readDir do
+      if depth == 0 && #["-verso-data", "-verso-search"].contains entry.fileName then continue
+      let fileType := (← entry.path.symlinkMetadata).type
+      if fileType == .dir then
+        pending := pending.push (entry.path, route ++ entry.fileName ++ "/", depth + 1)
+      else if fileType == .file && entry.fileName == "index.html" &&
+          !routes.contains route && route != "/find/" && route != "/search/" then
+        if ← hasVersoPageHeader entry.path depth then
+          stale := stale.push (s!"stale generated HTML route: {route}")
+  return stale.qsort (· < ·)
+
 def checkJsonFromErrors (data : PersistedGeneratedData) (errors : Array String) : Json :=
   responseJson [
     ("ok", Json.bool errors.isEmpty),

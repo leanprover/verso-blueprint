@@ -110,7 +110,9 @@ generation constructs the manifest and rendered-fragment cache together and
 finalizes their preview references before emission. Use `check` when validating
 persisted, copied, or externally supplied output; it deliberately performs
 stricter cross-artifact and graph-projection checks than ordinary semantic
-queries. The graph-backed `work-queue` selector also retains strict graph
+queries. It also reports generated Verso chapter pages outside the current
+section routes in the site's `xref.json`, which can remain after a chapter
+rename or removal. The graph-backed `work-queue` selector also retains strict graph
 decoding; graph-free selectors avoid materializing graph projections. Query
 arguments are parsed into a validated plan before any generated file is read,
 so unknown or malformed selectors fail without paying manifest-decoding cost.

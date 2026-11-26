@@ -2167,7 +2167,13 @@ prefixes with document-order block counts.
   - default: `""` (automatic GitHub links when the source file belongs to a
     Git checkout with a GitHub `origin` remote)
   - builds source links for external declarations using `{path}`, `{relpath}`,
-    `{module}`, `{line}`, `{column}`, `{endLine}`, and `{endColumn}`
+    `{repoRelpath}`, `{module}`, `{line}`, `{column}`, `{endLine}`, and `{endColumn}`
+  - Lake package imports, including sibling path dependencies, use the source
+    input of the loaded module's build. This uses the build trace and the
+    matching source file.
+  - `{relpath}` is relative to the Blueprint workspace when available.
+    `{repoRelpath}` is relative to the source file's own Git checkout when
+    available, and otherwise has the same value as `{relpath}`.
 - `verso.blueprint.summary.debugDiagnostics`
   - default: `false`
   - keeps maintainer diagnostics hidden from `blueprint_summary` by default

@@ -8,6 +8,7 @@ import Lean
 import VersoBlueprint.Data
 import VersoBlueprint.ProvedStatus
 import VersoBlueprint.ExternalDeclRender
+import VersoBlueprint.ExternalModuleSource
 import VersoBlueprint.Git
 import VersoBlueprint.RuntimeCache
 
@@ -17,14 +18,14 @@ open Lean
 
 /--
 Template used to build source links for external declarations.
-Supported placeholders are: path, relpath, module, line, column, endLine, endColumn.
+Supported placeholders are: path, relpath, repoRelpath, module, line, column, endLine, endColumn.
 
 Empty template uses automatic GitHub source link generation when the source file
 belongs to a Git checkout with a GitHub `origin` remote.
 -/
 register_option verso.blueprint.externalCode.sourceLinkTemplate : String := {
   defValue := ""
-  descr := "Template for external declaration source links ({path},{relpath},{module},{line},{column},{endLine},{endColumn}); empty uses automatic GitHub links when available"
+  descr := "Template for external declaration source links ({path},{relpath},{repoRelpath},{module},{line},{column},{endLine},{endColumn}); empty uses automatic GitHub links when available"
 }
 
 private def externalSourceLinkTemplate (opts : Lean.Options) : String :=
@@ -71,11 +72,14 @@ private def normalizeSourcePath? (workspaceRoot sourcePath : System.FilePath) :
   catch _ =>
     pure (some sourcePath)
 
+private def gitRootForSource? (sourcePath : System.FilePath) : IO (Option System.FilePath) := do
+  let sourceDir := sourcePath.parent.getD sourcePath
+  RuntimeCache.cachedGitRoot? sourceDir (Git.toplevelAt? sourceDir)
+
 private def gitHubSourceHref? (workspaceRoot sourcePath : System.FilePath)
     (range? : Option Lean.DeclarationRange) : IO (Option String) := do
   let sourcePath := absoluteSourcePath workspaceRoot sourcePath
-  let sourceDir := sourcePath.parent.getD sourcePath
-  let some gitRoot ← RuntimeCache.cachedGitRoot? sourceDir (Git.toplevelAt? sourceDir)
+  let some gitRoot ← gitRootForSource? sourcePath
     | return none
   let some repoInfo ← RuntimeCache.cachedGitRepoInfo? gitRoot (Git.repositoryInfoAtRoot? gitRoot)
     | return none
@@ -96,6 +100,10 @@ private def sourceLinkHref? (opts : Lean.Options) (workspaceRoot : System.FilePa
     | none => pure none
     | some sourcePath =>
       let relPath := (workspaceRelativeSourcePath? workspaceRoot sourcePath).getD sourcePath.toString
+      let repoRelPath ← if template.contains "{repoRelpath}" then do
+        let gitRoot? ← gitRootForSource? sourcePath
+        pure <| (gitRoot?.bind (workspaceRelativeSourcePath? · sourcePath)).getD relPath
+      else pure relPath
       let line := (range?.map (fun r => toString r.pos.line)).getD ""
       let column := (range?.map (fun r => toString r.pos.column)).getD ""
       let endLine := (range?.map (fun r => toString r.endPos.line)).getD ""
@@ -104,6 +112,7 @@ private def sourceLinkHref? (opts : Lean.Options) (workspaceRoot : System.FilePa
         instantiateSourceLinkTemplate template #[
           ("path", sourcePath.toString),
           ("relpath", relPath),
+          ("repoRelpath", repoRelPath),
           ("module", (moduleName?.map toString).getD ""),
           ("line", line),
           ("column", column),
@@ -197,17 +206,27 @@ private def workspaceModuleSourcePath? (workspaceRoot : System.FilePath)
     pure none
 
 private def sourcePathForModule? (workspaceRoot : System.FilePath)
-    (moduleName : Lean.Name) : Lean.CoreM (Option System.FilePath) := do
+    (moduleName : Lean.Name) (moduleIdx? : Option Lean.ModuleIdx) : Lean.CoreM (Option System.FilePath) := do
+  let env ← getEnv
+  if moduleIdx?.isNone && moduleName == env.mainModule then
+    return ← currentSourcePath? workspaceRoot
+  if let some idx := moduleIdx? then
+    if (env.getModulePackageByIdx? idx).isSome then
+      let some owner ← liftM (ExternalModuleSource.find? env idx) | return none
+      -- The owning checkout may have changed since this module was compiled.
+      return ← liftM <| do
+        try
+          let text ← IO.FS.readFile owner.path
+          if Lake.Hash.ofText text != owner.textHash then return none
+          normalizeSourcePath? workspaceRoot owner.path
+        catch _ => pure none
   RuntimeCache.cachedModuleSourcePath? workspaceRoot moduleName do
     let srcSearchPath ← Lean.getSrcSearchPath
     match ← srcSearchPath.findModuleWithExt "lean" moduleName with
     | some path =>
       liftM <| normalizeSourcePath? workspaceRoot path
     | none =>
-      if moduleName == (← getEnv).mainModule then
-        currentSourcePath? workspaceRoot
-      else
-        liftM <| workspaceModuleSourcePath? workspaceRoot moduleName
+      liftM <| workspaceModuleSourcePath? workspaceRoot moduleName
 
 private def workspacePathPrefix (workspaceRoot : System.FilePath) : String :=
   let root := workspaceRoot.toString
@@ -272,7 +291,7 @@ private def externalRefSnapshotWithStatus (opts : Lean.Options) (workspaceRoot :
     let moduleName? := moduleNameForDecl? env canonical
     let sourcePath? ←
       match moduleName? with
-      | some moduleName => sourcePathForModule? workspaceRoot moduleName
+      | some moduleName => sourcePathForModule? workspaceRoot moduleName (env.getModuleIdxFor? canonical)
       | none => pure none
     let provenance := mkProvenance workspaceRoot moduleName? sourcePath?
     let selectionRange? := ranges?.map (fun r => r.selectionRange)
