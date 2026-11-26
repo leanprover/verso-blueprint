@@ -3,7 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.NativeSource
+import VersoBlueprint.Realizations.Capture
 import VersoBlueprintTests.BlueprintRealizationAdapter.ParserSource
 import VersoBlueprintTests.BlueprintRealizationAdapter.Provider
 import VersoBlueprintTests.SorryImport.Provider
@@ -665,10 +665,105 @@ run_cmd liftTermElabM do
   let empty ← RealizationAdapterFixture.prepareModel `adapterFixture (Name.mkSimple "adapter.reflexivity") `RealizationAdapterFixture.reflexivity (fun _ => pure " \n")
   ensure (rejected empty) "Empty source must not project a resolved declaration"
 
--- Reuse #497's actual module-system fixture. A legacy import exposes bodies;
--- dynamically import the same module at ordinary visibility to test unavailable
--- coverage through this provider, including a cached-empty-footprint control.
+open Verso Genre Manual Informal in
+#docs (Manual) hiddenDeclarationsDoc "Hidden declarations" :=
+:::::::
+:::theorem "hidden.complete" (lean := "sorryImportComplete")
+An imported theorem with a complete hidden proof.
+:::
+
+:::theorem "hidden.admitted" (lean := "sorryImportAdmitted")
+An imported theorem with an admitted hidden proof.
+:::
+
+:::definition "hidden.completeSpec" (lean := "sorryImportCompleteSpec")
+An imported proposition definition with a complete hidden value.
+:::
+
+:::definition "hidden.admittedSpec" (lean := "sorryImportAdmittedSpec")
+An imported proposition definition with an admitted hidden value.
+:::
+
+:::theorem "hidden.axiom" (lean := "sorryImportAxiom")
+An imported axiom.
+:::
+
+:::theorem "hidden.dependent" (lean := "sorryImportExposedProof")
+A locally checked proof with an authored prerequisite.
+:::
+
+:::proof "hidden.dependent" (uses := "hidden.admitted")
+The Blueprint proof requires the admitted theorem.
+:::
+:::::::
+
+private def hiddenCapture (plan : Capture.Plan) : TermElabM Unit := do
+  let observations ← obtain (← Capture.observe plan)
+  let snapshot ← obtain (Capture.evaluate plan observations)
+  let registry := snapshot.registry
+  let key (label : String) (name role : Name) : RequirementKey :=
+    ⟨.declaration ((⟨Name.mkSimple label, `lean⟩ : RealizationKey).forRole role)
+      ⟨⟨`lean, `blueprintFixtures⟩, name.toString⟩, role⟩
+  let checked (name : Name) : TermElabM NativeLean.CheckedDeclaration := do
+    let some result := snapshot.nativeChecks.find? (·.declaration.native == name.toString)
+      | throwError "Missing native check for {name}"
+    return result
+  for (label, name, outcome, status) in #[
+      ("hidden.complete", `sorryImportComplete, Outcome.unavailable, Status.blocked),
+      ("hidden.admitted", `sorryImportAdmitted, Outcome.failed, Status.pending)] do
+    let native ← checked name
+    let statement := key label name `statement
+    let proof := key label name `proof
+    let some proofRequirement := registry.requirement? proof
+      | throwError "Hidden theorem lost its proof requirement: {name}"
+    let assessment := snapshot.assessmentFor (Name.mkSimple label)
+    ensure (native.kind == some .theorem && native.roles == #[`statement, `proof] &&
+      native.statement.outcome == .passed && native.body.outcome == outcome && native.body.coverage == .subject &&
+      proofRequirement.expected == .check NativeLean.bodyValidator &&
+      proofRequirement.prerequisites == #[statement] && (registry.resultForRequirement statement).complete &&
+      (registry.resultForRequirement proof).status == status && assessment.nativeStatementComplete &&
+      assessment.hasNativeBodyRequirement && !assessment.nativeProofComplete && !assessment.requiredComplete)
+      s!"Hidden theorem must retain a passing statement and unfinished proof: {name}"
+  for (label, name, outcome, status) in #[
+      ("hidden.completeSpec", `sorryImportCompleteSpec, Outcome.unavailable, Status.blocked),
+      ("hidden.admittedSpec", `sorryImportAdmittedSpec, Outcome.failed, Status.pending)] do
+    let native ← checked name
+    let assessment := snapshot.assessmentFor (Name.mkSimple label)
+    ensure (native.kind == some .definition && native.roles == #[`statement] &&
+      native.statement.outcome == outcome && native.statement.coverage == .subject &&
+      (registry.requirement? (key label name `statement)).isSome &&
+      (registry.resultForRequirement (key label name `statement)).status == status &&
+      !assessment.nativeStatementComplete && !assessment.hasNativeBodyRequirement && !assessment.requiredComplete)
+      s!"Hidden proposition definition must require its value for statement completion: {name}"
+  let axiomCheck ← checked `sorryImportAxiom
+  let axiomAssessment := snapshot.assessmentFor (Name.mkSimple "hidden.axiom")
+  ensure (axiomCheck.status.isAxiomLike && axiomCheck.roles == #[`statement] && axiomCheck.body.outcome == .failed &&
+    (registry.resultForRequirement (key "hidden.axiom" `sorryImportAxiom `statement)).status == .pending &&
+    axiomAssessment.hasAxiomLike && !axiomAssessment.hasNativeBodyRequirement && !axiomAssessment.requiredComplete)
+    "A genuine axiom must remain incomplete without a fabricated proof role"
+  let admitted := key "hidden.admitted" `sorryImportAdmitted `proof
+  let dependent := key "hidden.dependent" `sorryImportExposedProof `proof
+  let dependentLabel := Name.mkSimple "hidden.dependent"
+  let assessment := snapshot.assessmentFor dependentLabel
+  let some requirement := registry.requirement? dependent | throwError "Missing dependent proof contract"
+  let result := registry.resultForRequirement dependent
+  ensure (snapshot.uses.any (fun use => use.source == dependentLabel && use.role == `proof &&
+    use.reference.label == Name.mkSimple "hidden.admitted" &&
+    match use.selected with | .ok keys => keys == #[admitted] | .error _ => false) &&
+    requirement.prerequisites.contains admitted && (registry.localResult dependent).complete &&
+    result.status == .blocked && result.diagnostics.any (·.code == "unfinished-prerequisite") &&
+    assessment.nativeStatementComplete && assessment.nativeProofComplete &&
+    assessment.statementDependenciesComplete && !assessment.proofDependenciesComplete && !assessment.requiredComplete)
+    "The authored proof use must select the hidden theorem's unfinished proof requirement"
+
+-- A legacy import exposes bodies. Retain the actual authored source plan, then
+-- observe against the same declarations at module-system server visibility.
 private unsafe def hiddenChecks : CoreM Bool := do
+  let raw := Capture.Raw.ofState (Informal.Environment.informalExt.getState (← getEnv))
+  let isHiddenFixture (label : Name) := (label.toString (escape := false)).startsWith "hidden."
+  let plan := Capture.plan { raw with
+    nodes := raw.nodes.filter (isHiddenFixture ·.1)
+    facts := raw.facts.filter (isHiddenFixture ·.label) }
   let visible ← Informal.Data.newSorryInspectionSession
   visible.prepare #[`sorryImportComplete]
   unless (← visible.analyzeDeclaration `sorryImportComplete).isProved do
@@ -681,8 +776,20 @@ private unsafe def hiddenChecks : CoreM Bool := do
   let setup : ModuleSetup ← ofExcept <| Json.parse output.stdout >>= fromJson?
   let env ← liftM <| importModules
     #[{ module := `VersoBlueprintTests.SorryImport.Provider, importAll := false }]
-    {} (loadExts := true) (level := .exported) (arts := setup.importArts)
+    {} (loadExts := true) (level := .server) (arts := setup.importArts)
   withEnv env <| MetaM.run' <| TermElabM.run' do
+    for (name, kind) in #[(`sorryImportComplete, ConstantKind.thm), (`sorryImportAdmitted, .thm),
+        (`sorryImportCompleteSpec, .defn), (`sorryImportAdmittedSpec, .defn), (`sorryImportAxiom, .axiom)] do
+      let some (.axiomInfo _) := env.checked.get.find? name
+        | throwError "Expected a bodyless module view for {name}"
+      ensure (getOriginalConstKind? env name == some kind) s!"Missing original kind for {name}"
+    let some (.axiomInfo axiomInfo) := env.checked.get.find? `sorryImportAxiom
+      | throwError "Missing axiom control"
+    let unknown : ConstantInfo := .axiomInfo { axiomInfo with name := `unknownOriginalKind }
+    ensure ((NativeLean.rolesForDeclarationKind none true false).isEmpty &&
+      (← NativeLean.declarationRoles unknown).isEmpty)
+      "An unclassified axiom view must not authorize a statement-only contract"
+    hiddenCapture plan
     let goal ← `(term| True)
     let reused ← NativeLean.checkDeclaration `adapterFixture (witness `sorryImportComplete) (some visible)
     ensure (rejected reused) "Changing the import view must invalidate coverage from the visible body"

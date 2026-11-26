@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 import Lean.Elab.Term
+import Lean.OriginalConstKind
 import VersoBlueprint.Validation
 import VersoBlueprint.ProvedStatus
 import VersoBlueprint.Validation.Semantic
@@ -55,7 +56,7 @@ or an assessment of correspondence with prose. The caller supplies canonical
 source association and binds these observations to the complete current model. -/
 structure CheckedDeclaration where
   declaration : ObjectKey
-  /-- Current checked declaration kind; missing declarations have no inferred kind. -/
+  /-- Current checked declaration kind, when classification is available. -/
   kind : Option Data.NodeKind := none
   /-- Direct content roles derived from the checked declaration type. A theorem
   or proof-valued definition supplies a statement and proof; a definition whose
@@ -69,11 +70,27 @@ structure CheckedDeclaration where
 def CheckedDeclaration.assumptions (checked : CheckedDeclaration) : Array String :=
   checked.body.assumptions
 
+/-- The original declaration kind and its checked type jointly determine roles.
+Unavailable original kind information leaves the declaration unclassified. -/
+def rolesForDeclarationKind (kind : Option ConstantKind) (proofValued propositionValued : Bool) :
+    Array Name :=
+  match kind with
+  | none => #[]
+  | some kind =>
+    if proofValued then
+      if kind == .axiom then #[`statement] else #[`statement, `proof]
+    else if propositionValued then #[`statement] else #[`implementation]
+
 /-- Classify native declaration content from the original checked type. This is
 shared by capture and source projection so proof-valued definitions cannot be
 mistaken for ordinary computations, and definitions of propositions do not
 acquire fictitious proof roles. -/
 def declarationRoles (info : Lean.ConstantInfo) : CoreM (Array Name) := do
+  -- An ordinary module import may expose a theorem or definition as an axiom
+  -- view. Recover its original kind without assuming access to its body.
+  let kind ← if info.isAxiom then pure (getOriginalConstKind? (← getEnv) info.name)
+    else pure (some (ConstantKind.ofConstantInfo info))
+  let some kind := kind | return rolesForDeclarationKind none false false
   let (proofValued, propositionValued) ← Meta.MetaM.run' do
     let proofValued ← Meta.isProp info.type
     let type ← Meta.whnf info.type
@@ -81,11 +98,7 @@ def declarationRoles (info : Lean.ConstantInfo) : CoreM (Array Name) := do
       | .sort .zero => true
       | _ => false
     pure (proofValued, propositionValued)
-  if proofValued then
-    if info.isAxiom then return #[`statement]
-    return #[`statement, `proof]
-  if propositionValued then return #[`statement]
-  return #[`implementation]
+  return rolesForDeclarationKind (some kind) proofValued propositionValued
 
 /-- Prepare shared closure coverage for trusted native candidates. Request
 identity, kernel checks, roles and assumptions are still checked separately
@@ -138,13 +151,13 @@ def checkDeclaration (project : Name) (witness : ObjectKey)
     let assumptions := assumptions.map Name.toString
     let roles ← liftM <| declarationRoles info
     let proposition := roles.contains `proof
-    let kind : Data.NodeKind := if proposition || (info.isAxiom && roles.contains `statement) then
+    let kind : Data.NodeKind := if proposition || (status.isAxiomLike && roles.contains `statement) then
         .theorem else .definition
     let statementUnknown := status.hasUnverifiedType || (kind == .definition && status.hasUnverifiedProof)
     let statementGap := status.hasTypeGap || status.hasUnlocalizedSorry ||
       (kind == .definition && status.hasProofGap)
     return .ok {
-      declaration := witness, kind := some kind, roles
+      declaration := witness, kind := if roles.isEmpty then none else some kind, roles
       statement := {
         validator := statementValidator
         declaration := some witness
