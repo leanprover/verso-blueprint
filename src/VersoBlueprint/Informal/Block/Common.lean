@@ -85,26 +85,34 @@ def codeHoverSection (title : String) (items : Array Output.Html) : Output.Html 
     </div>
   }}
 
+/--
+The caption of a code panel: "Lean code for Theorem 1.1.4". A panel that directly
+follows the block it belongs to is joined to it on the page, and then reads just
+"Lean"; `ownerLabel?` is how the page tells which block that is.
+-/
 structure CodePanelHeader where
-  caption : String
-  number? : Option String := none
+  language : String := "Lean"
+  /-- The block the code belongs to, as readers see it, such as "Theorem 1.1.4". -/
+  owner? : Option String := none
+  /-- The owning block's label, matching its wrapper's `data-bp-owner`. -/
+  ownerLabel? : Option String := none
+  /-- A caption that replaces "<language> code for <owner>" entirely. -/
+  caption? : Option String := none
 deriving Repr, Inhabited
 
 def codePanelHeaderFor (languageName : String) (display : NodeDisplay) : CodePanelHeader :=
-  match display.number? with
-  | some number => { caption := s!"{languageName} code for {display.kind}", number? := some number }
-  | none => { caption := s!"{languageName} code for {display.title}" }
+  { language := languageName, owner? := some display.title, ownerLabel? := some s!"{display.label}" }
 
-def fallbackCodePanelHeaderFor (languageName : String) : CodePanelHeader := {
-  caption := s!"{languageName} code"
-}
+def fallbackCodePanelHeaderFor (languageName : String) : CodePanelHeader :=
+  { language := languageName }
 
 def codePanelHeader (display : NodeDisplay) : CodePanelHeader :=
   codePanelHeaderFor "Lean" display
 
 /-- Preserve the proof facet of declarations that contribute to the node. -/
-def proofReferencesPanelHeader : CodePanelHeader := {
-  caption := "Lean declarations attached to this proof"
+def proofReferencesPanelHeader (ownerLabel? : Option String := none) : CodePanelHeader := {
+  caption? := some "Lean declarations attached to this proof"
+  ownerLabel?
 }
 
 def fallbackCodePanelHeader : CodePanelHeader :=
@@ -153,28 +161,29 @@ def externalCodeEntryTitle (found total missing withGaps : Nat) : String :=
 
 def mkCodePanel
     (header : CodePanelHeader) (summaryTitle : String)
-    (progressBar body : Output.Html)
+    (indicator body : Output.Html)
     (attrs : Array (String × String) := #[])
     (folded : Bool := false) : Output.Html :=
   open Verso.Output.Html in
   let attrs :=
     if folded then attrs else attrs.push ("open", "open")
-  {{
-    <div class="bp_wrapper bp_code_panel_wrapper">
-      <details class="bp_code_block bp_code_panel" {{attrs}}>
-        <summary class="bp_heading lemma_thmheading" title={{summaryTitle}}>
-          <span class="bp_heading_title_row">
-            <span class="bp_caption lemma_thmcaption bp_code_summary_text">{{.text true header.caption}}</span>
-            {{if let some number := header.number? then
-                {{<span class="bp_label lemma_thmlabel bp_code_summary_label">{{.text true number}}</span>}}
-              else
-                .empty}}
-          </span>
-          {{progressBar}}
-        </summary>
-        {{body}}
-      </details>
-    </div>
+  let wrapperAttrs := #[("class", "bp_wrapper bp_code_panel_wrapper")] ++
+    (header.ownerLabel?.map (("data-bp-owner", ·))).toArray
+  let caption : Output.Html := match header.caption?, header.owner? with
+    | some caption, _ => .text true caption
+    | none, some owner =>
+      {{ {{.text true header.language}}<span class="bp_code_for">{{.text true s!" code for {owner}"}}</span> }}
+    | none, none => .text true s!"{header.language} code"
+  .tag "div" wrapperAttrs {{
+    <details class="bp_code_block bp_code_panel" {{attrs}}>
+      <summary class="bp_heading lemma_thmheading" title={{summaryTitle}}>
+        <span class="bp_heading_title_row">
+          <span class="bp_caption lemma_thmcaption bp_code_summary_text">{{caption}}</span>
+        </span>
+        {{indicator}}
+      </summary>
+      {{body}}
+    </details>
   }}
 
 end Informal

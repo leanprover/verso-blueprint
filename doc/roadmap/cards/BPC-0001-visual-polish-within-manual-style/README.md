@@ -4,7 +4,7 @@ Status: open
 Kind: ux
 Priority: medium
 Origin: local
-Last reviewed: 2026-11-07
+Last reviewed: 2026-11-26
 Owner: none
 Issue: none linked
 PR: none linked
@@ -62,6 +62,7 @@ Fixed on `feat/visual-design`:
 | Popups opened off-screen or over their own trigger, each placed by its own code | One placement engine keeps every anchored popup inside the viewport and beside its trigger |
 | Code, relation, reference, summary, and graph popups were five unrelated designs, with jargon titles ("Associated Lean declarations (source snapshots; display only; …)"), raw labels as titles, and duplicate headers | One panel shell: an eyebrow naming the popup, the block's reader-facing title and label, content-sized body, optional footer. Relation rows and reference titles carry heading status marks; the code popup ends with a plain status sentence and a link to the Lean code |
 | Relation popups opened on hover and jumped as the pointer crossed headers | They open on click; `RelatedPanel.relationPanelOpenMode` switches them back to hover |
+| Blocks read as clunky: kind and number in separate columns ("Theorem   1.1.4."), chips spread across the header, statements framed three times, and a node's proof and Lean code as separate full-weight cards with a full-width progress bar | One title ("Theorem 1.1.4"), chips in fixed right-aligned columns from one grid rule, the card border as the only frame, metadata as a quiet line, and a statement's adjacent proof ("Proof.") and Lean code ("Lean", its declarations and one status) joined into its card |
 
 Open, ranked:
 

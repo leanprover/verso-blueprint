@@ -83,11 +83,6 @@ def css : String := r##"
   max-width: 100%;
 }
 
-.bp_graft_side_by_side .bp_code_progress {
-  width: 100%;
-  min-width: 0;
-  max-width: 100%;
-}
 "##
 
 def cssAssets : List String := [css]

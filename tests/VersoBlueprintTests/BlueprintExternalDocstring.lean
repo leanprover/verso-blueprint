@@ -25,8 +25,8 @@ private def upstreamBody : String := " The **upstream statement marker** retains
 private def markdownMarker : String := "<strong>upstream statement marker</strong>"
 private def versoMarker : String := "<strong>upstream Verso marker</strong>"
 private def proofMarker : String := "<strong>consumer proof marker</strong>"
-private def checkedMarker : String := "bp_external_status_ok"
-private def awaitingMarker : String := "bp_external_status_awaiting"
+private def checkedMarker : String := "bp_code_panel_status bp_code_link_status_proved"
+private def awaitingMarker : String := "bp_code_panel_status bp_code_link_status_awaiting"
 
 private def ensure (condition : Bool) (failure : String) : TermElabM Unit :=
   unless condition do throwError failure

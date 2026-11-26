@@ -227,11 +227,11 @@ run_cmd liftTermElabM do
       unless requested.previewKey == expectedKey && requested.href.isSome == hasOccurrence do
         throw <| IO.userError s!"Explicit {repr facet} reference borrowed another facet's target or body"
       if !order.isEmpty then
-        let title := if facet == .statement then "Theorem 1" else "Proof for Theorem 1"
+        let title := if facet == .statement then "Theorem 1" else "Proof of Theorem 1"
         unless requested.title == title do
           throw <| IO.userError "Explicit facet reference borrowed another facet's title"
     if order == #[2] then
-      unless hasSubstr html.asString "Proof for Theorem 1" &&
+      unless hasSubstr html.asString "Proof of Theorem 1" &&
           !hasSubstr html.asString ">Proof 1<" do
         throw <| IO.userError "Proof-only references lost the theorem kind"
     let files ← PreviewManifest.buildPreviewDataFiles extension_impls%
@@ -239,7 +239,7 @@ run_cmd liftTermElabM do
     if order == #[2] then
       let some proof := files.manifest.findEntry? "filled_facet--proof"
         | throw <| IO.userError "Missing proof-only manifest entry"
-      unless proof.kind == some .theorem && proof.title == "Proof for Theorem 1" do
+      unless proof.kind == some .theorem && proof.title == "Proof of Theorem 1" do
         throw <| IO.userError "Proof-only manifest lost the mathematical kind"
     if order == #[0] then
       unless (PreviewSource.traversalEntry? state `filled_facet).isNone do

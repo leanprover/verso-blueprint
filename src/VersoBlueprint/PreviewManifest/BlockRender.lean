@@ -156,8 +156,9 @@ private def renderCodePanel
       (fun _ => none)
     let codeHtml := .seq content.codeBodies
     let body := Html.tag "div" (Informal.htmlClassAttrs cfg.codeBodyClass) codeHtml
-    let header := if entry.facet == .proof then Informal.proofReferencesPanelHeader else
-      { caption := s!"Lean code for {title.caption}", number? := some title.label }
+    let ownerLabel? := some s!"{entry.label}"
+    let header := if entry.facet == .proof then Informal.proofReferencesPanelHeader ownerLabel? else
+      { owner? := some s!"{title.caption} {title.label}", ownerLabel? }
     Informal.mkCodePanel
       header
       panelSummary.summaryTitle
@@ -195,7 +196,7 @@ def renderWithRenderedContent
       context := Informal.InformalBlockRenderContext.forBlock blockData
         title.label
         (statementCaption? := some title.caption)
-        (proofCaption? := some entry.title)
+        (proofOf? := some s!"{title.caption} {title.label}")
         (titleRowAttrs? := cfg.titleRowAttrs? entry)
         (headerExtras := renderHeaderExtras cfg.relationPanels entry blockData group? statusOf)
         (sourceRefs := entry.sources)

@@ -230,7 +230,7 @@ private def htmlTestContext :
     let renderPage (decls : Array Informal.Data.ExternalRef) :
         Verso.Doc.Html.HtmlT Verso.Genre.Manual Id Verso.Output.Html :=
       Informal.ExternalCode.renderPanelWithPageHovers
-        { caption := "Code for theorem", number? := some "1" }
+        { owner? := some "Theorem 1" }
         "Lean declarations"
         .empty
         decls

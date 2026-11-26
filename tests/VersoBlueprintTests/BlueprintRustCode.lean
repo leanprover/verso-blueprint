@@ -78,7 +78,8 @@ pub fn broken( -> i32 { 1 }
   pure <|
     hasSubstr out "Inline Rust attachment." &&
     hasSubstr out "Rust code for rust_inline" &&
-    hasSubstr out "Rust code for Definition" &&
+    -- "Rust", then "code for Definition 1", which hides when the panel joins its block.
+    hasSubstr out ">Rust<span class=\"bp_code_for\"> code for Definition" &&
     hasSubstr out "inline_add" &&
     hasSubstr out "bp_rust_kw"
 

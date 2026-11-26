@@ -108,7 +108,8 @@ set_option verso.blueprint.foldCodeBlocks false
 #eval! do
   let out ← renderManualDocHtmlString manualImpls proofTargetTitleDoc
   pure <|
-    hasSubstr out "Proof for Lemma" &&
+    -- "Proof", then "of Lemma 1", which hides when the proof joins its statement.
+    hasSubstr out ">Proof<span class=\"bp_proof_of\"> of Lemma" &&
     hasSubstr out "Lemma proof body."
 
 /-- info: true -/

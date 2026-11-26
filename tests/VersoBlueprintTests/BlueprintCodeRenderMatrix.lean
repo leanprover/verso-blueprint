@@ -145,7 +145,9 @@ private def panelIndicatorHtml (label : Name) (source : BlockCodeData) : String 
   hasSubstr heading "Native body: unfinished" &&
     hasSubstr heading "Native Lean requirements: unfinished" &&
     hasSubstr panel "class=\"bp_code_decl_list\"" &&
-    hasSubstr panel "complete source snapshot; realization validation is shown in the heading" &&
+    -- The panel shows its source snapshots' status, separately from the heading's.
+    hasSubstr panel "bp_code_panel_status bp_code_link_status_proved" &&
+    hasSubstr panel "<code>Matrix.checked</code>" &&
     hasSubstr panel "not realization validation"
 
 /-- info: true -/
@@ -156,9 +158,9 @@ private def panelIndicatorHtml (label : Name) (source : BlockCodeData) : String 
   let externalMissingHtml := panelIndicatorHtml `external.missing { externalDecls := #[missingExternalRef `Ext.missing .definition] }
   let externalAxiomHtml := panelIndicatorHtml `external.axiom { externalDecls := #[axiomExternalRef `Ext.axiom .theorem] }
   let externalRenderFailHtml := panelIndicatorHtml `external.render_fail { externalDecls := #[renderFailedExternalRef `Ext.renderFail .theorem] }
-  hasSubstr externalOkHtml "bp_external_status_badge_summary bp_external_status_ok" &&
-    hasSubstr externalSorryHtml "bp_external_status_badge_summary bp_external_status_sorry" &&
-    hasSubstr externalMissingHtml "bp_external_status_badge_summary bp_external_status_missing" &&
+  hasSubstr externalOkHtml "bp_code_panel_status bp_code_link_status_proved" &&
+    hasSubstr externalSorryHtml "bp_code_panel_status bp_code_link_status_warning" &&
+    hasSubstr externalMissingHtml "bp_code_panel_status bp_code_link_status_missing" &&
     hasSubstr externalAxiomHtml "bp_code_decl_status_axiom" &&
     !hasSubstr externalRenderFailHtml "bp_code_render_warning_badge" &&
     !hasSubstr externalRenderFailHtml "bp_render_warning_badge" &&
@@ -187,7 +189,7 @@ private def panelIndicatorHtml (label : Name) (source : BlockCodeData) : String 
   let panel := panelIndicatorHtml `missing.snapshot source
   unless inlineStatus? == some .missing &&
       hasSubstr heading "Validation unavailable" && hasSubstr heading ">missing declaration</span>" &&
-      hasSubstr panel "bp_external_status_badge_summary bp_external_status_missing" do
+      hasSubstr panel "bp_code_panel_status bp_code_link_status_missing" do
     throw <| IO.userError "Source snapshots did not stay display-only while the captured heading stayed unavailable"
 
 end Verso.VersoBlueprintTests.BlueprintCodeRenderMatrix

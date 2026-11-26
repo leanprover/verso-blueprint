@@ -137,7 +137,9 @@ private def unavailableHeading (rendered : CodeSummary.RenderParts) : Bool :=
   hasSubstr headingHtml "L∃∀N" &&
   hasSubstr headingHtml "class=\"bp_code_decl_item\"" &&
   hasSubstr headingHtml "class=\"bp_code_decl_list\"" &&
-  hasSubstr html "bp_code_progress" &&
+  -- One status for the panel: one of its two declarations is unfinished.
+  hasSubstr html "bp_code_panel_status bp_code_link_status_warning" &&
+  hasSubstr html "1 of 2 unfinished" &&
   hasSubstr html "class=\"bp_code_decl_item\"" &&
   hasSubstr html "inlineDef" &&
   hasSubstr html "inlineThm" &&
@@ -166,7 +168,8 @@ private def unavailableHeading (rendered : CodeSummary.RenderParts) : Bool :=
   hasSubstr parts.summaryTitle "Lean declarations (1/2 present)" &&
   hasSubstr headingHtml "L∃∀N" &&
   hasSubstr headingHtml "class=\"bp_code_decl_item\"" &&
-  hasSubstr html "bp_external_status_badge" &&
+  hasSubstr html "bp_code_panel_status bp_code_link_status_missing" &&
+  hasSubstr html "1 of 2 missing" &&
   hasSubstr html "class=\"bp_code_decl_item\"" &&
   hasSubstr html "Ext.external.proof_gap" &&
   hasSubstr html "Ext.external.missing" &&

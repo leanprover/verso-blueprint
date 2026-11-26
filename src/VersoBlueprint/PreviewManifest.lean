@@ -734,6 +734,8 @@ private def graphRuntimeModuleMjs : String := include_str "Commands/graph.mjs"
 
 private def relationPanelModuleMjs : String := include_str "Informal/Block/relation-panel.mjs"
 
+private def blockPartsModuleMjs : String := include_str "Informal/Block/block-parts.mjs"
+
 private def previewRuntimeBaseModuleFilename : String := "preview-runtime-base.mjs"
 
 private def previewRuntimeDataModuleFilename : String := "preview-runtime-data.mjs"
@@ -788,6 +790,7 @@ private def pageRuntimeModules : Array (String × String) := #[
   ("Commands/inline-preview.mjs", inlinePreviewModuleMjs),
   ("Commands/graph-runtime-core.mjs", graphRuntimeCoreModuleMjs),
   ("Commands/graph.mjs", graphRuntimeModuleMjs),
+  ("Informal/Block/block-parts.mjs", blockPartsModuleMjs),
   ("Informal/Block/relation-panel.mjs", relationPanelModuleMjs)
 ]
 

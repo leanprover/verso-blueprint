@@ -632,6 +632,8 @@ HTML IDs, header extras, and the resolved display number.
 structure InformalBlockRenderContext where
   numberText : String
   captionText? : Option String := none
+  /-- For a proof, the title of the statement it proves. -/
+  proofOf? : Option String := none
   attrs : Array (String × String) := #[]
   titleRowAttrs? : Option (Array (String × String)) := none
   headerExtras : HeaderExtras := {}
@@ -641,26 +643,24 @@ structure InformalBlockRenderContext where
 /--
 Build shell context for a concrete informal block.
 
-Statement and proof headings use different fallback captions. This helper keeps
-that policy out of phase-specific renderers: callers provide the caption they
-resolved for each block kind, and the shared renderer chooses the one that
-matches the block.
+Statements are captioned by their kind; a proof names the statement it proves
+(`proofOf?`), as in "Proof of Theorem 1.1.4". This helper keeps that policy out
+of phase-specific renderers: callers provide both, and the shared renderer uses
+the one that matches the block.
 -/
 def InformalBlockRenderContext.forBlock
     (data : BlockData)
     (numberText : String)
     (statementCaption? : Option String := none)
-    (proofCaption? : Option String := none)
+    (proofOf? : Option String := none)
     (attrs : Array (String × String) := #[])
     (titleRowAttrs? : Option (Array (String × String)) := none)
     (headerExtras : HeaderExtras := {})
     (sourceRefs : Array Source.Ref := #[])
     (folded : Bool := false) :
     InformalBlockRenderContext :=
-  let captionText? :=
-    match data.isProof with
-    | true => proofCaption?
-    | false => statementCaption?
+  let captionText? := if data.isProof then none else statementCaption?
+  let proofOf? := if data.isProof then proofOf? else none
   let sourceRefs :=
     if sourceRefs.isEmpty then
       match data.sourceRef with
@@ -671,6 +671,7 @@ def InformalBlockRenderContext.forBlock
   {
     numberText
     captionText?
+    proofOf?
     attrs
     titleRowAttrs?
     headerExtras
@@ -713,9 +714,28 @@ structure InformalBlockShell where
   metadataPanel : Verso.Output.Html := .empty
   folded : Bool := false
   showHeader : Bool := true
+  /-- Set for a proof: the title of the statement it proves. -/
+  proofOf? : Option String := none
+
+/-- A proof is titled LaTeX style, "Proof of Theorem 1.1.4.". When it directly
+follows its statement, the page joins the two and CSS hides "of Theorem 1.1.4",
+leaving "Proof.". -/
+private def renderProofTitleRow (shell : InformalBlockShell) (proofOf : String) : Verso.Output.Html :=
+  open Verso.Output.Html in
+  let style := shell.style
+  let captionClass := s!"bp_caption bp_kind_{style.kindCss}_caption {style.captionCss}"
+  {{
+    <div class="bp_heading_title_row">
+      <span class={{captionClass}} title={{shell.labelText}}>
+        "Proof"<span class="bp_proof_of">{{.text true s!" of {proofOf}"}}</span>"."
+      </span>
+    </div>
+  }}
 
 private def renderShellTitleRow (shell : InformalBlockShell) : Verso.Output.Html :=
-  let titleRow := renderBlockTitleRow shell.style shell.labelText shell.numberText shell.captionText
+  let titleRow := match shell.proofOf? with
+    | some proofOf => renderProofTitleRow shell proofOf
+    | none => renderBlockTitleRow shell.style shell.labelText shell.numberText shell.captionText
   match shell.titleRowAttrs? with
   | some attrs => .tag "a" attrs titleRow
   | none => titleRow
@@ -729,16 +749,19 @@ def renderInformalBlockShell (shell : InformalBlockShell)
   let contentClass := s!"bp_content bp_kind_{style.kindCss}_content {style.contentCss}"
   let titleRow := renderShellTitleRow shell
   let extras := renderHeaderExtras shell.headerExtras
+  -- The page joins a proof or code panel to the block just before it when both
+  -- carry the same owner, so the parts of one node read as one card.
+  let attrs := shell.attrs.push ("data-bp-owner", shell.labelText)
   if !shell.showHeader then
     {{
-      <div class={{wrapperClass}} title={{shell.labelText}} {{shell.attrs}}>
+      <div class={{wrapperClass}} title={{shell.labelText}} {{attrs}}>
         {{shell.metadataPanel}}
         <div class={{contentClass}}> {{content}} </div>
       </div>
     }}
   else if shell.folded then
     {{
-      <details class={{wrapperClass}} title={{shell.labelText}} {{shell.attrs}}>
+      <details class={{wrapperClass}} title={{shell.labelText}} {{attrs}}>
         <summary class={{headingClass}}>
           {{titleRow}}
           {{extras}}
@@ -749,7 +772,7 @@ def renderInformalBlockShell (shell : InformalBlockShell)
     }}
   else
     {{
-      <div class={{wrapperClass}} title={{shell.labelText}} {{shell.attrs}}>
+      <div class={{wrapperClass}} title={{shell.labelText}} {{attrs}}>
         <div class={{headingClass}}>
           {{titleRow}}
           {{extras}}
@@ -788,6 +811,7 @@ def renderInformalBlockHtml (data : BlockData) (ctx : InformalBlockRenderContext
       metadataPanel
       folded := ctx.folded
       showHeader
+      proofOf? := ctx.proofOf?
     }
     (.seq content)
 

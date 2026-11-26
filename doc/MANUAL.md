@@ -116,8 +116,13 @@ still be a link target without offering a hover preview. Imported nodes that
 have no document occurrence display their authored label rather than a number.
 This numbering rule also applies to dependency panels, code headings, and previews.
 The mathematical kind is independent of which chapters are rendered: including
-only a theorem's proof still gives it a caption such as `Proof for Theorem 1`.
+only a theorem's proof still gives it a caption such as `Proof of Theorem 1`.
 Custom reference text is preserved in both HTML and TeX.
+
+On a page, a node's statement, proof, and Lean code panel that directly follow
+one another render as one card: the proof is then titled `Proof.` and the code
+panel `Lean`. A proof or code panel placed elsewhere keeps its own card and its
+full title, such as `Proof of Theorem 1.` or `Lean code for Theorem 1`.
 
 A statement's Lean status and declaration tooltip cover both external associations
 and literate code. An incomplete external declaration therefore remains visible

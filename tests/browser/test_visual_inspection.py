@@ -1,6 +1,7 @@
 """Regressions for BPC-0001 on the `visual_inspection` test Blueprint."""
 
 import json
+import re
 
 import pytest
 from playwright.sync_api import Page, expect
@@ -127,4 +128,32 @@ def test_block_popups_stay_inside_the_viewport(named_site, page: Page, width: in
             page.keyboard.press("Escape")
         page.mouse.move(1, 1)
         page.wait_for_function(f"{query} === null")
+    assert_no_runtime_errors(errors)
+
+
+def test_block_parts_join_into_one_card(named_site, page: Page):
+    """A statement, its proof and its Lean code, placed together, read as one card."""
+    errors = record_runtime_errors(page)
+    page.goto(f"{named_site('visual_inspection')}/Block-Anatomy/Kinds/")
+    statement = page.locator('.bp_kind_theorem_wrapper[data-bp-owner="anatomy_theorem"]').first
+    proof = page.locator('.bp_kind_proof_wrapper[data-bp-owner="anatomy_theorem"]').first
+    code = page.locator('.bp_code_panel_wrapper[data-bp-owner="anatomy_theorem"]').first
+    expect(statement).to_have_class(re.compile(r"\bbp_part_continues\b"))
+    expect(proof).to_have_class(re.compile(r"\bbp_part_joined\b"))
+    expect(proof).to_have_class(re.compile(r"\bbp_part_continues\b"))
+    expect(code).to_have_class(re.compile(r"\bbp_part_joined\b"))
+
+    # Joined, the proof reads "Proof." and the code panel "Lean"; their own
+    # titles name the theorem only when they stand apart from it.
+    expect(proof.locator(".bp_heading .bp_caption")).to_have_text("Proof.", use_inner_text=True)
+    expect(code.locator(".bp_code_summary_text")).to_have_text(
+        re.compile(r"^lean$", re.IGNORECASE), use_inner_text=True
+    )
+    for upper, lower in ((statement, proof), (proof, code)):
+        upper_box, lower_box = upper.bounding_box(), lower.bounding_box()
+        assert abs(upper_box["y"] + upper_box["height"] - lower_box["y"]) < 1
+
+    # The next node starts its own card.
+    corollary = page.locator('.bp_kind_corollary_wrapper[data-bp-owner="anatomy_corollary"]').first
+    expect(corollary).not_to_have_class(re.compile(r"\bbp_part_joined\b"))
     assert_no_runtime_errors(errors)

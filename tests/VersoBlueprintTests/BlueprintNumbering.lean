@@ -134,7 +134,7 @@ private def header (title : String) (number? : Option Numbering) : PartHeader :=
     count := stored.count
   }
   (proofRef.display state).number? == some "11" &&
-  proofRef.displayTitle state == "Proof for Theorem 11"
+  proofRef.displayTitle state == "Proof of Theorem 11"
 
 -- Captured metadata may retain an elaboration count, but cannot display it.
 #eval show IO Unit from do

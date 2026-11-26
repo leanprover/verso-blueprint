@@ -1343,7 +1343,7 @@ run_cmd liftTermElabM do
     rendered.statementExternalChecks == #[(``declaredLater, some .missing)])
     "The forward-reference panel must agree with the declaration index and capture"
   let html ← renderPreviewBlocksHtmlWithSnapshot forwardDoc.toPart.content snapshot
-  ensure (html.asString.contains "bp_external_status_missing" && html.asString.contains "declaration not found")
+  ensure (html.asString.contains "bp_code_link_status_missing" && html.asString.contains "missing declaration")
     "The rendered forward-reference panel must display the missing declaration"
 
 -- Another label registers the same spelling after its declaration exists.

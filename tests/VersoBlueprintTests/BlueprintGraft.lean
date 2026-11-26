@@ -504,7 +504,7 @@ private def exportInBothModes (state : TraverseState) :
   let preview := { preview with source := .externalDecl { decl with provedStatus := none } }
   let state := TraversalIndex.LeanCodePreviews.saveData initial codeKey (Lean.toJson preview)
   let expectedChecks := #[(name, some Data.ProvedStatus.proved)]
-  let panelStatus := "bp_external_status_badge_summary bp_external_status_ok"
+  let panelStatus := "bp_code_panel_status bp_code_link_status_proved"
   let headingStatus := "Native Lean requirements: complete"
 
   let rendered ← renderManualBlocksHtmlWithState blocks manualImpls state
@@ -579,10 +579,9 @@ private def exportInBothModes (state : TraverseState) :
   let html ← renderManualBlocksHtmlWithState blocks manualImpls state
   let rendered := html.asString
   unless (rendered.splitOn "identical-code-panel").length == 3 &&
-      hasSubstr rendered "firstPanelDecl: complete" &&
-      hasSubstr rendered "secondPanelDecl: complete" &&
-      !hasSubstr rendered "emptyPanelDecl: complete" &&
-      !hasSubstr rendered "whitespacePanelDecl: complete" do
+      hasSubstr rendered "bp_code_panel_decls\"><code>firstPanelDecl</code>, <code>secondPanelDecl</code>" &&
+      !hasSubstr rendered "<code>emptyPanelDecl</code>" &&
+      !hasSubstr rendered "<code>whitespacePanelDecl</code>" do
     throw <| IO.userError "Panel rendering conflated identity, equal HTML or empty output"
   let (files, errors) ← exportInBothModes state
   unless errors.isEmpty && (files.manifest.findEntry? keys[0]!).isSome &&

@@ -16,220 +16,81 @@ def css : String := r##"
   scroll-margin-top: 1rem;
   margin: 0.85rem 0;
   border: 1px solid var(--bp-color-border);
-  border-radius: var(--bp-radius-sm);
-  padding: 0.45rem 0.6rem 0.55rem;
+  border-radius: var(--bp-radius-lg);
+  padding: 0.6rem 1rem 0.8rem;
   background: var(--bp-color-surface);
+}
+
+/* A node's statement, proof and Lean code, placed together, read as one card: the
+   page marks each part that continues into the next (block-parts.mjs). */
+.bp_wrapper.bp_part_continues {
+  margin-bottom: 0;
+  border-bottom-width: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.bp_wrapper.bp_part_joined {
+  margin-top: 0;
+  border-top-color: var(--bp-color-border-soft);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+/* Joined to its statement, a proof reads "Proof." and a code panel "Lean". */
+.bp_part_joined .bp_proof_of,
+.bp_part_joined .bp_code_for {
+  display: none;
 }
 
 .bp_heading {
   display: flex;
-  align-items: center;
-  gap: 0.55rem;
+  align-items: baseline;
+  gap: 0.55rem 1rem;
   flex-wrap: wrap;
   font-style: normal;
   font-weight: bold;
-  border-bottom: 1px solid var(--bp-color-border-soft);
-  padding-bottom: 0.35rem;
 }
 
 .bp_heading_title_row {
   display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-
-.bp_kind_proof_heading {
   align-items: baseline;
-}
-
-.bp_heading_title_row_statement {
-  display: inline-grid;
-  grid-template-columns: 11ch 3ch;
-  align-items: baseline;
-  column-gap: 0.45rem;
+  gap: 0.3em;
+  min-width: 0;
 }
 
 .bp_caption {
   display: inline;
 }
 
-.bp_label {
-  margin-left: 0.5rem;
+.bp_kind_proof_caption {
+  font-style: italic;
 }
 
-.bp_heading_title_row_statement .bp_label {
-  margin-left: 0;
-  min-width: 0;
-  text-align: right;
+.bp_label {
   font-variant-numeric: tabular-nums;
 }
 
-.bp_label::after,
-span[class$="_thmlabel"]::after {
-  content: ".";
-}
-
+/*
+ * Header extras sit at the right in fixed columns, so chips line up from block to
+ * block and a missing chip leaves its column empty. Source and markup badges are
+ * optional and take no space when absent; spacing is padding, not grid gaps, so
+ * an empty column adds nothing.
+ */
 .bp_extras {
-  --bp-extra-source-col: minmax(5.2rem, max-content);
-  --bp-extra-group-col: minmax(5rem, max-content);
-  --bp-extra-uses-col: minmax(5.2rem, max-content);
-  --bp-extra-used-by-col: minmax(7.2rem, max-content);
-  --bp-extra-markup-col: max-content;
-  /* The minimum keeps proof rows, which have no code slot, aligned in any font. */
-  --bp-extra-code-col: minmax(3.6rem, max-content);
+  /* Each minimum fits its usual chip ("used by 12", "◐ L∃∀N") with its padding, so
+     a proof row, which has only a uses chip, lines up with statement rows. */
+  --bp-extra-group-col: minmax(4.4rem, max-content);
+  --bp-extra-uses-col: minmax(5rem, max-content);
+  --bp-extra-used-by-col: minmax(6.2rem, max-content);
+  --bp-extra-code-col: minmax(5.2rem, max-content);
   display: inline-grid;
   align-items: baseline;
-  justify-content: end;
-  column-gap: 0.55rem;
-  grid-template-columns: var(--bp-extra-used-by-col) var(--bp-extra-code-col);
-  grid-template-areas: "used code";
-  margin-left: auto;
-}
-
-.bp_extras_with_uses {
   grid-template-columns:
-    var(--bp-extra-uses-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "uses used code";
-}
-
-.bp_extras_with_uses:not(.bp_extras_with_group):not(.bp_extras_with_used_by):not(.bp_extras_with_code) {
-  /* Keep proof-only uses aligned with the statement uses column. */
-  grid-template-columns:
-    var(--bp-extra-uses-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "uses . .";
-}
-
-.bp_extras_with_group {
-  grid-template-columns:
-    var(--bp-extra-group-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "group used code";
-}
-
-.bp_extras_with_group.bp_extras_with_uses {
-  grid-template-columns:
-    var(--bp-extra-group-col)
-    var(--bp-extra-uses-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "group uses used code";
-}
-
-.bp_extras_with_markup {
-  grid-template-columns:
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-markup-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "used markup code";
-}
-
-.bp_extras_with_markup.bp_extras_with_uses {
-  grid-template-columns:
-    var(--bp-extra-uses-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-markup-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "uses used markup code";
-}
-
-.bp_extras_with_markup.bp_extras_with_group {
-  grid-template-columns:
-    var(--bp-extra-group-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-markup-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "group used markup code";
-}
-
-.bp_extras_with_markup.bp_extras_with_group.bp_extras_with_uses {
-  grid-template-columns:
-    var(--bp-extra-group-col)
-    var(--bp-extra-uses-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-markup-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "group uses used markup code";
-}
-
-.bp_extras_with_source {
-  grid-template-columns:
-    var(--bp-extra-source-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "source used code";
-}
-
-.bp_extras_with_source.bp_extras_with_uses {
-  grid-template-columns:
-    var(--bp-extra-source-col)
-    var(--bp-extra-uses-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "source uses used code";
-}
-
-.bp_extras_with_source.bp_extras_with_group {
-  grid-template-columns:
-    var(--bp-extra-source-col)
-    var(--bp-extra-group-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "source group used code";
-}
-
-.bp_extras_with_source.bp_extras_with_group.bp_extras_with_uses {
-  grid-template-columns:
-    var(--bp-extra-source-col)
-    var(--bp-extra-group-col)
-    var(--bp-extra-uses-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "source group uses used code";
-}
-
-.bp_extras_with_source.bp_extras_with_markup {
-  grid-template-columns:
-    var(--bp-extra-source-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-markup-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "source used markup code";
-}
-
-.bp_extras_with_source.bp_extras_with_markup.bp_extras_with_uses {
-  grid-template-columns:
-    var(--bp-extra-source-col)
-    var(--bp-extra-uses-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-markup-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "source uses used markup code";
-}
-
-.bp_extras_with_source.bp_extras_with_markup.bp_extras_with_group {
-  grid-template-columns:
-    var(--bp-extra-source-col)
-    var(--bp-extra-group-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-markup-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "source group used markup code";
-}
-
-.bp_extras_with_source.bp_extras_with_markup.bp_extras_with_group.bp_extras_with_uses {
-  grid-template-columns:
-    var(--bp-extra-source-col)
-    var(--bp-extra-group-col)
-    var(--bp-extra-uses-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-markup-col)
-    var(--bp-extra-code-col);
+    auto var(--bp-extra-group-col) var(--bp-extra-uses-col)
+    var(--bp-extra-used-by-col) auto var(--bp-extra-code-col);
   grid-template-areas: "source group uses used markup code";
+  margin-left: auto;
 }
 
 .bp_extra_slot {
@@ -237,6 +98,7 @@ span[class$="_thmlabel"]::after {
   align-items: center;
   min-height: 1.1rem;
   min-width: 0;
+  padding-left: 0.9rem;
 }
 
 .bp_extra_slot_code {
@@ -246,27 +108,22 @@ span[class$="_thmlabel"]::after {
 
 .bp_extra_slot_source {
   grid-area: source;
-  justify-content: flex-start;
 }
 
 .bp_extra_slot_group {
   grid-area: group;
-  justify-content: flex-start;
 }
 
 .bp_extra_slot_uses {
   grid-area: uses;
-  justify-content: flex-start;
 }
 
 .bp_extra_slot_used_by {
   grid-area: used;
-  justify-content: flex-start;
 }
 
 .bp_extra_slot_markup {
   grid-area: markup;
-  justify-content: flex-start;
 }
 
 @media (max-width: 700px) {
@@ -277,14 +134,23 @@ span[class$="_thmlabel"]::after {
     justify-content: flex-start;
     width: 100%;
     margin-left: 0;
-    gap: 0.2rem 0.5rem;
+    gap: 0.2rem 1rem;
   }
 
   .bp_extra_slot {
     max-width: 100%;
+    min-height: 1.75rem;
+    padding-left: 0;
   }
 
   .bp_extra_slot_code {
+    margin-left: auto;
+  }
+
+  /* A proof's only chip stays on its title line. */
+  .bp_kind_proof_heading .bp_extras {
+    flex: 0 0 auto;
+    width: auto;
     margin-left: auto;
   }
 }
@@ -336,17 +202,15 @@ span[class$="_thmlabel"]::after {
   background: color-mix(in srgb, #7c2d12 7%, var(--bp-color-surface-muted));
 }
 
+/* Metadata is a quiet line under the title, not a panel of its own. */
 .bp_metadata_panel {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem 0.5rem;
+  gap: 0.3rem 0.9rem;
   align-items: center;
-  margin: 0.45rem 0 0.7rem;
-  padding: 0.45rem 0.55rem;
-  border: 1px solid var(--bp-color-border-panel);
-  border-radius: var(--bp-radius-xl);
-  background: var(--bp-color-surface-muted);
-  font-size: 0.78rem;
+  margin: 0.2rem 0 0.1rem;
+  color: var(--bp-color-text-subtle);
+  font-size: 0.8rem;
   font-style: normal;
   font-weight: 400;
 }
@@ -354,40 +218,40 @@ span[class$="_thmlabel"]::after {
 .bp_metadata_item {
   display: inline-flex;
   align-items: center;
-  gap: 0.28rem;
+  gap: 0.3rem;
   min-width: 0;
   flex-wrap: wrap;
 }
 
 .bp_metadata_owner {
-  gap: 0.4rem;
+  gap: 0.35rem;
 }
 
 .bp_metadata_key {
-  font-weight: 700;
+  font-weight: 400;
   color: var(--bp-color-text-subtle);
 }
 
 .bp_metadata_value {
-  color: var(--bp-color-text-strong);
+  color: var(--bp-color-text-muted);
+  font-weight: 600;
 }
 
 .bp_metadata_tags {
   display: inline-flex;
   flex-wrap: wrap;
-  gap: 0.24rem;
+  gap: 0.3rem;
 }
 
 .bp_metadata_tag {
   display: inline-flex;
   align-items: center;
-  border: 1px solid var(--bp-color-border);
   border-radius: var(--bp-radius-pill);
-  background: var(--bp-color-surface);
+  background: var(--bp-color-surface-muted);
+  box-shadow: inset 0 0 0 1px var(--bp-color-border-soft);
   color: var(--bp-color-text-muted);
-  padding: 0.06rem 0.38rem;
-  font-size: 0.72rem;
-  font-weight: 600;
+  padding: 0.05rem 0.5rem;
+  font-size: 0.76rem;
 }
 
 .bp_metadata_link {
@@ -681,43 +545,58 @@ span[class$="_thmlabel"]::after {
   white-space: nowrap;
 }
 
-.bp_code_summary_indicator {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
+.bp_code_summary_indicator,
+.bp_code_summary_indicator .bp_code_summary_preview_root,
+.bp_code_summary_indicator .bp_code_summary_preview_wrap {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: baseline;
+  min-width: 0;
 }
 
-.bp_code_progress {
-  display: inline-flex;
-  min-width: 9rem;
-  max-width: 24rem;
-  width: min(24rem, 40vw);
-  height: 0.64rem;
-  border-radius: 999px;
+/* The code panel's summary: its declarations, then one status for all of them. */
+.bp_code_panel_summary {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: baseline;
+  gap: 0.75rem;
+  min-width: 0;
+  font-weight: 400;
+}
+
+.bp_code_panel_decls {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
-  border: 1px solid var(--bp-color-border-strong);
-  background: linear-gradient(180deg, var(--bp-color-surface-muted), var(--bp-color-border-soft));
-  box-shadow: inset 0 1px 1px rgba(15, 23, 42, 0.08);
+  color: var(--bp-color-text-faint);
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.bp_code_progress_segment {
-  min-width: 0.22rem;
+.bp_code_panel_decls code {
+  color: var(--bp-color-link);
+  font-size: 0.82rem;
 }
 
-.bp_code_progress_segment + .bp_code_progress_segment {
-  border-left: 1px solid rgba(15, 23, 42, 0.35);
+.bp_code_panel_status {
+  flex: none;
+  margin-left: auto;
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 
-.bp_code_progress_segment_ok {
-  background: var(--bp-color-accent-success);
+.bp_code_panel_status.bp_code_link_status_proved {
+  color: var(--bp-color-status-success-text);
 }
 
-.bp_code_progress_segment_sorry {
-  background: var(--bp-color-accent-warning);
+.bp_code_panel_status.bp_code_link_status_warning {
+  color: var(--bp-color-status-warning-text);
 }
 
-.bp_code_progress_segment_missing {
-  background: var(--bp-color-accent-danger);
+.bp_code_panel_status.bp_code_link_status_missing,
+.bp_code_panel_status.bp_code_link_status_axiom {
+  color: var(--bp-color-status-error-text);
 }
 
 .bp_external_status_icon {
@@ -754,11 +633,33 @@ span[class$="_thmlabel"]::after {
   margin: 0;
 }
 
+/* Lean code is a light section: joined to its statement, it reads as the card's
+   last part; on its own it is a card titled "Lean code for Theorem 1.1.4". */
 .bp_code_panel_wrapper {
-  margin-top: 0.6rem;
+  background: var(--bp-color-surface-muted);
+}
+
+.bp_part_joined.bp_code_panel_wrapper .bp_code_summary_text {
+  color: var(--bp-color-text-faint);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* A library declaration in a code panel is a row of the panel, not a card inside it. */
+.bp_code_panel .bp_external_decl_rendered .declaration {
+  --bp-box-border-width: 0;
+  --bp-box-border-left-width: 0;
+  --bp-box-background: transparent;
+  --bp-box-header-background: transparent;
+  --bp-box-header-border-bottom-width: 0;
+  --bp-box-radius: 0;
+  --bp-box-shadow: none;
 }
 
 .bp_code_panel_wrapper .bp_code_block > summary {
+  align-items: baseline;
   cursor: pointer;
   color: var(--bp-color-text-strong);
 }
@@ -776,7 +677,7 @@ span[class$="_thmlabel"]::after {
   flex: 0 0 0.52rem;
   width: 0.52rem;
   height: 0.52rem;
-  margin-top: 0.18rem;
+  align-self: center;
   border-right: 0.12rem solid var(--bp-color-text-faint);
   border-bottom: 0.12rem solid var(--bp-color-text-faint);
   transform: rotate(-45deg);
@@ -805,25 +706,41 @@ span[class$="_thmlabel"]::after {
   max-width: 100%;
 }
 
-.bp_code_panel .bp_external_decl_rendered .declaration {
-  --bp-box-border-color: var(--bp-color-border-panel);
-  --bp-box-background: var(--bp-color-surface);
-  --bp-box-header-background: linear-gradient(180deg, var(--bp-color-surface-muted), var(--bp-color-surface));
-  --bp-box-radius: var(--bp-radius-lg);
-  --bp-box-shadow: var(--bp-shadow-sm);
-  --bp-box-min-width: 0;
+/* Code sits under the summary row, indented past its chevron. */
+.bp_code_panel_wrapper .bp_code_block > code.hl.lean.block {
+  display: block;
+  margin: 0.45rem 0 0 1.1rem;
+  padding: 0;
+  overflow-x: auto;
+  font-size: 0.85rem;
 }
 
 .bp_code_panel .bp_external_decl_kicker {
-  padding: 0.38rem 0.5rem;
+  padding: 0.35rem 0 0 1.1rem;
+}
+
+/* With one declaration, the summary row already shows its status. */
+.bp_code_panel .bp_external_decl_list:not(:has(> .bp_external_decl_item + .bp_external_decl_item))
+    .bp_external_decl_kicker_status {
+  display: none;
+}
+
+.bp_code_panel .bp_external_decl_kicker .bp_external_status_badge {
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
 }
 
 .bp_code_panel .bp_external_decl_rendered .bp_external_decl_signature {
-  padding: 0.52rem 0.55rem;
+  margin: 0;
+  padding: 0.3rem 0 0 1.1rem;
+  overflow-x: auto;
+  font-size: 0.85rem;
 }
 
 .bp_code_panel .bp_external_decl_rendered .bp_external_decl_body:not(:empty) {
-  padding: 0.5rem 0.55rem;
+  padding: 0.3rem 0 0 1.1rem;
 }
 
 .bp_code_panel .bp_external_decl_head {
@@ -1756,8 +1673,7 @@ a.bp_external_decl_source_path:hover {
 }
 
 .bp_content {
-  margin-top: 0.35rem;
-  padding-left: 0.45rem;
+  margin-top: 0.3rem;
 }
 
 .bp_content > :first-child {
@@ -1815,31 +1731,6 @@ div.theorem-style-plain div[class$="_thmcontent"] {
 div.theorem-style-definition div[class$="_thmheading"] {
   font-style: normal;
   font-weight: bold;
-}
-
-.bp_kind_theorem_content,
-div.theorem_thmcontent {
-  border-left: 0.15rem solid var(--bp-color-text-muted);
-}
-
-.bp_kind_proposition_content,
-div.proposition_thmcontent {
-  border-left: 0.15rem solid var(--bp-color-text-muted);
-}
-
-.bp_kind_lemma_content,
-div.lemma_thmcontent {
-  border-left: 0.1rem solid var(--bp-color-text-muted);
-}
-
-.bp_kind_corollary_content,
-div.corollary_thmcontent {
-  border-left: 0.1rem solid var(--bp-color-text-muted);
-}
-
-.bp_kind_proof_content,
-div.proof_content {
-  border-left: 0.08rem solid var(--bp-color-text-muted);
 }
 
 .bp_wrapper:target {
