@@ -27,6 +27,13 @@ A separate *consumer proof marker*.
 :::theorem "external.docstring.verso" (lean := "ExternalDocstringFixture.versoSelected") (leanDocstring := "ExternalDocstringFixture.versoSelected")
 :::
 
+:::theorem "external.docstring.versoWithProof" (lean := "ExternalDocstringFixture.versoSelected") (leanDocstring := "ExternalDocstringFixture.versoSelected")
+:::
+
+:::proof "external.docstring.versoWithProof"
+A separate *consumer proof marker*.
+:::
+
 :::theorem "external.docstring.undocumented" (lean := "ExternalDocstringFixture.undocumented") (leanDocstring := "ExternalDocstringFixture.undocumented")
 :::
 

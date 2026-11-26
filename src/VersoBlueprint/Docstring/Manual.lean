@@ -126,6 +126,14 @@ where
       out := out ++ (← partToManualBlocksStx child)
     pure out
 
+/-- Read the direct compiled docstring of the exact declaration, without inheritance. -/
+def directCompiled? (env : Environment) (name : Name) : Option (String ⊕ Lean.VersoDocString) :=
+  match Lean.docStringExt.find? (level := .server) env name,
+      Lean.versoDocStringExt.find? (level := .server) env name with
+  | some markdown, none => some (.inl markdown)
+  | none, some verso => some (.inr verso)
+  | _, _ => none
+
 /-- Presentation from a compiled direct docstring. Capture separately verifies
 source selection and decides whether an adopted statement can be displayed. -/
 def statementBlocks (internalDoc : String ⊕ Lean.VersoDocString) :

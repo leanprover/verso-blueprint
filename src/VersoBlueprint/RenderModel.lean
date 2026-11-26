@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import VersoBlueprint.Commands.Graph
 import VersoBlueprint.Commands.Summary
+import VersoBlueprint.Lib.PreviewSource
 import VersoBlueprint.Realizations.Capture
 
 open Lean Verso Doc
@@ -44,7 +45,7 @@ elab "blueprint_render_model%" : term => do
   let nodes := nodes.map fun node => Id.run do
     let some inventory := state.inventory.get? node.label | return node
     let some source := inventory.sources.find? (·.adoption.isSome) | return node
-    let verified := (snapshot.registry.document? source.selectedDocumentKey).any (! ·.text.trimAscii.isEmpty)
+    let verified := PreviewSource.adoptedStatementVerified snapshot source
     return { node with adoptedStatementAvailable := some verified }
   let graph := Graph.buildModel snapshot (snapshot.registry.nodes.map (·.label))
     (groupTitles := state.groups.toArray)

@@ -7,6 +7,7 @@ import VersoBlueprintTests.BlueprintExternalDocstring.Consumer
 import VersoBlueprintTests.BlueprintExternalDocstring.ConflictOwner
 import VersoBlueprintTests.Blueprint.Support
 import VersoBlueprint.Realizations.Capture
+import VersoBlueprint.Widget
 
 open Lean Elab Command Term Verso Verso.Genre Informal Realizations
 open Verso.VersoBlueprintTests.Blueprint.Support
@@ -18,8 +19,12 @@ set_option verso.blueprint.project "externalDocstringQuery"
 private def one : Name := Name.mkSimple "external.docstring.one"
 private def two : Name := Name.mkSimple "external.docstring.two"
 private def verso : Name := Name.mkSimple "external.docstring.verso"
+private def versoWithProof : Name := Name.mkSimple "external.docstring.versoWithProof"
 private def project : Name := `externalDocstringFixture
 private def upstreamBody : String := " The **upstream statement marker** retains λ and 😀. "
+private def markdownMarker : String := "<strong>upstream statement marker</strong>"
+private def versoMarker : String := "<strong>upstream Verso marker</strong>"
+private def proofMarker : String := "<strong>consumer proof marker</strong>"
 
 private def ensure (condition : Bool) (failure : String) : TermElabM Unit :=
   unless condition do throwError failure
@@ -49,6 +54,22 @@ private def hasNativeProof (snapshot : Capture.Snapshot) (label : Name) (declara
       model.declarations.any (·.object.native == declaration.toString) &&
       (snapshot.registry.resultFor (.realization model.key)).complete
 
+private def ensureWidgetPreview (label : Name) (capture : Except (Array Realizations.Diagnostic) Capture.Snapshot)
+    (expected : Option (PreviewCache.Facet × String)) : TermElabM Unit := do
+  let widget ← buildFromCapture label capture
+  let html := (← widget.renderPreviewHtml).asString
+  let key := expected.map fun (facet, _) => PreviewCache.key label facet
+  ensure (widget.previewSelection?.map (·.key) == key)
+    s!"Unexpected widget preview selection for {label}: expected {key}, got {widget.previewSelection?.map (·.key)}"
+  if let some (_, marker) := expected then
+    ensure (hasSubstr html marker) s!"Widget preview for {label} did not render {marker}: {html}"
+  else
+    ensure html.isEmpty s!"Widget preview for {label} rendered without a selected body: {html}"
+  for marker in #[markdownMarker, versoMarker, proofMarker] do
+    unless expected.any (fun (_, wanted) => wanted == marker) do
+      ensure (!hasSubstr html marker) s!"Widget preview for {label} rendered a different body: {html}"
+  ensure (!hasSubstr html "A different source marker") s!"Widget preview for {label} rendered another declaration: {html}"
+
 run_cmd liftTermElabM do
   let env ← getEnv
   let state := Environment.informalExt.getState env
@@ -58,6 +79,11 @@ run_cmd liftTermElabM do
     let observations ← obtain (← Capture.observe plan readFile)
     obtain (Capture.evaluate plan observations)
   let valid ← capture plan
+  for (label, marker) in #[(one, markdownMarker), (two, markdownMarker),
+      (verso, versoMarker), (versoWithProof, versoMarker)] do
+    ensureWidgetPreview label (.ok valid) (some (.statement, marker))
+  ensureWidgetPreview one (.error #[]) (some (.proof, proofMarker))
+  ensureWidgetPreview verso (.error #[]) none
   let canonical := ``ExternalDocstringFixture.selected
   let ownerModule := `VersoBlueprintTests.BlueprintExternalDocstring.Owner
   let consumerModule := `VersoBlueprintTests.BlueprintExternalDocstring.Consumer
@@ -93,6 +119,7 @@ run_cmd liftTermElabM do
     let scopedIssues := valid.sourceDiagnostics.nodes.filter (·.1 == label)
     ensure (hasNoMarkdown valid label && hasNativeProof valid label name && scopedIssues.any (·.2.code == code))
       s!"Unavailable own Markdown for {label} must retain native completion and issue {code}; got {repr scopedIssues}"
+    ensureWidgetPreview label (.ok valid) none
   ensure (!(valid.sourceDiagnostics.nodes.any (fun (label, _) => label == one || label == two)))
     "A valid sibling selection acquired the missing declaration's source diagnostic"
 
@@ -108,6 +135,8 @@ run_cmd liftTermElabM do
     let stale ← capture plan fun path => do
       let bytes ← IO.FS.readFile path
       if isOwnerFile path then pure (edit bytes) else pure bytes
+    ensureWidgetPreview one (.ok stale) (some (.proof, proofMarker))
+    ensureWidgetPreview verso (.ok stale) none
     for label in #[one, two] do
       let scopedIssues := stale.sourceDiagnostics.nodes.filter (·.1 == label)
       ensure (hasNoMarkdown stale label && hasNativeProof stale label canonical &&
@@ -115,6 +144,8 @@ run_cmd liftTermElabM do
         s!"Edited owner bytes for {label} must fail with one of {allowed} while keeping native proof coverage; got {repr scopedIssues}"
   let unreadable ← capture plan fun path =>
     if isOwnerFile path then throw (IO.userError "Injected unreadable owner") else IO.FS.readFile path
+  ensureWidgetPreview two (.ok unreadable) none
+  ensureWidgetPreview versoWithProof (.ok unreadable) (some (.proof, proofMarker))
   ensure (hasNoMarkdown unreadable one && hasNativeProof unreadable one canonical &&
     unreadable.sourceDiagnostics.nodes.any (fun (label, _) => label == one))
     "An unreadable upstream document must retain native availability"
@@ -132,6 +163,11 @@ run_cmd liftTermElabM do
       wrong.sourceDiagnostics.nodes.any (fun (label, _) => label == one) &&
       !(wrong.sourceDiagnostics.nodes.any (fun (label, _) => label == two)))
       "Matching comment bytes or a valid sibling bypassed exact package/module ownership"
+    ensureWidgetPreview one (.ok wrong) (some (.proof, proofMarker))
+    ensureWidgetPreview two (.ok wrong) (some (.statement, markdownMarker))
+
+#show_graph "external.docstring.one"
+#show_graph "external.docstring.verso"
 
 private def impls : Manual.ExtensionImpls := extension_impls%
 private def model : RenderModel := blueprint_render_model%
@@ -141,15 +177,12 @@ private def model : RenderModel := blueprint_render_model%
 #eval show IO Bool from do
   let html ← renderManualDocHtmlString impls ExternalDocstringFixture.chapter (model := model)
   let files ← buildManualPreviewDataFiles impls ExternalDocstringFixture.chapter (model := model)
-  let body := "<strong>upstream statement marker</strong>"
-  let versoBody := "<strong>upstream Verso marker</strong>"
-  let proof := "<strong>consumer proof marker</strong>"
   let preview (label : Name) := files.htmlCache.findHtml? (PreviewCache.statementKey label)
-  let selectedPreview (html : String) := hasSubstr html body &&
+  let selectedPreview (html : String) := hasSubstr html markdownMarker &&
     !hasSubstr html "A different source marker for the other attached declaration"
-  pure <| hasSubstr html body && hasSubstr html proof && hasSubstr html versoBody &&
+  pure <| hasSubstr html markdownMarker && hasSubstr html proofMarker && hasSubstr html versoMarker &&
     (preview one).any selectedPreview && (preview two).any selectedPreview &&
-    (preview verso).any (fun html => hasSubstr html versoBody)
+    (preview verso).any (fun html => hasSubstr html versoMarker)
 
 /-- error: An adopted docstring and an explicit Verso body compete for the default statement -/
 #guard_msgs in

@@ -123,18 +123,26 @@ def environmentSelection? (env : Environment) (label : Name) : Option Selection 
   let state := informalExt.getState env
   let node ← state.inventory.get? label
   let (facet, preview) ←
-    PreviewCache.Facet.select? (nodeFacetPreview? node)
+    PreviewCache.Facet.select? fun facet =>
+      if facet == .statement && node.sources.any (·.adoption.isSome) then none
+      else nodeFacetPreview? node facet
   pure <| Selection.ofPreview label facet preview
 
-def renderWidgetHtml (preview? : Option Preview) : Lean.Elab.Term.TermElabM Verso.Output.Html := do
-  match preview? with
-  | none => pure .empty
-  | some preview =>
-    if !preview.blocks.isEmpty then
-      Informal.renderPreviewBlocksHtml preview.blocks
-    else if !preview.stxs.isEmpty then
-      Informal.renderStatementElabHtml preview.stxs
-    else
-      pure .empty
+/-- Capture only populates the exact selected document after checking its owner and bytes. -/
+def adoptedStatementVerified (snapshot : Realizations.Capture.Snapshot)
+    (source : SourceData.SourceSelection) : Bool :=
+  source.adoption.isSome &&
+    (snapshot.registry.document? source.selectedDocumentKey).any (! ·.text.trimAscii.isEmpty)
+
+def renderWidgetHtml (preview? : Option Preview)
+    (snapshot? : Option Realizations.Capture.Snapshot := none) :
+    Lean.Elab.Term.TermElabM Verso.Output.Html := do
+  let some preview := preview? | return .empty
+  let blocks ← if preview.blocks.isEmpty then Informal.evalElaboratedBlocks preview.stxs
+    else pure preview.blocks
+  if blocks.isEmpty then return .empty
+  match snapshot? with
+  | none => Informal.renderPreviewBlocksHtml blocks
+  | some snapshot => Informal.renderPreviewBlocksHtmlWithSnapshot blocks snapshot
 
 end Informal.PreviewSource

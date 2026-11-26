@@ -268,11 +268,9 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
           | some raw => do
             let env ← getEnv
             let name := raw.trimAscii.toString.toName
-            match Lean.docStringExt.find? (level := .server) env name,
-                Lean.versoDocStringExt.find? (level := .server) env name with
-            | some markdownText, none => pure (← liftM <| Docstring.statementBlocks (.inl markdownText)).1
-            | none, some doc => pure (← liftM <| Docstring.statementBlocks (.inr doc)).1
-            | _, _ => pure #[]
+            match Docstring.directCompiled? env name with
+            | some doc => pure (← liftM <| Docstring.statementBlocks doc).1
+            | none => pure #[]
         let (previewBlocks, retainedContents) ← liftM <| retainElaboratedBlocks contents
         pure ((retainedContents, parsedContents.sourceRef?), if cfg.leanDocstring.isSome then #[] else previewBlocks)
       | return ← ``(Block.concat #[])
