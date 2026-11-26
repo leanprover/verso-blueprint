@@ -49,6 +49,13 @@ structure FencedSelection where
   body : Syntax.Range
   deriving Repr
 
+/-- The direct doc comment of the declaration introducing an attribute node.
+The attribute site locates the registration. The declaration owns the comment. -/
+structure OwnDocstring where
+  moduleName : Name
+  canonical : Name
+  deriving Repr
+
 /-- A consumer directive explicitly selects the direct docstring of one of its
 native attachments. The site lives in SourceSelection.source. An unavailable
 upstream source is assessment data and leaves the native attachment usable. -/
@@ -67,6 +74,7 @@ structure SourceSelection where
   document : DocumentKey
   source : Data.SourceLocationResult
   payload : ProviderPayload
+  ownDocstring : Option OwnDocstring := none
   adoption : Option AdoptedDocstring := none
   fence : Option (Except String FencedSelection) := none
   deriving Repr, Inhabited
@@ -116,7 +124,12 @@ def SourceSelection.selectedDocumentKey (source : SourceSelection) : DocumentKey
     return { source.document with path := source.document.path ++ "#adopted-docstring:" ++
       (toJson (Vir.nameKey selection.consumerModule, Vir.nameKey source.destination.realization.node,
         selection.package, Vir.nameKey selection.moduleName, Vir.nameKey selection.canonical, ownerPath)).compress }
-  match source.selectionIdentity with
+  -- The verified raw comment is the document content. Its stable identity
+  -- carries the owner and declaration, independent of the attribute syntax.
+  let identity := match source.ownDocstring with
+    | some owner => some (toJson ("own-docstring", Vir.nameKey owner.moduleName, Vir.nameKey owner.canonical))
+    | none => source.selectionIdentity.map Json.str
+  match identity with
   | some identity => return { source.document with
       path := source.document.path ++ "#selection:" ++ (toJson (
         Vir.nameKey source.destination.realization.node,
@@ -314,6 +327,11 @@ def SourceSelection.rawIssues (source : SourceSelection) (node : Name) : Array D
     if source.context.language != Name.mkSimple value.language.key then
       issues := issues.push (issue "source-payload-context" subject "Markup language must agree with its source context")
   | .text _ => pure ()
+  if let some owner := source.ownDocstring then
+    unless (source.payload matches .prose _) && source.destination.role == some `statement &&
+        source.adoption.isNone && !owner.moduleName.isAnonymous && !owner.canonical.isAnonymous do
+      issues := issues.push (issue "invalid-own-docstring" subject
+        "An attribute docstring requires a prose statement and its owning declaration")
   if let some selection := source.adoption then
     unless (source.payload matches .prose _) && source.destination.role == some `statement &&
         source.context.language == source.destination.realization.name &&

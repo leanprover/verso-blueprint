@@ -87,6 +87,10 @@ jobs:
         run: ./scripts/lean-low-priority lake lean tests/verification/AssemblyAxiomAudit.lean
       - name: Run Lean tests
         run: ./scripts/run-lean-tests.sh
+      - name: Check assessment freshness across source edits
+        run: python3 tests/test-assessment-snapshot.py --output "$RUNNER_TEMP/assessment-snapshot"
+      - name: Check semantic bindings across source edits
+        run: python3 tests/test-realization-semantic-binding.py --output "$RUNNER_TEMP/semantic-binding"
       - name: Run consumer math lint smoke
         run: python3 ./scripts/check_math_lint_fresh_repo.py
 

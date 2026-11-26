@@ -31,8 +31,11 @@ def main() -> None:
     proof = b"theorem witness : True := True.intro"
     mapping = b"The prose statement corresponds to the selected Lean proposition."
     prose = "The proposition is true. Ω 🧭 The Lean declaration provides its proof.".encode("utf-8")
-    if any(original.count(marker) != 1 for marker in (proof, mapping, prose)):
+    proof_use = b'(proofUses := ["assessment.docDependencyA"])'
+    docstring = "/-- The attribute statement is true. Ω 🧭 -/".encode("utf-8")
+    if any(original.count(marker) != 1 for marker in (proof, mapping, prose, proof_use, docstring)):
         raise RuntimeError("Expected exact source-edit fixture baseline")
+    swapped = original.replace(proof_use, proof_use.replace(b"docDependencyA", b"docDependencyB"))
     variants = [
         ("rewrite", original.replace(proof, b"theorem witness : True := by exact True.intro")),
         ("hole", original.replace(proof, b"theorem witness : True := by sorry")),
@@ -42,6 +45,8 @@ def main() -> None:
         ("prose", original.replace(
             prose,
             "The proposition remains true. Ω 🧭 A different proof is described here.".encode("utf-8"))),
+        ("docstring-proof-use", swapped),
+        ("docstring-text", swapped.replace(docstring, docstring.replace(b" -/", b"  -/"))),
     ]
     commands = []
 

@@ -97,6 +97,15 @@ def alternativeProofReview : RequirementKey := ⟨.translation alternativeRelati
 def correspondence : TranslationKey := ⟨project, `proseCorrespondence⟩
 def correspondenceClaim : ClaimKey := ⟨correspondence, `statement⟩
 def aliceReview : RequirementKey := ⟨.claim correspondenceClaim, `aliceReview⟩
+def docstringLabel (decl : Name) : Name := Name.mkSimple s!"assessment.{decl}"
+def docstringStatement : RealizationKey :=
+  (⟨docstringLabel `documented, `markdown⟩ : RealizationKey).forRole `statement
+def docstringReview : RequirementKey := ⟨.realization docstringStatement, `docstringReview⟩
+def docstringProofCheck (decl : Name) : RequirementKey :=
+  let base : RealizationKey := ⟨docstringLabel decl, `lean⟩
+  let object : ObjectKey := ⟨⟨`lean, project⟩, (`BlueprintAssessmentSnapshot ++ decl).toString⟩
+  ⟨.declaration (base.forRole `proof) object, `proof⟩
+
 run_cmd liftCoreM <| Realizations.Authoring.configureProject project
 
 @[blueprint "assessment.statementProof"]
@@ -120,6 +129,16 @@ theorem customDependent : True := True.intro
 
 @[blueprint "assessment.mainDependent" (proofUses := ["assessment.statementProof"])]
 theorem mainDependent : True := True.intro
+
+@[blueprint "assessment.docDependencyA"]
+theorem docDependencyA : True := True.intro
+
+@[blueprint "assessment.docDependencyB"]
+theorem docDependencyB : True := True.intro
+
+/-- The attribute statement is true. Ω 🧭 -/
+@[blueprint "assessment.documented" (proofUses := ["assessment.docDependencyA"])]
+theorem documented : True := True.intro
 
 #docs (Manual) assessmentSnapshotDoc "Assessment Snapshot Example" :=
 :::::::
@@ -155,6 +174,8 @@ run_cmd liftCoreM <| Realizations.Authoring.stage `claims {
       coverage := .dependencyClosure, prerequisites := #[proofCheck] },
     { key := alternativeProofReview,
       expected := .review `mathematicalProof `AliceMock },
+    { key := docstringReview,
+      expected := .review `mathematicalCorrespondence `AliceMock },
     { key := aliceReview, expected := .review `mathematicalCorrespondence `AliceMock,
       prerequisites := #[nativeSupport] }] }
 

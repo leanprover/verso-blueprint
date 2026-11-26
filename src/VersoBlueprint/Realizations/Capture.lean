@@ -331,7 +331,7 @@ def plan (raw : Raw) : Plan := Id.run do
         unless source.payload matches .prose _ do
           document := some result.documents.size
           result := { result with documents := result.documents.push source.document }
-        let mut documented := none
+        let mut documented : Option (Except Diagnostic Nat) := none
         if let some adoption := source.adoption then
           let owners := records.filter fun record =>
             record.id.producer == `blueprint.directive && record.id.moduleName == adoption.consumerModule &&
@@ -356,21 +356,23 @@ def plan (raw : Raw) : Plan := Id.run do
           | _, _, _ => documented := some (.error {
               code := "ambiguous-docstring", subject := label.toString
               message := "An adopted docstring requires its own directive's unique selected native attachment" })
-        else if let .prose _ := source.payload then
+        else if let some owner := source.ownDocstring then
           let owners := records.filter fun record => record.id.producer == `blueprint.attribute &&
+            record.id.moduleName == owner.moduleName && record.id.subject == owner.canonical &&
             record.source.isSome && record.source == source.source.location
-          if !owners.isEmpty then
-            -- Only uniqueness matters here; ambiguous associations are rejected.
-            let selected := (owners.flatMap (·.nativeAssociations)).toList.eraseDups.toArray
-            if selected.size != 1 then
-              documented := some (.error {
-                code := "ambiguous-docstring", subject := label.toString,
-                message := "Attribute prose requires one exact owning native association" })
-            else
-              documented := some (.ok result.documented.size)
-              let association := selected[0]!
-              let request := NativeRequest.ofAssociation association.context association
-              result := { result with documented := result.documented.push request }
+          let selected : Array NativeAssociation := (owners.flatMap (·.nativeAssociations)).filter fun association =>
+            association.reference.canonical == owner.canonical && association.placement == `statement &&
+              association.realization == ⟨label, `lean⟩ &&
+              association.context == ⟨`lean, source.context.project⟩
+          match selected.toList.eraseDups.toArray with
+          | #[association] =>
+            documented := some (.ok result.documented.size)
+            let request := NativeRequest.ofAssociation association.context association
+            result := { result with documented := result.documented.push request }
+          | _ =>
+            documented := some (.error {
+              code := "ambiguous-docstring", subject := label.toString,
+              message := "Attribute prose requires one exact owning native association" })
         sourceSteps := sourceSteps.push { source, document, documented }
       let mut declarations := #[]
       for name in nativeNames associations sources do
@@ -634,18 +636,21 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
                     pure (.error {
                       code := "source-selection-unavailable", subject := adoption.canonical.toString
                       message := "External docstring owner or exact source bytes changed since consumer registration" })
-                else if documented.document.key.path != source.document.path ||
-                    some documented.document.text != source.proseBuffer? ||
-                    documented.document.key.context.project != source.context.project then
-                  pure (.error {
-                    code := "source-selection-unavailable"
-                    subject := (toJson source.destination.subject).compress
-                    message := "Native doc comment does not belong to the selected owning source" })
                 else
                   -- Attribute syntax locates the producer, not the comment body.
                   -- The native provider has already checked the unique declaration
                   -- and original comment against exact owning-file ranges.
-                  pure (.ok documented.rawDocstring)
+                  if (source.ownDocstring.any fun owner =>
+                      documented.canonical == owner.canonical && documented.moduleName == owner.moduleName) &&
+                      documented.document.key.path == source.document.path &&
+                      some documented.document.text == source.proseBuffer? &&
+                      documented.document.key.context.project == source.context.project then
+                    pure (.ok documented.rawDocstring)
+                  else
+                    pure (.error {
+                      code := "source-selection-unavailable"
+                      subject := (toJson source.destination.subject).compress
+                      message := "Native doc comment does not belong to the selected owning source" })
           let selectedValue ← match selectedText with
             | .ok text => pure text
             | .error diagnostic => do

@@ -209,9 +209,10 @@ private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref
     | throwError "'[blueprint]' attributes require a stable source position"
   let source ← Data.SourceLocation.ofSyntax? ref
   let project ← Environment.sourceProject
+  let moduleName ← getMainModule
   let fact : Contributions.Record := {
     id := {
-      moduleName := ← getMainModule
+      moduleName
       producer := `blueprint.attribute
       subject := decl
       site := position.byteIdx
@@ -222,8 +223,9 @@ private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref
       placement := `statement, reference := extRef }]
     priority := none
     source }
-  let sources ← docstring?.toArray.mapM fun (body, _, format) =>
-    Environment.sourceAt label format (some `statement) format (.prose body) ref
+  let sources ← docstring?.toArray.mapM fun (body, _, format) => do
+    let selection ← Environment.sourceAt label format (some `statement) format (.prose body) ref
+    return { selection with ownDocstring := some { moduleName, canonical := decl } }
   discard <| Environment.contributeAttribute fact {
     sources
     uses := deps }

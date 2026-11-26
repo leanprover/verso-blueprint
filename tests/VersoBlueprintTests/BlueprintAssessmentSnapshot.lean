@@ -154,9 +154,39 @@ private def defaultUseSelectionDetails (snapshot : Realizations.Capture.Snapshot
     | none => "missing"
   return s!"uses={reprStr selectedSummary}; alternative={alternativeSummary}; alternativeRequirement={alternativeRequirementSummary}; alternativeDocument={alternativeDocumentSummary}; alternativeLocal={reprStr (registry.localResult unfinishedAlternativeCheck)}; alternativeFinal={reprStr (registry.resultFor (.realization unfinishedAlternativeProof))}; defaultProof={reprStr (registry.resultForRequirement proofCheck)}; dependentStatementPrerequisites={dependentStatementPrerequisites}; dependentProofPrerequisites={dependentProofPrerequisites}; dependentFinal={reprStr (registry.resultForRequirement mainDependentProofCheck)}"
 
-private def mockJudgment (id reviewer : Name) (outcome : Outcome) (binding : ContentBinding) :
-    ReviewJudgment := {
-  id, requirement := aliceReview, binding
+private def originalDocstring := " The attribute statement is true. Ω 🧭 "
+private def editedDocstring := " The attribute statement is true. Ω 🧭  "
+
+private def checkOwnDocstring (snapshot : Realizations.Capture.Snapshot) (swapped : Bool)
+    (expectedText : String) : TermElabM Unit := do
+  let registry := snapshot.registry
+  let some statement := registry.realization? docstringStatement
+    | throwError "Missing attribute docstring statement"
+  let #[document] := statement.documents
+    | throwError "Expected a single attribute docstring document"
+  ensure ((registry.document? document).any (·.text == expectedText))
+    "The statement must retain the exact raw own docstring bytes"
+  let target := if swapped then `docDependencyB else `docDependencyA
+  let other := if swapped then `docDependencyA else `docDependencyB
+  let uses := snapshot.uses.filter (·.source == docstringLabel `documented)
+  let #[use] := uses
+    | throwError "Expected one selected use on the documented declaration, got {uses.size}"
+  let selection ← obtain use.selected
+  let proof := docstringProofCheck `documented
+  let some contract := registry.requirement? proof
+    | throwError "Missing documented declaration proof contract"
+  ensure (use.role == `proof && use.reference.label == docstringLabel target &&
+    selection == #[docstringProofCheck target] &&
+    contract.prerequisites.contains (docstringProofCheck target) &&
+    !contract.prerequisites.contains (docstringProofCheck other) &&
+    (registry.resultForRequirement (docstringProofCheck target)).complete &&
+    (registry.resultForRequirement (docstringProofCheck other)).complete &&
+    (registry.resultForRequirement proof).complete)
+    s!"Expected proof dependency on {target}, with both targets and the dependent proof complete"
+
+private def mockJudgment (id reviewer : Name) (outcome : Outcome) (binding : ContentBinding)
+    (requirement : RequirementKey := aliceReview) : ReviewJudgment := {
+  id, requirement, binding
   observation := {
     criterion := `mathematicalCorrespondence, reviewer, outcome,
     explanation := "MOCK test judgment; not a human review" } }
@@ -227,11 +257,39 @@ run_cmd liftTermElabM do
     ensure (hasDefaultUseSelection initialSnapshot)
       ("The native use must select its ordinary default proof while preserving the pending authored alternative: " ++
         defaultUseSelectionDetails initialSnapshot)
+    checkOwnDocstring initialSnapshot false originalDocstring
     let some binding := initial.bindingFor aliceReview
       | throwError "Missing baseline correspondence binding"
+    let some docstringBinding := initial.bindingFor docstringReview
+      | throwError "Missing baseline attribute docstring review binding"
     let some path := (← IO.getEnv "VBP_SNAPSHOT_REVIEW_CONTROL")
       | throwError "VBP_SNAPSHOT_REVIEW_CONTROL is required in baseline mode"
     IO.FS.writeFile path binding
+    IO.FS.writeFile (path ++ ".docstring") docstringBinding
+    return
+  if mode == "docstring-proof-use" || mode == "docstring-text" then
+    let some path := (← IO.getEnv "VBP_SNAPSHOT_REVIEW_CONTROL")
+      | throwError "VBP_SNAPSHOT_REVIEW_CONTROL is required in docstring source-edit modes"
+    let savedBinding := (← IO.FS.readFile (path ++ ".docstring")).trimAscii.toString
+    let judgmentId := `mockDocstringReview
+    liftM (m := TermElabM) (α := Unit)
+      (Realizations.Authoring.stage `mockDocstring {
+        reviews := #[mockJudgment judgmentId `AliceMock .passed savedBinding docstringReview]
+        reviewSelections := #[{ requirement := docstringReview, judgment := some judgmentId }] })
+    let snapshot ← obtain (← Realizations.Capture.capture)
+    let edited := mode == "docstring-text"
+    checkOwnDocstring snapshot true (if edited then editedDocstring else originalDocstring)
+    let registry := snapshot.registry
+    let some currentBinding := registry.bindingFor docstringReview
+      | throwError "Missing current attribute docstring review binding"
+    let review := registry.localResult docstringReview
+    if edited then
+      ensure (currentBinding != savedBinding && !review.complete &&
+        review.diagnostics.any (·.code == "stale-content"))
+        "Editing raw docstring whitespace must stale the saved statement review"
+    else
+      ensure (currentBinding == savedBinding && review.complete)
+        "Switching between complete proof dependencies must preserve the saved statement review"
     return
   if mode != "smoke" then
     unless ["rewrite", "hole", "statement", "mapping", "prose"].contains mode do
@@ -317,6 +375,7 @@ run_cmd liftTermElabM do
   ensure (hasDefaultUseSelection unreviewedSnapshot)
     ("The native use must select its ordinary default proof while preserving the pending authored alternative: " ++
       defaultUseSelectionDetails unreviewedSnapshot)
+  checkOwnDocstring unreviewedSnapshot false originalDocstring
   let some binding := unreviewed.bindingFor aliceReview
     | throwError "Missing current Alice-review binding"
   let unreviewedEnvironment ← getEnv
