@@ -544,13 +544,13 @@ def statusesForAssessment (assessment : Realizations.NodeAssessment) :
     else if assessment.statementDependenciesComplete then .ready
     else .blocked
   let proof :=
-    if assessment.proofRoleComplete.getD assessment.nativeProofComplete then
+    if assessment.proofRoleComplete == some false then
+      .incomplete
+    else if assessment.nativeProofComplete then
       if assessment.statementDependenciesComplete && assessment.proofDependenciesComplete then
         .formalizedWithAncestors
       else
         .formalized
-    else if assessment.proofRoleComplete == some false then
-      .incomplete
     else
       .none
   return (statement, proof)

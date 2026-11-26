@@ -932,7 +932,8 @@ run_cmd liftTermElabM do
       let mixed := snapshot.assessmentFor target
       ensure (mixed.hasNativeDeclarations && mixed.hasNativeBodyRequirement &&
         !mixed.nativeStatementComplete && !mixed.nativeProofComplete &&
-        !mixed.nativeLocallyComplete && !mixed.requiredComplete)
+        !mixed.nativeLocallyComplete && !mixed.requiredComplete && mixed.proofRoleComplete == some false &&
+        (Graph.statusesForAssessment mixed).2 == .incomplete)
         "The aggregate cannot count an unclassified declaration as a completed sibling or statement-only proposition"
       ensure (Graph.actionableStageForAssessment? mixed == some "statement")
         "The incomplete native statement must remain visible in the graph work queue"

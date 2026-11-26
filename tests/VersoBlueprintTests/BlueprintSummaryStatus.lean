@@ -19,6 +19,12 @@ def proofDef : True := by sorry
 @[blueprint "summary.computation"]
 def computation : Nat := by sorry
 
+@[blueprint "summary.mixedBodies"]
+theorem mixedProof : True := True.intro
+
+@[blueprint "summary.mixedBodies"]
+def mixedImplementation : Nat := by sorry
+
 private def ensure (condition : Bool) (message : String) : TermElabM Unit :=
   unless condition do throwError message
 
@@ -54,6 +60,14 @@ run_cmd liftTermElabM do
     ensure (node.kind == some kind && node.proofStatus == status &&
       (snapshot.assessmentFor label).proofRoleComplete == proofComplete)
       s!"{label}: graph and capture should distinguish mathematical proofs from computations"
+  let mixedLabel := Name.mkSimple "summary.mixedBodies"
+  let mixed := snapshot.assessmentFor mixedLabel
+  let mixedGraph := Graph.buildModel snapshot #[mixedLabel] |>.finish "mixed-bodies" {}
+  let some mixedNode := mixedGraph.nodes.find? (·.label == mixedLabel)
+    | throwError "Missing mixed native node"
+  ensure (mixed.proofRoleComplete == some true && !mixed.nativeProofComplete && !mixed.requiredComplete &&
+    mixedNode.proofStatus == .none)
+    "A passing mathematical proof cannot mark a node with an admitted implementation as formalized"
   let unfinishedDefinitionProofs := snapshot.registry.nodes.countP fun node =>
     node.kind == .definition && (snapshot.assessmentFor node.label).proofRoleComplete == some false
   ensure (unfinishedDefinitionProofs > 0 && summary.definitionStatus.noProof == unfinishedDefinitionProofs)

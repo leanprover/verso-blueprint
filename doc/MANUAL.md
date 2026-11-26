@@ -465,7 +465,10 @@ whole capture; it does not publish a partial project.
 `lake exe vbp query status <label>` exposes `validation`: `nativeStatementComplete` and
 `nativeProofComplete` describe the selected declarations' own native checks.
 `hasNativeBodyRequirement` indicates whether a proof or implementation check applies.
-`proofRoleComplete` reports whether all selected mathematical proofs passed locally.
+`proofRoleComplete` is true when every selected declaration has its native contract
+and all selected mathematical proofs pass locally. A missing sibling contract leaves
+a selected proof role unfinished. The graph can show a formalized proof status only
+when all selected native bodies pass, including computational implementations.
 It is null for a node with only computational definitions. A proof-valued Lean
 `def` can therefore contribute to the unfinished-proof count.
 For a statement-only proposition definition, both body flags are false.

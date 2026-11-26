@@ -121,9 +121,8 @@ def Snapshot.assessmentFor (snapshot : Snapshot) (label : Name) : NodeAssessment
   let bodyChecks := checks.filter (·.1 != `statement)
   let statementComplete := locallyComplete (checks.filter (·.1 != `proof))
   let bodyComplete := locallyComplete bodyChecks
-  let proofKeys := checks.filterMap fun (role, key) => if role == `proof then key else none
-  let proofRoleComplete := if proofKeys.isEmpty then none else
-    some (proofKeys.all fun key => (registry.localResult key).complete)
+  let proofChecks := checks.filter (·.1 == `proof)
+  let proofRoleComplete := if proofChecks.isEmpty then none else some (locallyComplete proofChecks)
   let requiredComplete := coversDeclarations &&
     checks.all fun (_, key) => key.any fun key => (registry.resultForRequirement key).complete
   let uses := snapshot.uses.filter (·.source == label)

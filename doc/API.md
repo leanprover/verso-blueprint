@@ -929,8 +929,11 @@ status enums, dependency axes, preview keys, hrefs when traversal resolved
 them, and visual metadata for renderers that want Blueprint's default styling.
 Graph schema version 6 retains the private-constructor topology contract and adds
 `assessment` plus `actionableStage` to every node. An unresolved endpoint has no
-assessment. Version 6 includes `proofRoleComplete`, the local result for mathematical
-proofs. Its value is null when no such obligation exists. The graph also requires `hasNativeBodyRequirement` on each captured
+assessment. Version 6 includes `proofRoleComplete` for mathematical proofs. It is
+null when there is no selected proof role. A true result requires a native contract
+for every selected declaration and passing local proof checks. A formalized graph
+proof status also requires all selected native bodies to pass, including computational
+implementations. The graph requires `hasNativeBodyRequirement` on each captured
 assessment to distinguish a pending native body check from a statement-only
 declaration. A captured node exposes local native statement and body checks, the
 combined result of generated native checks and selected prerequisites, and the
