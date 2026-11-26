@@ -18,6 +18,19 @@ Many older examples call the top-level file `Contents.lean`. In this doc set we
 refer to it as the Blueprint top-level file because the role matters more than
 the filename.
 
+## Set the project name
+
+Blueprint uses a canonical project name to identify the sources contributed by
+each chapter. The starter template sets it to `ProjectTemplate`. When adapting
+the template, use your project's stable Lean name in the package's
+`leanOptions` in `lakefile.lean`. For example, add this entry to the array:
+
+```lean
+⟨`weak.verso.blueprint.project, "MyProject"⟩
+```
+
+This supplies the same name to chapters and the site generator.
+
 ## Choose labels first
 
 Blueprint blocks are identified by labels chosen by the author.

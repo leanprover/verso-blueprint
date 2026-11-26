@@ -122,7 +122,7 @@ def package_lakefile_text(
     config_lines = [
         "package Smoke where",
         "  precompileModules := false",
-        "  leanOptions := #[⟨`experimental.module, true⟩]",
+        '  leanOptions := #[⟨`experimental.module, true⟩, ⟨`weak.verso.blueprint.project, "Smoke"⟩]',
     ]
     if packages_dir is not None:
         config_lines.append(f'  packagesDir := "{packages_dir}"')
