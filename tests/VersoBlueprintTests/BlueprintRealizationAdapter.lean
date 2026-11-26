@@ -789,6 +789,14 @@ private unsafe def hiddenChecks : CoreM Bool := do
     ensure ((NativeLean.rolesForDeclarationKind none true false).isEmpty &&
       (← NativeLean.declarationRoles unknown).isEmpty)
       "An unclassified axiom view must not authorize a statement-only contract"
+    -- Even a successful body inspection cannot supply either check when the
+    -- original kind is unavailable. Exercise the same constructor as the provider.
+    let classification := NativeLean.classifyDeclarationKind none true false
+    let unclassified := NativeLean.CheckedDeclaration.ofClassification (witness unknown.name) classification .proved #[]
+    ensure (unclassified.kind.isNone && unclassified.roles.isEmpty && unclassified.rolesAgree &&
+      unclassified.statement.outcome == .unavailable && unclassified.body.outcome == .unavailable &&
+      unclassified.statement.coverage == .subject && unclassified.body.coverage == .subject)
+      "Unavailable original kind must withhold both native checks"
     hiddenCapture plan
     let goal ← `(term| True)
     let reused ← NativeLean.checkDeclaration `adapterFixture (witness `sorryImportComplete) (some visible)

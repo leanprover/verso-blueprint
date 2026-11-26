@@ -1119,7 +1119,8 @@ def evaluate (p : Plan) (observations : Observations) : Except (Array Diagnostic
       answerFor "check" request.witness.native checks request (whenOk fun value =>
         value.declaration == request.witness &&
           value.statement.declaration == some request.witness && value.body.declaration == some request.witness &&
-          value.statement.validator == NativeLean.statementValidator && value.body.validator == NativeLean.bodyValidator)
+          value.statement.validator == NativeLean.statementValidator && value.body.validator == NativeLean.bodyValidator &&
+          value.rolesAgree)
     specification := fun request =>
       answerFor "specification" request.expected.toString specifications request
     expected := fun request =>

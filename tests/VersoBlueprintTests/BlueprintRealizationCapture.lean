@@ -139,6 +139,23 @@ run_cmd liftTermElabM do
   let .ok checked := check.result | throwError "Expected a real checked declaration"
   rejects "mismatched-observation" { observations with checks := observations.checks.modify 0 fun entry =>
     { entry with result := .ok { checked with declaration := { checked.declaration with native := "wrong.witness" } } } }
+  let some proofAnswer := observations.checks.find? (·.request.witness.native == (``complete).toString)
+    | throwError "Missing checked theorem for malformed role controls"
+  let .ok proofValue := proofAnswer.result | throwError "Expected a real theorem observation"
+  let rejectCheck (value : NativeLean.CheckedDeclaration) := rejects "mismatched-observation"
+    { observations with checks := observations.checks.map fun entry =>
+        if entry.request == proofAnswer.request then { entry with result := .ok value } else entry }
+  ensure (proofValue.body.proposition && proofValue.roles == #[`statement, `proof] &&
+    proofValue.statement.outcome == .passed && proofValue.body.outcome == .passed)
+    "The role controls must start from a genuinely checked proof"
+  rejectCheck { proofValue with roles := proofValue.roles.push `unexpected }
+  rejectCheck { proofValue with roles := #[`statement] }
+  rejectCheck { proofValue with roles := #[`proof] }
+  rejectCheck { proofValue with body := { proofValue.body with proposition := false } }
+  let unknown := NativeLean.CheckedDeclaration.ofClassification proofValue.declaration none
+    proofValue.status proofValue.assumptions
+  rejectCheck { unknown with statement := proofValue.statement }
+  rejectCheck { unknown with body := { proofValue.body with proposition := false } }
   logInfo m!"ordinary capture: {snapshot.registry.nodes.size} nodes in {elapsed} ms"
   let registry := snapshot.registry
   -- Public consumer projections retain native validity separately from Blueprint
