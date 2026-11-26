@@ -85,6 +85,10 @@ jobs:
           +VersoBlueprint.NodeAssembly.Laws:olean
       - name: Print contribution and assembly proof dependencies
         run: ./scripts/lean-low-priority lake lean tests/verification/AssemblyAxiomAudit.lean
+      - name: Test axiom policy rejection controls
+        run: ./scripts/lean-low-priority lake lean tests/verification/AxiomPolicyTests.lean
+      - name: Enforce validation proof axiom policy
+        run: ./scripts/lean-low-priority lake lean tests/verification/ValidationAxiomAudit.lean
       - name: Run Lean tests
         run: ./scripts/run-lean-tests.sh
       - name: Run consumer math lint smoke

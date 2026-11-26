@@ -77,6 +77,7 @@ lean_lib VersoBlueprintTests where
     `VersoBlueprintTests.BlueprintSemanticFingerprint,
     `VersoBlueprintTests.BlueprintNativeFixture,
     `VersoBlueprintTests.ReferenceNameAdmission,
+    `VersoBlueprintTests.BlueprintValidationLaws,
     `VersoBlueprintTests.BlueprintCanonicalNativePersistence,
     `VersoBlueprintTests.BlueprintCanonicalSourcePersistence,
     `VersoBlueprintTests.BlueprintRealizationCapture,
