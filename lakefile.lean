@@ -2,7 +2,7 @@ import Lake
 open Lake DSL
 
 -- Pin the matching Lean 4.35 stable dependency stack.
-require verso from git "https://github.com/leanprover/verso"@"v4.35.0"
+require verso from git "https://github.com/leanprover/verso"@"v4.35.0-patch1"
 require «verso-slides» from git "https://github.com/leanprover/verso-slides"@"v4.35.0"
 require subverso from git "https://github.com/leanprover/subverso"@"verso-v4.35.0"
 require proofwidgets from git "https://github.com/leanprover-community/ProofWidgets4"@"v0.0.116"

@@ -52,6 +52,22 @@ class BlueprintHarnessReleaseHelperTests(unittest.TestCase):
             versions,
         )
 
+    def test_verso_patch_suffix_maps_to_base_lean_release_line(self) -> None:
+        self.assertEqual(releases_mod.normalize_lean_release_ref("4.35.0-patch1"), "v4.35.0-patch1")
+        self.assertEqual(releases_mod.normalize_lean_release_ref("v4.35.0-patch1"), "v4.35.0-patch1")
+        self.assertEqual(releases_mod.normalize_lean_release_ref("4.35-rc4-patch1"), "v4.35.0-rc4-patch1")
+        self.assertEqual(releases_mod.release_branch_from_lean_ref("v4.35.0-patch1"), "v4.35.0")
+        self.assertEqual(releases_mod.release_branch_from_lean_ref("v4.35.0-rc4-patch1"), "v4.35.0")
+        self.assertEqual(releases_mod.lean_release_family("v4.35.0-patch1"), (4, 35))
+        self.assertEqual(
+            releases_mod.lean_release_subversion("v4.35.0-patch1"),
+            releases_mod.lean_release_subversion("v4.35.0"),
+        )
+        self.assertEqual(
+            releases_mod.lean_release_subversion("v4.35.0-rc4-patch1"),
+            releases_mod.lean_release_subversion("v4.35.0-rc4"),
+        )
+
     def test_rewrite_lean_toolchain_preserves_existing_final_newline_style(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

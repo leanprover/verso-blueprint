@@ -9,6 +9,14 @@ NUMERIC_LEAN_RELEASE_PATTERN = re.compile(r"^v?\d+\.\d+\.\d+$")
 LEAN_RELEASE_CANDIDATE_PATTERN = re.compile(
     r"^v?(?P<major>\d+)\.(?P<minor>\d+)(?:\.(?P<patch>\d+))?-rc(?P<rc>\d+)$"
 )
+VERSO_PATCH_SUFFIX_PATTERN = re.compile(r"(?P<suffix>-patch\d+)$")
+
+
+def _split_verso_patch_suffix(ref: str) -> tuple[str, str]:
+    match = VERSO_PATCH_SUFFIX_PATTERN.search(ref)
+    if match is None:
+        return ref, ""
+    return ref[: match.start()], match.group("suffix")
 
 
 def clean_lean_ref(raw_ref: str) -> str:
@@ -54,20 +62,23 @@ def release_candidate_ref(raw_ref: str) -> str:
 
 def normalize_lean_release_ref(raw_ref: str) -> str:
     ref = clean_lean_ref(raw_ref)
-    if LEAN_RELEASE_CANDIDATE_PATTERN.fullmatch(ref) is not None:
-        return release_candidate_ref(ref)
-    if NUMERIC_LEAN_RELEASE_PATTERN.fullmatch(ref) is not None and not ref.startswith("v"):
-        ref = f"v{ref}"
+    base, patch_suffix = _split_verso_patch_suffix(ref)
+    if LEAN_RELEASE_CANDIDATE_PATTERN.fullmatch(base) is not None:
+        return f"{release_candidate_ref(base)}{patch_suffix}"
+    if NUMERIC_LEAN_RELEASE_PATTERN.fullmatch(base) is not None:
+        normalized_base = base if base.startswith("v") else f"v{base}"
+        return f"{normalized_base}{patch_suffix}"
     return ref
 
 
 def release_branch_from_lean_ref(raw_ref: str) -> str:
     ref = normalize_lean_release_ref(raw_ref)
-    match = LEAN_RELEASE_CANDIDATE_PATTERN.fullmatch(ref)
+    base, _patch_suffix = _split_verso_patch_suffix(ref)
+    match = LEAN_RELEASE_CANDIDATE_PATTERN.fullmatch(base)
     if match is not None:
         patch = match.group("patch") or "0"
         return f"v{match.group('major')}.{match.group('minor')}.{patch}"
-    return ref
+    return base
 
 
 def release_branch_version(raw_ref: str) -> tuple[int, int, int]:
@@ -92,11 +103,12 @@ def lean_release_subversion(raw_ref: str) -> tuple[int, int, int]:
     candidates precede the final release and are ordered by RC number.
     """
     ref = normalize_lean_release_ref(raw_ref)
-    rc_match = LEAN_RELEASE_CANDIDATE_PATTERN.fullmatch(ref)
+    base, _patch_suffix = _split_verso_patch_suffix(ref)
+    rc_match = LEAN_RELEASE_CANDIDATE_PATTERN.fullmatch(base)
     if rc_match is not None:
         return int(rc_match.group("patch") or "0"), 0, int(rc_match.group("rc"))
-    if NUMERIC_LEAN_RELEASE_PATTERN.fullmatch(ref) is not None:
-        _major, _minor, patch = ref.removeprefix("v").split(".")
+    if NUMERIC_LEAN_RELEASE_PATTERN.fullmatch(base) is not None:
+        _major, _minor, patch = base.removeprefix("v").split(".")
         return int(patch), 1, 0
     raise SystemExit(
         f"[blueprint-harness] expected an official numeric Lean release or release candidate, got `{ref}`"

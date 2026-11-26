@@ -52,6 +52,7 @@ from scripts.blueprint_harness_references import (
     update_git_checkout,
     validate_external_reference_toolchain,
 )
+from scripts.emit_reference_deploy_matrix import payload as deploy_workflow_payload
 from tests.harness.project_fixtures import TEST_OFFICIAL_BLUEPRINT_REQUIRE
 
 
@@ -661,6 +662,59 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             ],
         )
 
+    def test_reference_deploy_workflow_gates_the_publisher(self) -> None:
+        path = PACKAGE_ROOT / ".github/workflows/reference-blueprints-deploy.yml"
+        resolver, publisher = path.read_text(encoding="utf-8").split("\n  publish:\n")
+        self.assertIn("github.event.workflow_run.event == 'push'", resolver)
+        self.assertIn("github.event.workflow_run.conclusion == 'success'", resolver)
+        self.assertIn("github.event.workflow_run.head_repository.full_name == github.repository", resolver)
+        self.assertIn('--validated-push "$RELEASE_BRANCH" "$VALIDATED_REVISION"', resolver)
+        self.assertNotIn("pages: write", resolver)
+        self.assertIn("needs: resolve-deploy-releases", publisher)
+        self.assertIn("fromJSON(needs.resolve-deploy-releases.outputs.deployable_project_count || '0') > 0", publisher)
+        self.assertIn("uses: ./.github/workflows/publish-reference-blueprints.yml", publisher)
+        self.assertIn("controller_revision: ${{ needs.resolve-deploy-releases.outputs.controller_revision }}", publisher)
+        self.assertIn("project_matrix: ${{ needs.resolve-deploy-releases.outputs.deployable_project_matrix }}", publisher)
+
+    def test_blueprint_pages_preview_build_is_independent_of_pages(self) -> None:
+        path = PACKAGE_ROOT / ".github/workflows/blueprint-pages.yml"
+        build, deploy = path.read_text(encoding="utf-8").split("\n  deploy:\n")
+        self.assertIn("uses: actions/upload-pages-artifact@", build)
+        self.assertNotIn("actions/configure-pages@", build)
+        self.assertNotRegex(build, r"(?m)^\s+(?:pages|id-token):")
+        self.assertIn("needs: build", deploy)
+        self.assertIn("github.ref == format('refs/heads/{0}', github.event.repository.default_branch)", deploy)
+        self.assertIn("pages: write", deploy)
+        self.assertIn("id-token: write", deploy)
+        self.assertIn("uses: actions/deploy-pages@", deploy)
+
+    def test_push_to_a_catalog_release_with_pages_disabled_emits_no_deployment(self) -> None:
+        published = "v4.33.0"
+        maintenance = "v4.32.0"
+        catalog = external_catalog_data(vbp_toolchain=published, reference_toolchain=published, release=published)
+        catalog["projects"][0]["targets"][0]["publish_reference"] = True
+        catalog["release_targets"].append(
+            {
+                "id": maintenance,
+                "branch": maintenance,
+                "toolchain": maintenance,
+                "verso_ref": maintenance,
+                "deploy_pages": False,
+            }
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest = Path(tmp) / "projects.json"
+            manifest.write_text(json.dumps(catalog), encoding="utf-8")
+            with (
+                patch("scripts.emit_reference_deploy_matrix.resolve_branch_revision", return_value="a" * 40) as resolve,
+                patch.dict("os.environ", GITHUB_REPOSITORY="example/blueprints"),
+            ):
+                args = SimpleNamespace(manifest=str(manifest), validated_push=(maintenance, "b" * 40))
+                output = deploy_workflow_payload(args)
+        resolve.assert_called_once_with(PACKAGE_ROOT, published)
+        self.assertEqual(output["deployable_project_count"], 0)
+        self.assertEqual(output["deployable_project_matrix"], {"include": []})
+
     def test_reference_pages_workflow_stages_every_manifest_project(self) -> None:
         catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
         default_release = load_branch_policy(PACKAGE_ROOT).default_dev_branch
@@ -670,7 +724,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         workflow_text = (PACKAGE_ROOT / ".github" / "workflows" / "reference-blueprints.yml").read_text(
             encoding="utf-8"
         )
-        deploy_workflow_text = (PACKAGE_ROOT / ".github" / "workflows" / "reference-blueprints-deploy.yml").read_text(
+        deploy_workflow_text = (PACKAGE_ROOT / ".github" / "workflows" / "publish-reference-blueprints.yml").read_text(
             encoding="utf-8"
         )
 
@@ -723,6 +777,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             deploy_workflow_text,
         )
         self.assertIn("publish_pdf=${{ matrix.publish_pdf }}", deploy_workflow_text)
+        self.assertIn("ref: ${{ matrix.generator_revision }}", deploy_workflow_text)
         self.assertIn("Generate release reference blueprints", deploy_workflow_text)
         self.assertIn("--record-build-metrics", deploy_workflow_text)
         self.assertIn("reference_build_metrics.py report", deploy_workflow_text)
