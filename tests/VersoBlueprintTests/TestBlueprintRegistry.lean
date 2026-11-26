@@ -40,7 +40,7 @@ private def curatedTestBlueprintDoc? (slug : String) : Option Informal.Blueprint
   | "metadata-panel" => some Verso.VersoBlueprintTests.BlueprintMetadataPanel.metadataPanelDocBlueprint
   | "imported-preview-source" => some Verso.VersoBlueprintTests.BlueprintPreviewSource.Provider.importedPreviewSourceDocBlueprint
   | "lean-auto-deps" => some Verso.VersoBlueprintTests.BlueprintAutoDeps.Preview.autoDepsPreviewDocBlueprint
-  | "blueprint-grafts" => some Verso.VersoBlueprintTests.BlueprintGraft.manualSideBySideGraftDocBlueprint
+  | "blueprint-grafts" => some Verso.VersoBlueprintTests.BlueprintGraft.manualMultiNodeGraftDocBlueprint
   | "state-showcase" => some Verso.VersoBlueprintTests.BlueprintPreviewWiring.StateShowcase.stateShowcaseDocBlueprint
   | "external-summary-links" => some Verso.VersoBlueprintTests.BlueprintSummaryLinks.Shared.externalSummaryLinksDocBlueprint
   | "summary-blockers" => some Verso.VersoBlueprintTests.BlueprintSummaryLinks.Shared.summaryBlockersDocBlueprint

@@ -5,13 +5,14 @@ Author: Emilio J. Gallego Arias
 -/
 
 import VersoSlides
+import Verso.Doc.ArgParse
 import Verso.Doc.Elab
 import VersoBlueprint.Graft.Node
 
 namespace Informal.Slides
 
 open Lean
-open Verso Doc Elab
+open Verso Doc Elab ArgParse
 
 private def blueprintNodeClassName (node : Informal.Graft.BlueprintNode) : String :=
   if node.compact then
@@ -27,9 +28,21 @@ public def renderedBlueprintNodeAttrs (node : Informal.Graft.BlueprintNode) :
     Array (String × String) :=
   node.renderedAttrsWithClass (blueprintNodeClassName node)
 
-public def sideBySideAttrs (cfg : Informal.Graft.SideBySideConfig) :
-    Array (String × String) :=
-  #[("class", cfg.className ++ " bp_slide_graft_side_by_side")]
+/-- Options of the Slides-only `blueprint_side_by_side` layout. -/
+public structure SideBySideConfig where
+  boxed : Bool := false
+deriving Repr, BEq, Inhabited, ToJson, FromJson, Quote
+
+public meta instance : FromArgs SideBySideConfig DocElabM where
+  fromArgs :=
+    SideBySideConfig.mk <$>
+      .flag `boxed false
+
+public def SideBySideConfig.attrs (cfg : SideBySideConfig) : Array (String × String) :=
+  if cfg.boxed then
+    #[("class", "bp_slide_side_by_side bp_slide_side_by_side_boxed")]
+  else
+    #[("class", "bp_slide_side_by_side")]
 
 public meta def blueprintNodeBlock (cfg : Informal.Graft.BlueprintNodeConfig) : DocElabM Term := do
   let node := cfg.toNode

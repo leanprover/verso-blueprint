@@ -5,7 +5,7 @@ import VersoBlueprint.Commands.Graph
 import VersoBlueprint.Commands.Summary
 import VisualInspection.Chapters.BlockAnatomy
 import VisualInspection.Chapters.StatusMatrix
-import VisualInspection.Chapters.NarrowLayouts
+import VisualInspection.Chapters.GraftedBlocks
 import VisualInspection.Chapters.LargeGraph
 
 open Verso.Genre
@@ -24,7 +24,7 @@ focused on layout and status display. Generate it with
 
 {include 0 VisualInspection.Chapters.BlockAnatomy}
 {include 0 VisualInspection.Chapters.StatusMatrix}
-{include 0 VisualInspection.Chapters.NarrowLayouts}
+{include 0 VisualInspection.Chapters.GraftedBlocks}
 {include 0 VisualInspection.Chapters.LargeGraph}
 
 {blueprint_graph}

@@ -1131,10 +1131,10 @@ The useful data boundary is small:
 - `Informal.Graft.setClassAttr`, `Informal.Graft.appendClassAttr`, and
   `BlueprintNode.renderedAttrsWithClass` let custom renderers replace or extend
   CSS classes without creating duplicate `class` attributes.
-- `Informal.Graft.SideBySideConfig` parses wrapper options such as `+boxed`.
-  Its `attrs` helper produces the standard wrapper classes. Slides layer
-  `Informal.Slides.sideBySideAttrs` on top for deck-specific wrappers, and
-  custom consumers can ignore both helpers and arrange nodes in their own UI.
+- `Informal.Slides.SideBySideConfig` parses the Slides-only
+  `blueprint_side_by_side` options such as `+boxed`, and its `attrs` helper
+  produces the slide wrapper classes. Custom consumers arrange nodes in their
+  own UI.
 - Slide generators and other generated consumers should import and use the
   `Informal.Graft` node/config names directly.
 

@@ -429,10 +429,10 @@ class TestBlueprintSlidesRuntime:
         page.evaluate("window.Reveal.slide(2)")
         page.wait_for_function("() => window.Reveal.getIndices().h === 2")
         current_slide = page.locator(".reveal .slides section.present").first
-        graft_grid = current_slide.locator(".bp_graft_side_by_side").first
+        graft_grid = current_slide.locator(".bp_slide_side_by_side").first
         expect(graft_grid).to_be_visible()
         assert graft_grid.evaluate(
-            """grid => grid.classList.contains("bp_graft_side_by_side_boxed")"""
+            """grid => grid.classList.contains("bp_slide_side_by_side_boxed")"""
         )
         expect(graft_grid.locator(".bp_slide_node")).to_have_count(2)
         expect(graft_grid.locator(".bp_heading")).to_have_count(0)
@@ -451,7 +451,7 @@ class TestBlueprintSlidesRuntime:
         ) == "grid"
         expect_slide_link(
             page,
-            ".bp_graft_side_by_side "
+            ".bp_slide_side_by_side "
             ".bp_slide_node[data-bp-label='collatz_step'] .bp_content a[title='multiplication_spec']",
             "Multiplication/#--informal-preview-multiplication_spec--statement",
             "/blueprint/Multiplication/#--informal-preview-multiplication_spec--statement",
@@ -460,10 +460,10 @@ class TestBlueprintSlidesRuntime:
         page.evaluate("window.Reveal.slide(3)")
         page.wait_for_function("() => window.Reveal.getIndices().h === 3")
         current_slide = page.locator(".reveal .slides section.present").first
-        full_grid = current_slide.locator(".bp_graft_side_by_side").first
+        full_grid = current_slide.locator(".bp_slide_side_by_side").first
         expect(full_grid).to_be_visible()
         assert not full_grid.evaluate(
-            """grid => grid.classList.contains("bp_graft_side_by_side_boxed")"""
+            """grid => grid.classList.contains("bp_slide_side_by_side_boxed")"""
         )
         full_statement = full_grid.locator(
             ".bp_slide_node[data-bp-label='addition_right_identity']"
@@ -487,10 +487,10 @@ class TestBlueprintSlidesRuntime:
         page.evaluate("window.Reveal.slide(4)")
         page.wait_for_function("() => window.Reveal.getIndices().h === 4")
         current_slide = page.locator(".reveal .slides section.present").first
-        compact_grid = current_slide.locator(".bp_graft_side_by_side").first
+        compact_grid = current_slide.locator(".bp_slide_side_by_side").first
         expect(compact_grid).to_be_visible()
         assert compact_grid.evaluate(
-            """grid => grid.classList.contains("bp_graft_side_by_side_boxed")"""
+            """grid => grid.classList.contains("bp_slide_side_by_side_boxed")"""
         )
         expect(compact_grid.locator(".bp_slide_node")).to_have_count(2)
         expect(compact_grid.locator(".bp_heading")).to_have_count(0)
@@ -508,7 +508,7 @@ class TestBlueprintSlidesRuntime:
         page.evaluate("window.Reveal.slide(5)")
         page.wait_for_function("() => window.Reveal.getIndices().h === 5")
         current_slide = page.locator(".reveal .slides section.present").first
-        four_up_grid = current_slide.locator(".bp_graft_side_by_side").first
+        four_up_grid = current_slide.locator(".bp_slide_side_by_side").first
         expect(four_up_grid).to_be_visible()
         expect(four_up_grid.locator(".bp_slide_node")).to_have_count(4)
         expect(four_up_grid.locator(".bp_heading")).to_have_count(0)

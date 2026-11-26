@@ -56,7 +56,7 @@ theorem graftFacetCodeWitness : True := by
 {blueprint_node "thm:graft.facet.code"}
 :::::::
 
-#docs (Genre.Manual) manualSideBySideGraftDoc "Manual Side-by-Side Blueprint Graft" :=
+#docs (Genre.Manual) manualMultiNodeGraftDoc "Manual Multi-Node Blueprint Graft" :=
 :::::::
 :::definition "def:graft.manual.left" (tags := "graft, source") (effort := "small") (lean := "graftManualLeftValue")
 Manual left graft body with inline math $`x + y = y + x` and an attached Lean preview.
@@ -75,7 +75,6 @@ Manual right graft body references {uses "def:graft.manual.left"}[] and includes
 $$`\sum_{i=0}^{n} i = n`.
 :::
 
-:::blueprint_side_by_side +boxed
 {blueprint_node "def:graft.manual.left" (displayLabel := "Featured definition")}
 
 {blueprint_node "thm:graft.manual.sum" (displayLabel := "Theorem view") -header +compact}
@@ -83,11 +82,21 @@ $$`\sum_{i=0}^{n} i = n`.
 {blueprint_node "thm:graft.manual.sum" (facet := "proof") (displayLabel := "Proof view") -header +compact}
 
 {blueprint_node "def:graft.manual.right" (displayLabel := "Uses view") +compact}
+:::::::
+
+/--
+error: `blueprint_side_by_side` is only available in Slides decks; in Manual documents, place `{blueprint_node}` commands one after another
+-/
+#guard_msgs in
+#docs (Genre.Manual) manualSideBySideRejectedDoc "Manual Side-by-Side Rejected" :=
+:::::::
+:::blueprint_side_by_side
+{blueprint_node "def:graft.manual.left"}
 :::
 :::::::
 
 /-- Captured in this fixture's environment before unrelated fixtures are imported. -/
-def manualSideBySideGraftDocBlueprint : Informal.BlueprintDocument := .capture manualSideBySideGraftDoc.toPart
+def manualMultiNodeGraftDocBlueprint : Informal.BlueprintDocument := .capture manualMultiNodeGraftDoc.toPart
 
 private def graftNode (label : String) : Informal.Graft.BlueprintNode :=
   ({ label := label } : Informal.Graft.BlueprintNodeConfig).toNode
@@ -237,11 +246,9 @@ private def renderAuditNode
 #guard_msgs in
 #eval
   show IO Bool from do
-    let (html, _st) ← renderManualDocHtmlStringAndState manualImpls manualSideBySideGraftDoc
+    let (html, _st) ← renderManualDocHtmlStringAndState manualImpls manualMultiNodeGraftDoc
     pure <|
-      hasSubstr html "bp_graft_side_by_side" &&
-        hasSubstr html "bp_graft_side_by_side_boxed" &&
-        hasSubstr html "bp_graft_manifest_node" &&
+      hasSubstr html "bp_graft_manifest_node" &&
         countSubstr html "data-bp-blueprint-node=\"true\"" == 4 &&
         countSubstr html "Manual left graft body with inline math" == 2 &&
         countSubstr html "The grafted theorem states" == 2 &&
@@ -260,7 +267,7 @@ private def renderAuditNode
 #guard_msgs in
 #eval
   show IO Bool from do
-    let files ← buildManualPreviewDataFiles manualImpls manualSideBySideGraftDoc
+    let files ← buildManualPreviewDataFiles manualImpls manualMultiNodeGraftDoc
     let ctx := Informal.Graft.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)
     let node := { graftNode "def:graft.manual.left" with displayLabel? := some "API view" }
     let renderedHtml ← Informal.Graft.renderNodeFromManifestCache
@@ -284,7 +291,7 @@ private def renderAuditNode
 #guard_msgs in
 #eval
   show IO Bool from do
-    let files ← buildManualPreviewDataFiles manualImpls manualSideBySideGraftDoc
+    let files ← buildManualPreviewDataFiles manualImpls manualMultiNodeGraftDoc
     let renderedHtml ← renderAuditNode files.manifest files.htmlCache "def:graft.manual.left"
     let rendered := renderedHtml.asString
     pure <|
@@ -331,7 +338,7 @@ private def renderAuditNode
 #guard_msgs in
 #eval
   show IO Bool from do
-    let files ← buildManualPreviewDataFiles manualImpls manualSideBySideGraftDoc
+    let files ← buildManualPreviewDataFiles manualImpls manualMultiNodeGraftDoc
     let node := graftNode "def:graft.manual.missing"
     let ctx := Informal.Graft.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)
     let renderedHtml ← Informal.Graft.renderNodeFromManifestCache
@@ -352,7 +359,7 @@ private def renderAuditNode
   show IO Bool from do
     let logs ← IO.mkRef #[]
     let logError (msg : String) : IO Unit := logs.modify (·.push msg)
-    let files ← buildManualPreviewDataFiles manualImpls manualSideBySideGraftDoc
+    let files ← buildManualPreviewDataFiles manualImpls manualMultiNodeGraftDoc
     let node := graftNode "def:graft.manual.left"
     let ctx := Informal.Graft.RenderContext.ofPreviewData? (some files.manifest) (some {}) logError
     let renderedHtml ← Informal.Graft.renderNodeFromManifestCache
@@ -370,7 +377,7 @@ private def renderAuditNode
 -- A required selected facet cannot degrade into a plausible metadata shell when
 -- either its cached content or captured semantics are malformed.
 #eval show IO Unit from do
-  let (blocks, state) ← traverseManualDocBlocksAndState manualImpls manualSideBySideGraftDoc
+  let (blocks, state) ← traverseManualDocBlocksAndState manualImpls manualMultiNodeGraftDoc
   let label := LabelNameParsing.parse "def:graft.manual.left"
   let key := PreviewCache.statementKey label
   let .ok (some selected) := RenderingResolution.facetByKey? state key
@@ -464,7 +471,7 @@ private def renderAuditNode
         (files.htmlCache.entries.all (·.key != key)) &&
         (← errors.get).any (hasSubstr · expected) do
       throw <| IO.userError "Export emitted an invalid code panel"
-  let (_, externalState) ← traverseManualDocBlocksAndState manualImpls manualSideBySideGraftDoc
+  let (_, externalState) ← traverseManualDocBlocksAndState manualImpls manualMultiNodeGraftDoc
   let externalKey := TraversalIndex.LeanCodePreviews.lookupKey ``graftManualLeftValue
   let .ok external := RenderingResolution.codePanelByKey externalState externalKey
     | throw <| IO.userError "Valid external panel was rejected"
@@ -493,7 +500,7 @@ private def exportInBothModes (state : TraverseState) :
 -- A code preview may carry an older declaration snapshot. Both grafts use
 -- the captured facet's checks for their panel summaries.
 #eval show IO Unit from do
-  let (blocks, initial) ← traverseManualDocBlocksAndState manualImpls manualSideBySideGraftDoc
+  let (blocks, initial) ← traverseManualDocBlocksAndState manualImpls manualMultiNodeGraftDoc
   let node := graftNode "def:graft.manual.left"
   let name := ``graftManualLeftValue
   let codeKey := TraversalIndex.LeanCodePreviews.lookupKey name
@@ -545,7 +552,7 @@ private def exportInBothModes (state : TraverseState) :
 -- panels retain their own facts even when they render identical HTML. Empty
 -- and Unicode-whitespace-only bodies contribute no facts.
 #eval show IO Unit from do
-  let (blocks, initial) ← traverseManualDocBlocksAndState manualImpls manualSideBySideGraftDoc
+  let (blocks, initial) ← traverseManualDocBlocksAndState manualImpls manualMultiNodeGraftDoc
   let label := Lean.Name.mkSimple "def:graft.manual.left"
   let facetKey := PreviewCache.statementKey label
   let .ok (some facet) := RenderingResolution.facetByKey? initial facetKey
@@ -603,7 +610,7 @@ private def exportInBothModes (state : TraverseState) :
 -- All export adapters share the same checked inputs. A malformed facet gets one
 -- diagnostic, and verbose instrumentation cannot affect exported data or errors.
 #eval show IO Unit from do
-  let (_, initial) ← traverseManualDocBlocksAndState manualImpls manualSideBySideGraftDoc
+  let (_, initial) ← traverseManualDocBlocksAndState manualImpls manualMultiNodeGraftDoc
   let label := Lean.Name.mkSimple "def:graft.manual.left"
   let key := PreviewCache.statementKey label
   let .ok (some facet) := RenderingResolution.facetByKey? initial key

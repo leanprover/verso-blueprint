@@ -495,7 +495,7 @@ private def writeSlidesPreviewDataFiles
       return false
     let index ← IO.FS.readFile indexPath
     pure <|
-      hasSubstr index "bp_graft_side_by_side" &&
+      hasSubstr index "bp_slide_side_by_side bp_slide_side_by_side_boxed" &&
         countSubstr index "data-bp-rendered=\"static\"" == 2 &&
         hasSubstr index "Slide left graft body." &&
         hasSubstr index "Slide right graft body." &&

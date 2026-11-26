@@ -203,29 +203,6 @@ block_extension Block.blueprintGraftNode (placement : Informal.Graft.Placement) 
         | pure .empty
       renderManualGraftNode goB id placement
 
-open Verso Doc Elab Genre Manual in
-block_extension Block.blueprintGraftSideBySide (cfg : Informal.Graft.SideBySideConfig) where
-  data := toJson cfg
-  usePackages := Informal.TeX.standardMathUsePackages
-  traverse _ _ _ := pure none
-  toTeX := some <| fun _goI goB _id _data blocks => blocks.mapM goB
-  extraCss := manualGraftAssetBundle.css
-  extraJs := manualGraftAssetBundle.js
-  toHtml :=
-    open Verso.Doc.Html in
-    open Verso.Output.Html in
-    some <| fun _goI goB _id data blocks => do
-      let cfg ←
-        match ←
-            Informal.ExtensionDecode.decode?
-              (α := Informal.Graft.SideBySideConfig)
-              data
-              (fun err => s!"Malformed Blueprint graft side-by-side data ({err}): {data}") with
-        | some cfg => pure cfg
-        | Option.none => pure {}
-      let content ← blocks.mapM goB
-      pure <| Html.tag "div" cfg.attrs (Html.seq content)
-
 private meta def currentGenreIs (genreTerm : Term) : DocElabM Bool := do
   let current := (← readThe DocElabContext).genre
   let expected ← Lean.Elab.Term.elabTerm genreTerm (some (.const ``Verso.Doc.Genre []))
@@ -254,20 +231,15 @@ public meta def blueprintNodeBlock (cfg : Informal.Graft.BlueprintNodeConfig) :
   else
     throwError "Blueprint graft nodes are only available in Manual and Slides documents"
 
-public meta def blueprintSideBySide : DirectiveExpanderOf Informal.Graft.SideBySideConfig
+public meta def blueprintSideBySide : DirectiveExpanderOf Informal.Slides.SideBySideConfig
   | cfg, stxs => do
+      unless ← inSlidesGenre do
+        throwError "`blueprint_side_by_side` is only available in Slides decks; \
+          in Manual documents, place `\{blueprint_node}` commands one after another"
       let contents ← stxs.mapM elabBlock
-      if ← inManualGenre then
-        ``(Verso.Doc.Block.other
-            (Informal.Graft.Block.blueprintGraftSideBySide $(quote cfg))
-            #[$contents,*])
-      else if ← inSlidesGenre then
-        let attrs := Informal.Slides.sideBySideAttrs cfg
-        ``(Verso.Doc.Block.other
-            (VersoSlides.BlockExt.wrap $(quote attrs))
-            #[$contents,*])
-      else
-        throwError "Blueprint side-by-side grafts are only available in Manual and Slides documents"
+      ``(Verso.Doc.Block.other
+          (VersoSlides.BlockExt.wrap $(quote cfg.attrs))
+          #[$contents,*])
 
 end Informal.Graft
 
@@ -282,9 +254,10 @@ public meta def blueprint_node : BlockCommandOf Informal.Graft.BlueprintNodeConf
   | cfg => Informal.Graft.blueprintNodeBlock cfg
 
 /--
-Lay out Blueprint graft nodes side by side. Child blocks are ordinary
-`{blueprint_node ...}` commands and keep their own options.
+Lay out Blueprint graft nodes side by side on a slide. Child blocks are ordinary
+`{blueprint_node ...}` commands and keep their own options. Only Slides decks
+accept this directive.
 -/
 @[directive]
-public meta def blueprint_side_by_side : DirectiveExpanderOf Informal.Graft.SideBySideConfig :=
+public meta def blueprint_side_by_side : DirectiveExpanderOf Informal.Slides.SideBySideConfig :=
   Informal.Graft.blueprintSideBySide

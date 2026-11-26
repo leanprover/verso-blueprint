@@ -643,7 +643,6 @@ The current paths are:
 | Preview manifest/cache emission | `Informal.PreviewManifest.emitBlueprintPreviewData` via `blueprintMainWithPreviewData` | checked document and its retained prepared `Files` | resource preparation before pages, paired export after pages | `blueprint-manifest.json`, `blueprint-html-cache.json`, merged hover docs |
 | Manual attribute placement | `{blueprint_node}` for an untraversed attribute node, or `{includeBlueprintModule}` for a module catalog | `Attribute.Placement` plan from persistent node/catalog data and statement blocks | `Block.blueprintGraftNode` uses shared traversal registration and rendering with explicit code visibility | one visible occurrence, its traversal entries, and its emitted destinations |
 | Manual same-document graft | `Informal.Graft.renderManualGraftNode` through `{blueprint_node}` in Manual | checked selected facet and node metadata from `RenderingResolution`, whether authored directly or attribute-materialized | `Informal.Graft.renderNodeWithContent` | grafted Manual HTML block |
-| Manual side-by-side graft wrapper | `Block.blueprintGraftSideBySide.toHtml` | already elaborated/rendered child blocks | wrapper only; child nodes follow the Manual graft path | side-by-side Manual HTML wrapper |
 | Slides graft node | `Informal.Slides.slidesMainWithBlueprintPreviews` plus `Informal.Slides.renderBlueprintSlideNode` | serialized manifest/cache files copied from the Blueprint site | `Informal.Graft.renderNodeFromManifestCache` then `renderNodeWithContent` | static slide-node HTML plus slide assets |
 | Slides side-by-side wrapper | `VersoSlides.BlockExt.wrap` emitted by `blueprint_side_by_side` in Slides | already rendered child slide blocks | upstream Slides wrapper; child nodes follow the Slides graft-node path | side-by-side slide HTML wrapper |
 | External/custom generated consumers | direct calls to `Informal.Graft.renderNodeFromManifestCache` | serialized manifest/cache files | `Informal.Graft.renderNodeFromManifestCache` then `renderNodeWithContent` | consumer-owned HTML wrapper |
@@ -1191,10 +1190,11 @@ rather than page-local template bodies:
 5. Feature-owned JS such as graph, relation-panel, inline-preview, and template
    preview binding imports or receives the generated renderer and binds the
    generic runtime to concrete surfaces.
-6. `VersoBlueprint.Graft` provides the `{blueprint_node}` and
-   `blueprint_side_by_side` grafting commands. Manual grafts resolve their exact
-   traversal preview through `PreviewSource.lean`, project that preview into the
-   same semantic entry shape emitted by `PreviewManifest.lean`, then use the
+6. `VersoBlueprint.Graft` provides the `{blueprint_node}` grafting command
+   and the Slides-only `blueprint_side_by_side` layout. Manual grafts resolve
+   their exact traversal preview through `PreviewSource.lean`, project that
+   preview into the same semantic entry shape emitted by `PreviewManifest.lean`,
+   then use the
    shared manifest-backed block renderer. `VersoBlueprint.Graft.Render` owns the
    reusable manifest/cache rendering path for generated consumers; Slides supply
    slide-specific link attributes, classes, and diagnostics while delegating the

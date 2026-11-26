@@ -29,10 +29,15 @@ status signals that disagree with each other.
 
 ## Roadmap Decision
 
-Do now the open items below, in rank order. Defer dark mode, serif prose, a
-Blueprint-owned landing page, and realization display. Revisit the deferred
-items once the open items land. P5 needs a design for the side-by-side feature
-before implementation; do not polish the current layout.
+Do now the open items below, in rank order. Defer dark mode, serif prose, and a
+Blueprint-owned landing page, and revisit them once the open items land.
+
+Realization display is designed before it is built. Headings show one Lean
+badge even when a node has several realizations, and no rendered fixture uses
+realizations yet. The design starts as a mockup with three parts: a node's
+card names its realizations, each realization has one address that the graph,
+popups, and search share, and a comparison view aligns two realizations by
+requirement on demand.
 
 ## Reproduction Status
 
@@ -63,12 +68,12 @@ Fixed on `feat/visual-design`:
 | Code, relation, reference, summary, and graph popups were five unrelated designs, with jargon titles ("Associated Lean declarations (source snapshots; display only; …)"), raw labels as titles, and duplicate headers | One panel shell: an eyebrow naming the popup, the block's reader-facing title and label, content-sized body, optional footer. Relation rows and reference titles carry heading status marks; the code popup ends with a plain status sentence and a link to the Lean code |
 | Relation popups opened on hover and jumped as the pointer crossed headers | They open on click; `RelatedPanel.relationPanelOpenMode` switches them back to hover |
 | Blocks read as clunky: kind and number in separate columns ("Theorem   1.1.4."), chips spread across the header, statements framed three times, and a node's proof and Lean code as separate full-weight cards with a full-width progress bar | One title ("Theorem 1.1.4"), chips in fixed right-aligned columns from one grid rule, the card border as the only frame, metadata as a quiet line, and a statement's adjacent proof ("Proof.") and Lean code ("Lean", its declarations and one status) joined into its card |
+| Side-by-side grafts overflowed and clipped their half-width cards in Manual pages, and could only show a pair the author chose | `blueprint_side_by_side` is a Slides layout only; Manual pages place grafts one after another. Comparing a node's realizations is its own design, below |
 
 Open, ranked:
 
 | Rank | Problem | Evidence | Likely fix |
 | --- | --- | --- | --- |
-| P5 | Side-by-side cards overflow and clip | Six header classes overflow the card on Side-by-Side Views; Lean code is clipped; two `visual_inspection` pages scroll horizontally at phone width | Redesign the side-by-side feature; overflow and clipping are symptoms, so patching them alone is not enough |
 | P6 | The graph legend covers the sidebar and the left of the graph | Legend popover on the starter graph page | Anchor the popover inside the graph area |
 | P7 | Too many type sizes | 16 font and size combinations in non-code text on the starter Addition page | A small type scale as tokens |
 | P8 | Pages carry Blueprint CSS twice | Starter Addition page grew from 210 KB to 268 KB | Remove the re-emission once UPC-0022 lands |
@@ -82,8 +87,6 @@ Deferred:
   `src/VersoBlueprint/Graph.lean`.
 - Serif prose. Changing `--verso-text-font-family` is one line, but a bundled
   face, math glyph coverage, hovers, previews, and slides are untested.
-- Realization display. Headings show one Lean badge even when a node has
-  several realizations, and no rendered fixture uses realizations yet.
 
 ## Scope Boundary
 
