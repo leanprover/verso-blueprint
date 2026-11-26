@@ -108,6 +108,8 @@ def Registry.reviewSelections (r : Registry) : Array ReviewSelection := r.review
 
 def Registry.bindingInputs (r : Registry) : Array BindingInput := r.semanticValues
 
+def Registry.document? (r : Registry) (key : DocumentKey) : Option Document := r.documentIndex[key]?
+
 def Registry.realization? (r : Registry) (key : RealizationKey) : Option Realization := r.realizationIndex[key]?
 def Registry.translation? (r : Registry) (key : TranslationKey) : Option Translation := r.translationIndex[key]?
 def Registry.requirement? (r : Registry) (key : RequirementKey) : Option Requirement := r.requirementIndex[key]?

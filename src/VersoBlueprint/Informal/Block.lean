@@ -15,6 +15,7 @@ import VersoManual
 
 import VersoBlueprint.Commands.Common
 import VersoBlueprint.Data
+import VersoBlueprint.Docstring.Manual
 import VersoBlueprint.Environment
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.Informal.Block.Common
@@ -72,6 +73,7 @@ private def informalBlockToHtml (renderPreview : PreviewResources.Render := Prev
         let ctxt ← HtmlT.context
         let some data ← ExtensionDecode.report? (RenderingResolution.occurrence s occurrence (some ctxt))
           | pure .empty
+        let blocks := data.visibleBody blocks
         let markup :=
           (Informal.TraversalIndex.ExternalMarkup.data? s data.label).map (·.markup.toArray) |>.getD #[]
         let selectedMarkupAndContent? :=
@@ -166,7 +168,7 @@ block_extension Block.informal (data : BlockOccurrence) where
       let some data ← ExtensionDecode.report? (RenderingResolution.occurrence st occurrence)
         | pure .empty
       let title := data.displayTitle st
-      let body ← blocks.mapM goB
+      let body ← (data.visibleBody blocks).mapM goB
       pure <| Informal.TeX.quotedBlock title body
   extraCss := Informal.Block.Assets.blockCssAssets
   extraJs := Informal.Block.Assets.blockJsAssets
@@ -252,16 +254,27 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
     let prepare := do
       let resolved ← cfg.resolveForDirective kind isProof
       pure ({
-        label, kind := resolved.envKind, externalRefs := resolved.externalRefs
+        label, kind := resolved.envKind, externalRefs := resolved.externalRefs, adoption := resolved.adoption
         parent := resolved.parent, priority := resolved.priority, owner := resolved.owner
         tags := resolved.tags, effort := resolved.effort, prUrl := resolved.prUrl
         issueUrl := resolved.issueUrl
         uses := resolved.uses } : Environment.InProgress)
     let some ((retainedContents, sourceRef), count) ← Environment.withDirective prepare blockRef do
         let parsedContents ← parseDirectiveSourceMetadata cfg contents
-        let contents ← parsedContents.body.mapM elabBlock
+        if cfg.leanDocstring.isSome && !parsedContents.body.isEmpty then
+          throwErrorAt blockRef "An adopted docstring and an explicit Verso body compete for the default statement"
+        let contents ← match cfg.leanDocstring with
+          | none => parsedContents.body.mapM elabBlock
+          | some raw => do
+            let env ← getEnv
+            let name := raw.trimAscii.toString.toName
+            match Lean.docStringExt.find? (level := .server) env name,
+                Lean.versoDocStringExt.find? (level := .server) env name with
+            | some markdownText, none => pure (← liftM <| Docstring.statementBlocks (.inl markdownText)).1
+            | none, some doc => pure (← liftM <| Docstring.statementBlocks (.inr doc)).1
+            | _, _ => pure #[]
         let (previewBlocks, retainedContents) ← liftM <| retainElaboratedBlocks contents
-        pure ((retainedContents, parsedContents.sourceRef?), previewBlocks)
+        pure ((retainedContents, parsedContents.sourceRef?), if cfg.leanDocstring.isSome then #[] else previewBlocks)
       | return ← ``(Block.concat #[])
     let opts ← getOptions
     let sourceLocation :=

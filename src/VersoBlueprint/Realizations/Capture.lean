@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 import VersoBlueprint.Environment
+import VersoBlueprint.ExternalModuleSource
 import VersoBlueprint.Realizations.NativeSource
 import VersoBlueprint.Realizations.Projection
 import VersoBlueprint.Realizations.Report
@@ -199,6 +200,8 @@ structure NativeRequest where
   name : Name
   moduleName? : Option Name := none
   sourcePath? : Option String := none
+  /-- An adopted source must still be owned by this imported Lake package. -/
+  package? : Option String := none
   range? : Option DeclarationRange := none
   selectionRange? : Option DeclarationRange := none
   deriving Inhabited, BEq
@@ -329,7 +332,31 @@ def plan (raw : Raw) : Plan := Id.run do
           document := some result.documents.size
           result := { result with documents := result.documents.push source.document }
         let mut documented := none
-        if let .prose _ := source.payload then
+        if let some adoption := source.adoption then
+          let owners := records.filter fun record =>
+            record.id.producer == `blueprint.directive && record.id.moduleName == adoption.consumerModule &&
+              record.source.isSome && record.source == source.source.location
+          let selected := (owners.flatMap (·.nativeAssociations)).filter fun association =>
+            association.reference.canonical == adoption.canonical && association.placement == `statement &&
+              association.realization == ⟨label, `lean⟩ &&
+              association.context == ⟨`lean, source.context.project⟩
+          let selected := selected.toList.eraseDups.toArray
+          match adoption.owner, selected, adoption.package with
+          | .error diagnostic, _, _ => documented := some (.error diagnostic)
+          | .ok (path, _), #[association], some pkg =>
+            if association.reference.provenance.moduleName? != some adoption.moduleName then
+              documented := some (.error {
+                code := "source-association-unavailable", subject := label.toString
+                message := "Adopted docstring and native attachment disagree on the owning module" })
+            else
+              documented := some (.ok result.documented.size)
+              let job := { NativeRequest.ofAssociation association.context association with
+                sourcePath? := some path, package? := some pkg }
+              result := { result with documented := result.documented.push job }
+          | _, _, _ => documented := some (.error {
+              code := "ambiguous-docstring", subject := label.toString
+              message := "An adopted docstring requires its own directive's unique selected native attachment" })
+        else if let .prose _ := source.payload then
           let owners := records.filter fun record => record.id.producer == `blueprint.attribute &&
             record.source.isSome && record.source == source.source.location
           if !owners.isEmpty then
@@ -444,6 +471,15 @@ private def request (job : NativeRequest) : CoreM (Except Diagnostic NativeSourc
 or the owning module's source on the search path. A plain native declaration
 never asks, so a dependency shipped without sources does not affect it. -/
 private def sourcePath (job : NativeRequest) (request : NativeSource.Request) : CoreM (Except Diagnostic String) := do
+  if let some pkg := job.package? then
+    let env ← getEnv
+    if let some idx := env.getModuleIdxFor? job.name then
+      if let some owner ← ExternalModuleSource.find? env idx then
+        if owner.package == pkg && owner.module == request.moduleName && job.sourcePath? == some owner.path.toString then
+          return .ok owner.path.toString
+    return .error {
+      code := "source-association-unavailable", subject := job.name.toString
+      message := "Adopted docstring no longer belongs to the selected upstream package, module and file" }
   if let some path := job.sourcePath? then return .ok path
   if request.moduleName == (← getEnv).mainModule then return .ok (← getFileName)
   let some path ← (← getSrcSearchPath).findModuleWithExt "lean" request.moduleName
@@ -588,6 +624,16 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
                     message := "Direct native docstring format does not match its authored realization context" }
                   collected := { collected with sourceDiagnostics := collected.sourceDiagnostics.addNode label #[diagnostic] }
                   pure (.error diagnostic)
+                else if let some adoption := source.adoption then
+                  if adoption.owner.toOption == some (documented.document.key.path, SHA256.text documented.document.text) &&
+                      documented.canonical == adoption.canonical &&
+                      documented.moduleName == adoption.moduleName &&
+                      documented.document.key.context.project == source.context.project then
+                    pure (.ok documented.rawDocstring)
+                  else
+                    pure (.error {
+                      code := "source-selection-unavailable", subject := adoption.canonical.toString
+                      message := "External docstring owner or exact source bytes changed since consumer registration" })
                 else if documented.document.key.path != source.document.path ||
                     some documented.document.text != source.proseBuffer? ||
                     documented.document.key.context.project != source.context.project then
@@ -1120,6 +1166,7 @@ def observe (p : Plan) (readFile : System.FilePath → IO String := IO.FS.readFi
     let semantics ← NativeLean.newSemanticContext
     let inspection ← Data.newSorryInspectionSession
     let preparedBatch ← liftM <| IO.mkRef false
+    let parse ← NativeSource.newSourceParser
     let documents ← liftM <| IO.mkRef ({} : Std.HashMap DocumentKey (Document × Array Diagnostic))
     let native ← liftM <| IO.mkRef ({} : Std.HashMap NativeRequest (Except Diagnostic NativeSource.Prepared))
     let inline ← liftM <| IO.mkRef ({} : Std.HashMap InlineRequest (Except Diagnostic NativeSource.Prepared))
@@ -1146,7 +1193,7 @@ def observe (p : Plan) (readFile : System.FilePath → IO String := IO.FS.readFi
         | .ok request =>
           match ← sourcePath job request with
           | .error issue => pure (.error issue)
-          | .ok path => NativeSource.prepareDocumented request path reader semantics
+          | .ok path => NativeSource.prepareDocumented request path reader semantics parse
       check := fun job => answerOnce checks job do
         unless ← preparedBatch.get do
           NativeLean.prepareDeclarations inspection p.scheduledChecks

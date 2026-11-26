@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 import VersoBlueprint.Realizations.NativeSource
+import VersoBlueprintTests.BlueprintRealizationAdapter.ParserSource
 import VersoBlueprintTests.BlueprintRealizationAdapter.Provider
 import VersoBlueprintTests.SorryImport.Provider
 
@@ -63,8 +64,7 @@ run_cmd liftTermElabM do
     source.ranges.selectionRange == ranges.selectionRange && source.semanticContext.isSome)
     "Direct source must preserve typed identity, the environment's native ranges and current semantic inputs"
   -- Parser-boundary injection only, not successful proof/provider evidence:
-  -- doc-comment association reads and parses the whole owning file, so a later
-  -- unsupported command still blocks it.
+  -- The later unsupported command prevents ruling out inheritance in this file.
   let text ← IO.FS.readFile sourcePath
   let tailInput := text ++ "\nsyntax \"sourceTailCommand\" : command\nsourceTailCommand\n"
   ensure (!(← NativeSource.parseSource request.canonical sourcePath tailInput).isOk)
@@ -768,5 +768,60 @@ end
 run_cmd liftTermElabM do
   ensure ((← parseSource `owned "parser-control.lean" fieldSource).isOk)
     "Restoring the parser context did not restore parsing of the same original bytes"
+
+-- The imported owning module exercises parser scope independently of the
+-- consumer. Every selection uses actual compiled ranges and native metadata.
+run_cmd liftTermElabM do
+  let path := "tests/VersoBlueprintTests/BlueprintRealizationAdapter/ParserSource.lean"
+  let text ← IO.FS.readFile path
+  let parse ← NativeSource.newSourceParser
+  let select (name : Name) (bytes : String) := NativeSource.selectDocumented
+    { project := `adapterFixture, canonical := name
+      moduleName := `VersoBlueprintTests.BlueprintRealizationAdapter.ParserSource }
+    path (fun _ => pure bytes) parse
+  discard <| obtain (← NativeSource.parseSource `RealizationParserFixture path text)
+  for (name, format, body) in #[
+      (``RealizationParserFixture.Nested.Proofs.opened, `markdown,
+        " The parser replays a standalone namespace opening. "),
+      (``RealizationParserFixture.Nested.Proofs.scopedOpen, `markdown,
+        " The parser replays a standalone scoped opening. "),
+      (``RealizationParserFixture.wrappedVariable, `markdown,
+        " An own comment, with Unicode 😀 before the name. "),
+      (``RealizationParserFixture.sealed, `markdown,
+        " The inner declaration owns the original range inside `seal`. "),
+      (``RealizationParserFixture.attributed, `markdown,
+        " The inner declaration owns the original range inside `attribute`. "),
+      (``RealizationParserFixture.verso, `verso, " Verso syntax with *emphasis*. "),
+      (``RealizationParserFixture.afterScope, `markdown,
+        " The previous parser option is restored to Markdown. ")] do
+    let selected ← obtain (← select name text)
+    ensure (selected.format == format && selected.rawDocstring == body)
+      s!"Scoped selection lost original comment bytes or format: {name}"
+  let first := ``RealizationParserFixture.Nested.Proofs.opened
+  let edited := text.replace "namespace opening." "namespace closing."
+  ensure (edited != text && edited.utf8ByteSize == text.utf8ByteSize) "Expected same-length control"
+  match ← select first edited with
+  | .error issue => ensure (issue.code == "compiled-docstring-mismatch") s!"Wrong mutation diagnostic: {issue.code}"
+  | .ok _ => throwError "A cached parse accepted a same-length edit of the compiled Markdown"
+  discard <| obtain (← select first text)
+
+  let malformed := text.replace "True.intro -- parser recovery control" "⦿ -- parser recovery control"
+  ensure (malformed != text && !(← NativeSource.parseSource first path malformed).isOk)
+    "Malformed command did not exercise parser recovery"
+  let damaged := ``RealizationParserFixture.damaged
+  match ← select damaged malformed with
+  | .error issue =>
+    ensure (issue.code == "source-parse-failed" && issue.subject == damaged.toString)
+      "A cached failure must refer to its own selection"
+  | .ok _ => throwError "Recovered partial command was accepted as the selected declaration"
+  discard <| obtain (← select first malformed)
+  discard <| obtain (← select ``RealizationParserFixture.afterRecovery malformed)
+
+  let uncertain := malformed ++ "\nattribute [«inherit_doc» True.intro] ???\n"
+  match ← select first uncertain with
+  | .error issue =>
+    ensure (issue.code == "source-parse-failed" && issue.message.contains "inherit_doc")
+      "Malformed source with possible inheritance must fail conservatively"
+  | .ok _ => throwError "Parser recovery hid a possible inheritance application"
 
 end VersoBlueprintTests.BlueprintRealizationAdapter

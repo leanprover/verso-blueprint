@@ -257,6 +257,8 @@ structure BlockMetadata where
   prUrl : Option String := none
   /-- Tracking issue associated with this informal node, if any. -/
   issueUrl : Option String := none
+  /-- A requested external statement is shown only when capture verifies its current bytes. -/
+  adoptedStatementAvailable : Option Bool := none
   /-- Current captured realization assessment. `none` means this rendering
   projection has no captured snapshot; consumers must never infer completion
   from the legacy declaration display payload in that case. -/
@@ -361,6 +363,9 @@ private def externalChecksOn (node : Data.NodeInventory) (placement : Name)
   return selected.toArray.map fun (name, association) =>
     (name, statuses.get? ⟨association.context, name.toString⟩)
 
+def BlockData.visibleBody (data : BlockData) (blocks : Array α) : Array α :=
+  if !data.isProof && data.adoptedStatementAvailable == some false then #[] else blocks
+
 def RenderNode.ofNode (label : Data.Label) (node : Data.NodeInventory)
     (author : Option Data.AuthorInfo := none)
     (assessment : Option Realizations.NodeAssessment := none)
@@ -368,6 +373,7 @@ def RenderNode.ofNode (label : Data.Label) (node : Data.NodeInventory)
   label
   kind := node.kind
   initialCount := node.count
+  adoptedStatementAvailable := if node.sources.any (·.adoption.isSome) then some false else none
   externalRefs := node.nativeRefsOn `statement
   proofExternalRefs := node.nativeRefsOn `proof
   statementExternalChecks := (nativeChecks.map (externalChecksOn node `statement)).getD #[]

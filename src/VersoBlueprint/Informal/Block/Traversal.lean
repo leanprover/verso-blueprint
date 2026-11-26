@@ -179,7 +179,7 @@ def registerTraversedBlock
   let some blockData ← ExtensionDecode.report? (TraversalIndex.Nodes.resolve (← get) occurrence)
     | return
   let blockData := blockData.withTraversalNumberingContext (← read)
-  registerTraversedBlockAssets id blockData contents showsCode
+  registerTraversedBlockAssets id blockData (blockData.visibleBody contents) showsCode
   saveTraversedBlockData id blockData
 
 end Informal

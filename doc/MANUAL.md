@@ -975,6 +975,29 @@ For all natural numbers $`a`, $`b`, and $`c`, addition is associative.
 This links the Blueprint entry to an existing Lean declaration without copying
 the declaration body into the chapter.
 
+To use an imported declaration’s own docstring as the informal statement, set
+`leanDocstring` to one canonical name from `lean` and leave the statement body empty.
+
+```md
+:::theorem "public_half_plane" (lean := "LFunction_ne_zero_of_half_lt_re") (leanDocstring := "LFunction_ne_zero_of_half_lt_re")
+:::
+```
+
+The chapter owns this selection under its `verso.blueprint.project`. The declaration
+and its source ranges belong to the upstream package. A direct Markdown or Verso
+comment supplies a separate statement realization. Add a normal `:::proof` to
+supply independently authored proof prose. An explicit statement body conflicts
+with adoption. A declaration list still selects exactly one docstring.
+
+This requires readable source and a normal owning Lake build with a source input
+and matching loaded artifact. Lake verifies text with normalized line endings.
+The consumer also records the exact UTF-8 source digest at registration, which
+capture checks before publishing the selected comment. Rebuild the consuming
+chapter after an upstream source edit. Missing, empty, inherited or ambiguous
+comments leave the native declaration available and produce a source diagnostic.
+Module introductions remain ordinary chapter content. Adopting prose supplies
+no review judgment or proof of correspondence.
+
 Proof blocks can attach Lean declarations to the same Blueprint node:
 
 ```md

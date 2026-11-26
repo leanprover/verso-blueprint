@@ -138,7 +138,8 @@ def NodeInventory.leanDecls (node : NodeInventory) : Array Name :=
 def NodeInventory.hasAssociatedCode (node : NodeInventory) : Bool :=
   !node.nativeAssociations.isEmpty || !node.inlineCodes.isEmpty
 
-def NodeInventory.hasStatementBody (node : NodeInventory) : Bool := (node.defaultProseView `statement).any (·.hasBody)
+def NodeInventory.hasStatementBody (node : NodeInventory) : Bool :=
+  node.sources.any (·.adoption.isSome) || (node.defaultProseView `statement).any (·.hasBody)
 
 def NodeInventory.hasProofBody (node : NodeInventory) : Bool := (node.defaultProseView `proof).any (·.hasBody)
 

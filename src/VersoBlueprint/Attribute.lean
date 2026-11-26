@@ -132,25 +132,7 @@ private def statementFromDocstring? (decl : Name) (ref : Syntax) :
     CoreM (Option (Data.InformalBody × Array Data.UseRef × Name)) := do
   let env ← getEnv
   let some internalDoc ← liftM <| findInternalDocString? env decl | return none
-  let (elabStx, deps, format) ←
-    match internalDoc with
-    | .inl doc => do
-      let elabStx ← do
-        let doc := doc.trimAscii.toString
-        if doc.isEmpty then
-          pure #[]
-        else
-          match MD4Lean.parse doc with
-          | some ast =>
-            ast.blocks.mapM (fun b =>
-              Verso.Genre.Manual.Markdown.blockFromMarkdown b
-                (handleHeaders := Verso.Genre.Manual.Markdown.strongEmphHeaders))
-          | none =>
-            pure #[← `(Verso.Doc.Block.para #[Verso.Doc.Inline.text $(quote doc)])]
-      pure (elabStx, #[], `markdown)
-    | .inr doc => do
-      let (elabStx, deps) ← Informal.Docstring.versoDocstringToManualBlocksStx doc
-      pure (elabStx, deps, `verso)
+  let (elabStx, deps, format) ← Informal.Docstring.statementBlocks internalDoc
   if elabStx.isEmpty then
     pure none
   else

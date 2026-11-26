@@ -8,11 +8,11 @@ import VersoManual
 import VersoBlueprint.Commands.Common
 import VersoBlueprint.Data
 import VersoBlueprint.Environment
-import VersoBlueprint.Informal.Block
 import VersoBlueprint.Informal.LabelArg
 import VersoBlueprint.Informal.UseConfig
 import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.Lib.HoverRender
+import VersoBlueprint.Lib.PreviewResources
 import VersoBlueprint.RenderingResolution
 import VersoBlueprint.Profiling
 import VersoBlueprint.TeX

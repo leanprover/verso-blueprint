@@ -32,6 +32,8 @@ structure InProgress where
   label : Label
   kind : Data.InProgressKind := .proof
   externalRefs : Array ExternalRef := #[]
+  /-- Explicit external docstring plus its directly observed format. -/
+  adoption : Option (SourceData.AdoptedDocstring × Name) := none
   parent : Option Parent := none
   priority : Option String := none
   owner : Option AuthorId := none
@@ -517,7 +519,9 @@ def checkLabelAndNesting (label : Label) (kind : Data.InProgressKind) : m Bool :
 private def InProgress.toRegistration (current : InProgress) (count : Nat) (ref : Syntax)
     (blocks : Array (Verso.Doc.Block Verso.Genre.Manual)) : CoreM SourceData.Registration := do
   let role := match current.kind with | .statement _ => `statement | .proof => `proof
-  let source ← sourceAt current.label `verso (some role) `verso (.prose { stx := ref, previewBlocks := blocks }) ref
+  let format := current.adoption.map (·.2) |>.getD `verso
+  let source ← sourceAt current.label format (some role) format (.prose { stx := ref, previewBlocks := blocks }) ref
+  let source := { source with adoption := current.adoption.map (·.1) }
   return {
     kind := match current.kind with | .statement kind => some kind | .proof => none
     count := match current.kind with | .statement _ => count | .proof => 0

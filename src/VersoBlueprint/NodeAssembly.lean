@@ -39,6 +39,12 @@ private def mergeContribution (label : Label) (node : NodeInventory)
   let mut sources := node.sources
   for source in incoming.sources do
     for previous in sources do
+      if (previous.adoption.isSome || source.adoption.isSome) &&
+          previous.destination.role == some `statement && source.destination.role == some `statement then
+        let claimsDefault (selection : SourceData.SourceSelection) :=
+          selection.adoption.isSome || match selection.payload with | .prose body => body.hasBody | _ => false
+        if claimsDefault previous && claimsDefault source then
+          conflict s!"Label {label}: duplicate-source: adopted docstring competes for the default statement body"
       if previous.destination == source.destination then
         let occupied := match previous.payload, source.payload with
           | .prose first, .prose second => first.hasBody && second.hasBody

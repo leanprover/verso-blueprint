@@ -23,43 +23,142 @@ open Lean Validation Translations
 private def issue (code : String) (label : Name) (message : String) : Diagnostic :=
   { code, subject := label.toString, message }
 
-/-- Parse only in the current environment; do not elaborate commands or mutate
-Blueprint state. Syntax requiring intervening elaboration, or made incompatible
-by later imports reserving new keywords, is unsupported. The whole file is parsed
-so a later inheritance directive cannot be hidden. Original source is not sliced. -/
-def parseSource (label : Name) (path text : String) : CoreM (Except Diagnostic (Array Syntax)) := do
+private def openParserNamespaces (context : Parser.ParserModuleContext) (decl : Syntax) :
+    Parser.ParserModuleContext := Id.run do
+  let (ids, opened) := match decl.getKind with
+    | ``Parser.Command.openSimple => (decl[0].getArgs, some [])
+    | ``Parser.Command.openScoped => (decl[1].getArgs, none)
+    | ``Parser.Command.openHiding => (#[decl[0]], some (decl[2].getArgs.map Syntax.getId).toList)
+    | _ => (#[], none)
+  return ids.foldl (init := context) fun context id =>
+    let resolved := ResolveName.resolveNamespace context.env context.currNamespace context.openDecls (Syntax.getId id)
+    resolved.foldl (init := context) fun context ns =>
+      { context with
+        env := Parser.parserExtension.activateScoped context.env ns
+        openDecls := opened.elim context.openDecls fun hidden => .simple ns hidden :: context.openDecls }
+
+private def setParserOption (context : Parser.ParserModuleContext) (command : Syntax) :
+    Parser.ParserModuleContext :=
+  let value := command[3]
+  let optionValue : Option DataValue :=
+    if let some s := value.isStrLit? then some (.ofString s)
+    else if let some n := value.isNatLit? then some (.ofNat n)
+    else if value.getAtomVal == "true" then some (.ofBool true)
+    else if value.getAtomVal == "false" then some (.ofBool false)
+    else none
+  optionValue.elim context fun v =>
+    { context with options := context.options.insert command[1].getId v }
+
+-- Each entry saves the parser context before entering one component of a
+-- section or namespace. Leaving that scope restores its options and openings.
+private abbrev ParserScopes := List Parser.ParserModuleContext
+
+private def enterParserScopes (context : Parser.ParserModuleContext) (scopes : ParserScopes)
+    (name : Name) (namespaceScope : Bool) : Parser.ParserModuleContext × ParserScopes :=
+  match name with
+  | .anonymous => (context, scopes)
+  | .str parent component =>
+    let (context, scopes) := enterParserScopes context scopes parent namespaceScope
+    let next := if namespaceScope then
+      let ns := Name.str context.currNamespace component
+      { context with currNamespace := ns, env := Parser.parserExtension.activateScoped context.env ns }
+    else context
+    (next, context :: scopes)
+  | .num .. => (context, scopes)
+
+private def advanceParserContext (context : Parser.ParserModuleContext) (scopes : ParserScopes)
+    (command : Syntax) : Parser.ParserModuleContext × ParserScopes :=
+  match command.getKind with
+  | ``Parser.Command.open => (openParserNamespaces context command[1], scopes)
+  | ``Parser.Command.set_option => (setParserOption context command, scopes)
+  | ``Parser.Command.namespace => enterParserScopes context scopes command[1].getId true
+  | ``Parser.Command.section =>
+    if let #[id] := command[2].getArgs then enterParserScopes context scopes id.getId false
+    else (context, context :: scopes)
+  | ``Parser.Command.end =>
+    let count := if let #[id] := command[1].getArgs then id.getId.getNumParts else 1
+    (scopes[count - 1]?.getD context, scopes.drop count)
+  | _ => (context, scopes)
+
+structure ParsedSource where
+  private mk ::
+  private commands : Array Syntax
+  private failure? : Option String := none
+
+private def parserFailure (messages : MessageLog) : String :=
+  let location := (messages.toList.find? (·.severity == .error)).map
+    (fun message => s!" at {message.pos.line}:{message.pos.column}") |>.getD ""
+  s!"Owning source could not be parsed{location} in the current syntax environment without elaboration"
+
+private def parseSourceWith (env : Environment) (path text : String) : CoreM ParsedSource := do
   try
     let input := Parser.mkInputContext text path
     let (_, state, messages) ← liftM <| Parser.parseHeader input
-    let env ← getEnv
-    let rec loop (fuel : Nat) (state : Parser.ModuleParserState) (messages : MessageLog)
-        (commands : Array Syntax) : Except Diagnostic (Array Syntax) := do
+    if messages.hasErrors then return ⟨#[], some (parserFailure messages)⟩
+    let rec loop (fuel : Nat) (state : Parser.ModuleParserState)
+        (context : Parser.ParserModuleContext) (scopes : ParserScopes) (parsed : ParsedSource) : ParsedSource :=
       match fuel with
-      | 0 => throw <| issue "source-parse-failed" label "Owning source parser exhausted its progress bound"
-      | fuel + 1 =>
-        let (command, next, messages) := Parser.parseCommand input { env, options := {} } state messages
-        if messages.hasErrors then
-          let location := (messages.toList.find? (·.severity == .error)).map
-            (fun message => s!" at {message.pos.line}:{message.pos.column}") |>.getD ""
-          throw <| issue "source-parse-failed" label
-            s!"Owning source could not be parsed{location} in the current syntax environment without elaboration"
-        if command.isOfKind ``Parser.Command.eoi then return commands
+      | 0 => { parsed with failure? := parsed.failure?.or (some "Owning source parser exhausted its progress bound") }
+      | fuel + 1 => Id.run do
+        let (command, next, messages) := Parser.parseCommand input context state {}
+        let parsed := if messages.hasErrors && parsed.failure?.isNone then
+          { parsed with failure? := some (parserFailure messages) }
+        else parsed
+        if command.isOfKind ``Parser.Command.eoi then return parsed
         if Parser.isTerminalCommand command || next.pos <= state.pos then
-          throw <| issue "source-parse-failed" label "Owning source parser stopped before end of file"
-        loop fuel next messages (commands.push command)
-    return loop (text.utf8ByteSize + 1) state messages #[]
+          return { parsed with failure? := parsed.failure?.or (some "Owning source parser stopped before end of file") }
+        -- Keep only independently parsed commands. The first syntax returned
+        -- during recovery can start inside the damaged command.
+        if state.recovering || next.recovering || messages.hasErrors then
+          return loop fuel next context scopes parsed
+        let (context, scopes) := advanceParserContext context scopes command
+        return loop fuel next context scopes { parsed with commands := parsed.commands.push command }
+    return loop (text.utf8ByteSize + 1) state { env, options := {} } [] ⟨#[], none⟩
   catch _ =>
-    return .error <| issue "source-parse-failed" label "Owning source parser failed"
+    return ⟨#[], some "Owning source parser failed"⟩
+
+abbrev SourceParser := String → String → CoreM ParsedSource
+
+private def parseOwningSource : SourceParser := fun path text => do
+  parseSourceWith (← getEnv) path text
+
+/-- Parse original source without elaborating commands. Use the current syntax
+environment and replay the parser effects of standalone openings, options and
+scopes. The whole file must parse so a later inheritance directive cannot be
+hidden. Syntax that requires intervening elaboration can still be unsupported. -/
+def parseSource (label : Name) (path text : String) : CoreM (Except Diagnostic (Array Syntax)) := do
+  let parsed ← parseOwningSource path text
+  return match parsed.failure? with
+    | some failure => .error (issue "source-parse-failed" label failure)
+    | none => .ok parsed.commands
+
+/-- Share parsing for the same path and exact bytes within one observation.
+The environment is fixed at creation; cached failures carry no request label. -/
+def newSourceParser : CoreM SourceParser := do
+  let env ← getEnv
+  let cache ← liftM <| IO.mkRef ({} : Std.HashMap (String × String) ParsedSource)
+  return fun path text => do
+    let key := (path, text)
+    if let some parsed := (← cache.get).get? key then return parsed
+    let parsed ← parseSourceWith env path text
+    cache.modify (·.insert key parsed)
+    return parsed
+
+private def isDeclarationScope (command : Syntax) : Bool :=
+  command.isOfKind ``Parser.Command.set_option || command.isOfKind ``Parser.Command.open ||
+    command.isOfKind ``Parser.Command.variable || command.isOfKind ``Parser.Command.attribute ||
+    (match command with | `(command| seal $_ids*) => true | _ => false)
 
 private partial def declarations (command : Syntax) : Array Syntax :=
-  if command.isOfKind ``Parser.Command.declaration then #[command]
+  -- Mathlib's `lemma` parser has the same modifier and declaration ID slots
+  -- as `theorem`. Keep the original syntax and never execute its macro.
+  if command.isOfKind ``Parser.Command.declaration || command.isOfKind `lemma then #[command]
   else if command.isOfKind ``Parser.Command.«mutual» then
     command[1].getArgs.flatMap declarations
   -- Lean's parser handles the scoped syntax of these command wrappers. Only
   -- unwrap their enclosed command; do not search arbitrary syntax subtrees or
   -- replace the declaration/name ranges with the enclosing wrapper's range.
-  else if command.isOfKind ``Parser.Command.«in» &&
-      (command[0].isOfKind ``Parser.Command.set_option || command[0].isOfKind ``Parser.Command.«open») then
+  else if command.isOfKind ``Parser.Command.«in» && isDeclarationScope command[0] then
     declarations command[2]
   else #[]
 
@@ -97,10 +196,8 @@ def declarationAtRanges (label : Name) (text : String) (range selection : Declar
     throw <| issue "ambiguous-docstring" label "Multiple source declarations match the accepted ranges"
   return candidates[0]!
 
-/-- Exact own-comment association. Lean positions count codepoints;
-`ofStringPositions checks UTF-16 columns using the owning FileMap. -/
-def docCommentAtRanges (label : Name) (text : String) (range selection : DeclarationRange)
-    (commands : Array Syntax) : Except Diagnostic String := do
+private def docCommentSyntaxAtRanges (label : Name) (text : String) (range selection : DeclarationRange)
+    (commands : Array Syntax) : Except Diagnostic (TSyntax ``Parser.Command.docComment) := do
   if commands.any hasStandaloneInheritance then
     throw <| issue "inherited-docstring" label
       "Standalone inherit_doc applications prevent an unambiguous own-source association"
@@ -111,7 +208,11 @@ def docCommentAtRanges (label : Name) (text : String) (range selection : Declara
   let comment := modifiers[0][0]
   unless comment.isOfKind ``Parser.Command.docComment do
     throw <| issue "missing-own-comment" label "Selected declaration has no direct modifier doc comment"
-  let some source := originalRange? text comment
+  return ⟨comment⟩
+
+private def rawDocComment (label : Name) (text : String) (comment : TSyntax ``Parser.Command.docComment) :
+    Except Diagnostic String := do
+  let some source := originalRange? text comment.raw
     | throw <| issue "source-association-unavailable" label "Doc comment has no original owning-source positions"
   let raw := String.Pos.Raw.extract text source.start source.stop
   unless raw.startsWith "/--" && raw.endsWith "-/" do
@@ -119,6 +220,12 @@ def docCommentAtRanges (label : Name) (text : String) (range selection : Declara
   -- The delimiters are ASCII. These byte adjustments preserve every body byte,
   -- including initial/final whitespace and supplementary-plane characters.
   return String.Pos.Raw.extract text ⟨source.start.byteIdx + 3⟩ ⟨source.stop.byteIdx - 2⟩
+
+/-- Exact own-comment association. Lean positions count codepoints;
+`ofStringPositions` checks UTF-16 columns using the owning FileMap. -/
+def docCommentAtRanges (label : Name) (text : String) (range selection : DeclarationRange)
+    (commands : Array Syntax) : Except Diagnostic String := do
+  rawDocComment label text (← docCommentSyntaxAtRanges label text range selection commands)
 
 /-- Compare optional accepted snapshot ranges with the environment's current
 native ranges for that same canonical declaration. This pure check does not fill
@@ -178,12 +285,14 @@ private def checkOwner (request : Request) : CoreM (Except Diagnostic Unit) := d
     return .error <| issue "source-association-unavailable" name "Source module disagrees with current declaration owner"
   return .ok ()
 
-private def nativeDocstringFormat (name : Name) : CoreM (Except Diagnostic Name) := do
+-- A Markdown result retains the actual compiled docstring for comparison. A
+-- Verso result stores parsed content and has no comparable Markdown string.
+private def ownDocstringMetadata (name : Name) : CoreM (Except Diagnostic (Option String)) := do
   let env ← getEnv
   return match Lean.docStringExt.find? (level := .server) env name,
       Lean.versoDocStringExt.find? (level := .server) env name with
-    | some _, none => .ok `markdown
-    | none, some _ => .ok `verso
+    | some markdown, none => .ok (some markdown)
+    | none, some _ => .ok none
     | none, none => .error <| issue "unsupported-docstring" name "No direct own native docstring metadata"
     | some _, some _ => .error <| issue "ambiguous-docstring" name "Conflicting own native docstring formats"
 
@@ -312,21 +421,24 @@ def prepareInline (request : Request) (sourcePath : String) (code : Data.Code)
   | .error diagnostic => return .error diagnostic
   | .ok block => prepareInlineBlock request sourcePath block readSource semantics
 
-/-- Additionally require direct own native format metadata and one original
-modifier comment at the declaration's exact full/name ranges. The environment
-keeps only a normalized or parsed docstring, so the raw comment is read from the
-whole owning source file, which must still contain one original declaration at
-both native ranges. Return raw authored bytes only; inherited/rendered text and
-nearby comments are not substitutes. -/
-def prepareDocumented (request : Request) (sourcePath : String)
+/-- Verified own docstring selection, independently of native semantics. -/
+structure DocumentSelection where
+  document : Document
+  format : Name
+  rawDocstring : String
+  ranges : DeclarationRanges
+
+/-- Select the original own modifier comment at both checked native ranges.
+For Markdown, also compare Lean's normalized value to the direct compiled
+metadata. The result keeps the unnormalized bytes from the supplied source. -/
+def selectDocumented (request : Request) (sourcePath : String)
     (readSource : System.FilePath → IO String := IO.FS.readFile)
-    (semantics : NativeLean.SemanticContext := NativeLean.semanticContext) :
-    CoreM (Except Diagnostic Documented) := do
+    (parse : SourceParser := parseOwningSource) : CoreM (Except Diagnostic DocumentSelection) := do
   if let .error diagnostic ← checkOwner request then return .error diagnostic
   if let .error diagnostic := checkSourcePath request sourcePath then return .error diagnostic
   let name := request.canonical
-  let format ← match ← nativeDocstringFormat name with
-    | .ok format => pure format
+  let markdown ← match ← ownDocstringMetadata name with
+    | .ok markdown => pure markdown
     | .error diagnostic => return .error diagnostic
   let ranges ← match ← environmentRanges request with
     | .ok ranges => pure ranges
@@ -334,21 +446,50 @@ def prepareDocumented (request : Request) (sourcePath : String)
   let text ← try liftM <| readSource sourcePath catch _ =>
     return .error <| issue "source-unavailable" name "Cannot read canonical source at owning association path"
   if blank text then return .error <| issue "source-unavailable" name "Canonical source is empty"
-  let commands ← match ← parseSource name sourcePath text with
-    | .ok commands => pure commands
-    | .error diagnostic => return .error diagnostic
-  if let .error diagnostic := declarationAtRanges name text ranges.range ranges.selectionRange commands then
-    return .error diagnostic
-  let prepared ← match ← preparedAt request ranges semantics with
-    | .ok prepared => pure prepared
-    | .error diagnostic => return .error diagnostic
-  let rawDocstring ← match docCommentAtRanges name text ranges.range ranges.selectionRange commands with
+  let parsed ← parse sourcePath text
+  let comment ← match docCommentSyntaxAtRanges name text ranges.range ranges.selectionRange parsed.commands with
+    | .ok comment => pure comment
+    | .error diagnostic =>
+      if let some failure := parsed.failure? then
+        if diagnostic.code == "source-association-unavailable" then
+          return .error <| issue "source-parse-failed" name failure
+      return .error diagnostic
+  if let some failure := parsed.failure? then
+    -- A skipped command can hide a standalone inheritance application. Its
+    -- attribute name must occur literally, including when guillemet-escaped.
+    if text.contains "inherit_doc" then
+      return .error <| issue "source-parse-failed" name
+        (failure ++ ". Cannot rule out an inherit_doc application")
+  let rawDocstring ← match rawDocComment name text comment with
     | .ok raw => pure raw
     | .error diagnostic => return .error diagnostic
   if blank rawDocstring then return .error <| issue "missing-docstring" name "Empty raw docstring"
+  if let some compiled := markdown then
+    let normalized ← try pure (← Lean.getDocStringText comment).removeLeadingSpaces catch _ =>
+      return .error <| issue "source-association-unavailable" name "Cannot normalize the selected Markdown comment"
+    unless normalized == compiled do
+      return .error <| issue "compiled-docstring-mismatch" name
+        "The selected Markdown comment disagrees with the direct compiled docstring"
   return .ok {
-    toPrepared := prepared, document := { key := ⟨⟨`lean, request.project⟩, sourcePath⟩, text }
-    format, rawDocstring }
+    document := { key := ⟨⟨`lean, request.project⟩, sourcePath⟩, text }
+    format := if markdown.isSome then `markdown else `verso
+    rawDocstring, ranges }
+
+/-- Prepare a checked declaration together with its selected own source comment. -/
+def prepareDocumented (request : Request) (sourcePath : String)
+    (readSource : System.FilePath → IO String := IO.FS.readFile)
+    (semantics : NativeLean.SemanticContext := NativeLean.semanticContext)
+    (parse : SourceParser := parseOwningSource) : CoreM (Except Diagnostic Documented) := do
+  let selection ← match ← selectDocumented request sourcePath readSource parse with
+    | .ok selection => pure selection
+    | .error diagnostic => return .error diagnostic
+  let ranges := selection.ranges
+  let prepared ← match ← preparedAt request ranges semantics with
+    | .ok prepared => pure prepared
+    | .error diagnostic => return .error diagnostic
+  return .ok {
+    toPrepared := prepared, document := selection.document
+    format := selection.format, rawDocstring := selection.rawDocstring }
 
 /-- Source contributions for the caller-supplied node. The caller merges them
 into the complete batch for admission. Validation requirements and observations

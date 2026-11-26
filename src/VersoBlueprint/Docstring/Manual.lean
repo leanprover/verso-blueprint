@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
+import VersoManual.Markdown
 import VersoBlueprint.Docstring.References
 import VersoBlueprint.Math
 
@@ -124,5 +125,28 @@ where
     for child in part.subParts do
       out := out ++ (← partToManualBlocksStx child)
     pure out
+
+/-- Presentation from a compiled direct docstring. Capture separately verifies
+source selection and decides whether an adopted statement can be displayed. -/
+def statementBlocks (internalDoc : String ⊕ Lean.VersoDocString) :
+    CoreM (Array (TSyntax `term) × Array Data.UseRef × Name) := do
+  match internalDoc with
+  | .inl doc => do
+    let elabStx ← do
+      let doc := doc.trimAscii.toString
+      if doc.isEmpty then
+        pure #[]
+      else
+        match MD4Lean.parse doc with
+        | some ast =>
+          ast.blocks.mapM (fun b =>
+            Verso.Genre.Manual.Markdown.blockFromMarkdown b
+              (handleHeaders := Verso.Genre.Manual.Markdown.strongEmphHeaders))
+        | none =>
+          pure #[← `(Verso.Doc.Block.para #[Verso.Doc.Inline.text $(quote doc)])]
+    pure (elabStx, #[], `markdown)
+  | .inr doc => do
+    let (elabStx, deps) ← Informal.Docstring.versoDocstringToManualBlocksStx doc
+    pure (elabStx, deps, `verso)
 
 end Informal.Docstring

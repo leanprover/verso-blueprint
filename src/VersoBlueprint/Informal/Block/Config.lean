@@ -10,6 +10,7 @@ import VersoBlueprint.Data
 import VersoBlueprint.DependencyAnalysis
 import VersoBlueprint.DirectiveArgParsing
 import VersoBlueprint.Environment
+import VersoBlueprint.ExternalModuleSource
 import VersoBlueprint.Informal.ExternalCode
 import VersoBlueprint.Informal.LabelArg
 import VersoBlueprint.Informal.UseConfig
@@ -39,6 +40,8 @@ structure Config where
   labelSyntax : Syntax := Syntax.missing
   /-- Optional Lean/external-code references associated with either facet. -/
   lean : Option String := none
+  /-- Canonical declaration from the Lean attachment whose own comment supplies the statement. -/
+  leanDocstring : Option String := none
   /-- Optional local override for automatic dependency inference. -/
   autoDeps : Option Bool := none
   /-- Optional parent node label. -/
@@ -91,7 +94,7 @@ variable [Monad m] [MonadInfoTree m] [MonadResolveName m] [MonadLiftT CoreM m] [
     [MonadError m] [MonadFileMap m] [MonadLog m] [AddMessageContext m] [MonadOptions m]
 
 def Config.parse : ArgParse m Config :=
-  (fun (labelArg : Verso.ArgParse.WithSyntax String) lean autoDeps parent priority owner tags effort prUrl
+  (fun (labelArg : Verso.ArgParse.WithSyntax String) lean leanDocstring autoDeps parent priority owner tags effort prUrl
       issueUrl uses usesOrigin usesIntent =>
     let (externalCode, invalidExternalCode) := ExternalCode.parseExternalCodeList lean
     let parsedLabel := LabelArg.parse labelArg
@@ -100,6 +103,7 @@ def Config.parse : ArgParse m Config :=
       label := parsedLabel.label
       labelSyntax := parsedLabel.labelSyntax
       lean := lean
+      leanDocstring
       autoDeps := autoDeps
       parent := parent.map LabelNameParsing.parse
       priority := priority
@@ -114,7 +118,7 @@ def Config.parse : ArgParse m Config :=
       externalCode := externalCode
       invalidExternalCode := invalidExternalCode
     }) <$> .positional `label (.withSyntax .string) <*> .named `lean .string true
-        <*> .named' `autoDeps true
+        <*> .named `leanDocstring .string true <*> .named' `autoDeps true
         <*> .named `parent .string true <*> .named `priority .string true <*> .named `owner .string true
         <*> .named `tags .string true <*> .named `effort .string true <*> .named `pr_url .string true
         <*> .named `issue_url .string true
@@ -129,6 +133,7 @@ end
 structure ResolvedConfig where
   label : Data.Label
   labelSyntax : Syntax
+  adoption : Option (SourceData.AdoptedDocstring × Name) := none
   envKind : Data.InProgressKind
   externalRefs : Array Data.ExternalRef := #[]
   parent : Option Data.Parent := none
@@ -225,6 +230,35 @@ private def resolveHttpUrlOption? {m}
         pure none
     | none => pure none
 
+private def docstringSelection (refs : Array Data.ExternalRef) (name : String) (isProof : Bool) :
+    CoreM (SourceData.AdoptedDocstring × Name) := do
+  if isProof then throwError "'leanDocstring' belongs on a statement directive"
+  let name := name.trimAscii.toString
+  let canonical := name.toName
+  unless !canonical.isAnonymous && canonical.toString == name &&
+      refs.any (fun r => r.canonical == canonical && r.present) do
+    throwError "'leanDocstring' must select the canonical name of one present declaration in 'lean'"
+  let env ← getEnv
+  let some idx := env.getModuleIdxFor? canonical
+    | throwError "'leanDocstring' requires an imported declaration"
+  let format := if Lean.versoDocStringExt.find? (level := .server) env canonical |>.isSome then `verso else `markdown
+  let moduleName := env.header.moduleNames[idx.toNat]!
+  let unavailable (message : String) : Realizations.Diagnostic :=
+    { code := "source-association-unavailable", subject := name, message }
+  let owner : Except Realizations.Diagnostic (String × String) ← do
+    let some source ← ExternalModuleSource.find? env idx
+      | pure <| .error (unavailable "The imported module has no matching Lake source input and output artifact")
+    try
+      let text ← IO.FS.readFile source.path
+      if Lake.Hash.ofText text != source.textHash then
+        pure <| .error (unavailable "Owning source differs from the text input of the compiled module")
+      else
+        pure <| .ok (source.path.toString, SHA256.text text)
+    catch _ => pure <| .error (unavailable "Cannot read the compiled module's owning source")
+  return ({
+    consumerModule := env.mainModule, canonical, moduleName
+    package := env.getModulePackageByIdx? idx, owner }, format)
+
 /--
 Resolve a directive config for environment registration.
 
@@ -240,6 +274,8 @@ def Config.resolveForDirective {m}
     if isProof then .proof else .statement kind
   let resolvedExternalCode ←
     ExternalCode.resolveExternalCodeList cfg.label cfg.labelSyntax kind cfg.externalCode
+  let adoption ← cfg.leanDocstring.mapM fun name =>
+    liftM <| docstringSelection resolvedExternalCode name isProof
   let hasExternalRaw := !resolvedExternalCode.isEmpty
   if !cfg.invalidExternalCode.isEmpty then
     logWarningAt cfg.labelSyntax m!"Label {cfg.label}: ignoring malformed names in '(lean := ...)' ({String.intercalate ", " cfg.invalidExternalCode.toList})"
@@ -263,7 +299,7 @@ def Config.resolveForDirective {m}
   pure {
     label := cfg.label
     labelSyntax := cfg.labelSyntax
-    envKind
+    envKind, adoption
     externalRefs := resolvedExternalCode
     parent := cfg.parent
     priority

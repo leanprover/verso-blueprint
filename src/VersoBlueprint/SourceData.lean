@@ -49,12 +49,25 @@ structure FencedSelection where
   body : Syntax.Range
   deriving Repr
 
+/-- A consumer directive explicitly selects the direct docstring of one of its
+native attachments. The site lives in SourceSelection.source. An unavailable
+upstream source is assessment data and leaves the native attachment usable. -/
+structure AdoptedDocstring where
+  consumerModule : Name
+  canonical : Name
+  moduleName : Name
+  package : Option String
+  /-- Physical owning path and exact registration-time source digest. -/
+  owner : Except Diagnostic (String × String)
+  deriving Repr, Inhabited
+
 structure SourceSelection where
   destination : SourceDestination
   context : Context
   document : DocumentKey
   source : Data.SourceLocationResult
   payload : ProviderPayload
+  adoption : Option AdoptedDocstring := none
   fence : Option (Except String FencedSelection) := none
   deriving Repr, Inhabited
 
@@ -97,15 +110,20 @@ private def SourceSelection.selectionIdentity (source : SourceSelection) : Optio
     | _ => source.fence.map (·.map FencedSelection.text)
   return (text.map SHA256.text).toOption.getD "unavailable"
 
-def SourceSelection.selectedDocumentKey (source : SourceSelection) : DocumentKey :=
+def SourceSelection.selectedDocumentKey (source : SourceSelection) : DocumentKey := Id.run do
+  if let some selection := source.adoption then
+    let ownerPath := (selection.owner.toOption.map (·.1)).getD ""
+    return { source.document with path := source.document.path ++ "#adopted-docstring:" ++
+      (toJson (Vir.nameKey selection.consumerModule, Vir.nameKey source.destination.realization.node,
+        selection.package, Vir.nameKey selection.moduleName, Vir.nameKey selection.canonical, ownerPath)).compress }
   match source.selectionIdentity with
-  | some identity => { source.document with
+  | some identity => return { source.document with
       path := source.document.path ++ "#selection:" ++ (toJson (
         Vir.nameKey source.destination.realization.node,
         Vir.nameKey source.destination.realization.name,
         Vir.nameKey (source.destination.role.getD .anonymous),
         identity)).compress }
-  | none => source.document
+  | none => return source.document
 
 /-- The whole original source buffer a prose selection's stored syntax points into. -/
 def SourceSelection.proseBuffer? (source : SourceSelection) : Option String :=
@@ -296,6 +314,12 @@ def SourceSelection.rawIssues (source : SourceSelection) (node : Name) : Array D
     if source.context.language != Name.mkSimple value.language.key then
       issues := issues.push (issue "source-payload-context" subject "Markup language must agree with its source context")
   | .text _ => pure ()
+  if let some selection := source.adoption then
+    unless (source.payload matches .prose _) && source.destination.role == some `statement &&
+        source.context.language == source.destination.realization.name &&
+        !selection.consumerModule.isAnonymous && !selection.canonical.isAnonymous do
+      issues := issues.push (issue "invalid-docstring-adoption" subject
+        "Adoption requires one consumer-owned prose statement and a canonical declaration")
   if source.fence.isSome then
     match source.payload with
     | .text _ | .markup _ => pure ()

@@ -41,6 +41,11 @@ elab "blueprint_render_model%" : term => do
     (fun (checks : Std.HashMap Realizations.ObjectKey Data.ProvedStatus) checked =>
       checks.insert checked.declaration checked.status) {}
   let nodes := TraversalIndex.Nodes.capture state (fun label => some (snapshot.assessmentFor label)) (some nativeChecks)
+  let nodes := nodes.map fun node => Id.run do
+    let some inventory := state.inventory.get? node.label | return node
+    let some source := inventory.sources.find? (·.adoption.isSome) | return node
+    let verified := (snapshot.registry.document? source.selectedDocumentKey).any (! ·.text.trimAscii.isEmpty)
+    return { node with adoptedStatementAvailable := some verified }
   let graph := Graph.buildModel snapshot (snapshot.registry.nodes.map (·.label))
     (groupTitles := state.groups.toArray)
   let summary ← Commands.buildSummary snapshot
