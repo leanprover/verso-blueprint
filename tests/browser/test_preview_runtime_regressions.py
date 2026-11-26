@@ -1131,7 +1131,7 @@ class TestPreviewRuntimeRegressions:
         expect(proof_body.locator(".bp_wrapper").first).to_have_attribute(
             "title", "preview_facets"
         )
-        expect(proof_body.locator(".bp_heading").first).to_contain_text("Proof for Theorem")
+        expect(proof_body.locator(".bp_heading").first).to_contain_text("Proof of Theorem")
         expect(proof_body).to_contain_text("Proof facet marker")
         expect(proof_body).not_to_contain_text("Statement facet marker")
 

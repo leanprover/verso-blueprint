@@ -198,7 +198,7 @@ class TestBlueprintSlidesRuntime:
         ).inner_text()
         assert re.fullmatch(r"\d+(?:\.\d+)*", multiplication_label)
         multiplication_title = f"Theorem {multiplication_label}"
-        multiplication_proof_title = f"Proof for {multiplication_title}"
+        multiplication_proof_title = f"Proof of {multiplication_title}"
         assert multiplication_entry["title"] == multiplication_title
         assert multiplication_proof_entry["title"] == multiplication_proof_title
         assert len(multiplication_entry["leanCodePreviewKeys"]) == 1
@@ -251,7 +251,7 @@ class TestBlueprintSlidesRuntime:
         ) == ["group", "uses", "used-by", "code"]
         assert node.locator(".bp_extras").evaluate(
             """extras => getComputedStyle(extras).gridTemplateAreas"""
-        ) == '"group uses used code"'
+        ) == '"source group uses used markup code"'
         chip_boxes = node.locator(
             ".bp_extra_slot_group .bp_relation_chip,"
             ".bp_extra_slot_uses .bp_relation_chip,"
@@ -303,10 +303,14 @@ class TestBlueprintSlidesRuntime:
         assert code_panel_metrics["itemRight"] <= code_panel_metrics["bodyRight"] + 1
         assert code_panel_metrics["codeFontSize"] >= 12
         expect(page.locator("#bp-inline-preview-panel")).to_be_hidden()
-        expect(node.locator(".bp_code_panel_wrapper .bp_code_progress")).to_have_count(1)
         expect(
-            node.locator(".bp_code_panel_wrapper .bp_code_progress_segment_ok")
+            node.locator(".bp_code_panel_wrapper .bp_code_panel_decls code")
         ).to_have_count(2)
+        expect(
+            node.locator(
+                ".bp_code_panel_wrapper .bp_code_panel_status.bp_code_link_status_proved"
+            )
+        ).to_contain_text("complete")
         expect(node.locator(".bp_slide_code_body code.hl.lean.block")).to_have_count(1)
         assert node.locator(".bp_slide_code_body .keyword.token").count() >= 2
         expect(node.locator(".bp_slide_code_body")).to_contain_text("collatzStep")
@@ -333,14 +337,14 @@ class TestBlueprintSlidesRuntime:
             "Multiplication/#--informal-preview-multiplication_spec--statement",
             "/blueprint/Multiplication/#--informal-preview-multiplication_spec--statement",
         )
-        node.locator(".bp_extra_slot_group .bp_relation_chip").hover()
+        node.locator(".bp_extra_slot_group .bp_relation_chip").click()
         expect_slide_link(
             page,
             ".bp_extra_slot_group .bp_relation_target",
             COLLATZ_CONJECTURE_HREF,
             COLLATZ_CONJECTURE_REWRITTEN,
         )
-        node.locator(".bp_extra_slot_used_by .bp_relation_chip").hover()
+        node.locator(".bp_extra_slot_used_by .bp_relation_chip").click()
         expect_slide_link(
             page,
             ".bp_extra_slot_used_by .bp_relation_target",

@@ -918,7 +918,10 @@ structure Entry extends Informal.BlockMetadata where
   kind : Option Informal.Data.NodeKind := none
   /-- Resolved display title for this manifest entry. -/
   title : String
-  /-- Structured heading caption for renderers that need to lay out the title. -/
+  /--
+  Structured heading caption for renderers that need to lay out the title. A
+  proof's caption and label name its statement, as in "Proof of Theorem 1".
+  -/
   displayCaption : Option String := none
   /-- Structured heading label or number for renderers that need to lay out the title. -/
   displayLabel : Option String := none
@@ -2040,13 +2043,13 @@ private structure BlockHeadingParts where
   caption : String
   label : String
 
-private def blockHeadingParts? (state : TraverseState) (blockData : Informal.BlockData)
-    (facet : PreviewCache.Facet) : Option BlockHeadingParts := do
+/-- Heading parts of a block. A proof's parts name its statement; renderers title
+it "Proof of …". -/
+private def blockHeadingParts? (state : TraverseState) (blockData : Informal.BlockData) :
+    Option BlockHeadingParts := do
   let display := blockData.display state
   let number ← display.number?
-  match facet with
-  | .statement => some { caption := toString display.kind, label := number }
-  | .proof => some { caption := "Proof", label := s!"for {display.kind} {number}" }
+  some { caption := toString display.kind, label := number }
 
 private def externalMarkupArray (state : TraverseState) (label : Name) :
     Array Informal.Data.ExternalMarkup :=
@@ -2211,7 +2214,7 @@ private def blockSemanticManifestEntry
   let preview := resolved.preview
   let blockData := resolved.data
   let reference := RenderingResolution.referenceOfData state resolved.data (some preview.facet)
-  let headingParts? := blockHeadingParts? state blockData preview.facet
+  let headingParts? := blockHeadingParts? state blockData
   let codeData := blockCodeData? state preview blockData
   {
     key := PreviewCache.key preview.label preview.facet

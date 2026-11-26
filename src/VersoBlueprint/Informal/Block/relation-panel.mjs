@@ -185,6 +185,11 @@ export function bindRelationPanel(previewUtils, wrap) {
     preview.appendChild(element("div", "bp_relation_preview_body"));
     body.appendChild(list);
     body.appendChild(preview);
+    // The panel is built after page hydration, so its links (rewritten by Slides,
+    // for example) need the page hydrators now.
+    if (typeof previewUtils.hydrate === "function") {
+      previewUtils.hydrate(panel, { renderMath: false });
+    }
 
     const surface = previewUtils.createPreviewSurface({
       panel: panel,
