@@ -100,8 +100,9 @@ read-only and does not recheck changed sources. `check` audits artifact
 consistency and cannot establish freshness.
 
 `validation.nativeStatementComplete` and `nativeProofComplete` describe local
-native checks. Check `hasNativeBodyRequirement` before reporting an unfinished
-proof or implementation. A proposition definition can have only a statement
+native checks. Use `proofRoleComplete` for mathematical proofs, including
+proof-valued definitions. It is null when no proof applies.
+`hasNativeBodyRequirement` includes computational implementations. A proposition definition can have only a statement
 check. `requiredComplete` summarizes generated native requirements with
 their selected prerequisites; it is not universal node completion. Read
 `validation.details.assessment` for each realization/relation's own contract,

@@ -465,6 +465,9 @@ whole capture; it does not publish a partial project.
 `lake exe vbp query status <label>` exposes `validation`: `nativeStatementComplete` and
 `nativeProofComplete` describe the selected declarations' own native checks.
 `hasNativeBodyRequirement` indicates whether a proof or implementation check applies.
+`proofRoleComplete` reports whether all selected mathematical proofs passed locally.
+It is null for a node with only computational definitions. A proof-valued Lean
+`def` can therefore contribute to the unfinished-proof count.
 For a statement-only proposition definition, both body flags are false.
 
 `requiredComplete` summarizes the generated native checks for the ordinary Lean
@@ -475,7 +478,7 @@ their subjects, requirements, and observations. Prose without an explicit
 assessment requirement remains unassessed. Source-only previews say validation is
 unavailable until captured. Declaration-panel snapshots are display inventory.
 
-This changes the graph payload to schema version 5. Consumers should use the
+This changes the graph payload to schema version 6. Consumers should use the
 exported `assessment` and `actionableStage`, rather than reconstructing readiness
 from graph colors. The status query's `complete` and `declarations` are
 replaced by `validation` and `sourceDeclarationSnapshots`; the latter

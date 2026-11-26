@@ -927,9 +927,10 @@ Generated `blueprint-manifest.json` includes a `graphs` array. Each entry
 contains `schemaVersion`, `nodes`, `edges`, `groups`, and `variants`, with
 status enums, dependency axes, preview keys, hrefs when traversal resolved
 them, and visual metadata for renderers that want Blueprint's default styling.
-Graph schema version 5 retains the private-constructor topology contract and adds
+Graph schema version 6 retains the private-constructor topology contract and adds
 `assessment` plus `actionableStage` to every node. An unresolved endpoint has no
-assessment. Version 5 requires `hasNativeBodyRequirement` on each captured
+assessment. Version 6 includes `proofRoleComplete`, the local result for mathematical
+proofs. Its value is null when no such obligation exists. The graph also requires `hasNativeBodyRequirement` on each captured
 assessment to distinguish a pending native body check from a statement-only
 declaration. A captured node exposes local native statement and body checks, the
 combined result of generated native checks and selected prerequisites, and the
@@ -1988,7 +1989,7 @@ counts stay in the known-sorry evidence.
 `sourceDeclarationSnapshots`. `validation.captured` distinguishes a captured
 assessment from unavailable validation. Captured data includes
 `hasNativeDeclarations`, `nativeStatementComplete`, `hasNativeBodyRequirement`,
-`nativeProofComplete`,
+`nativeProofComplete`, `proofRoleComplete`,
 `requiredComplete`, `statementDependenciesComplete`, `proofDependenciesComplete`
 and `details`. `validation.externalDeclarationChecks` reports each external declaration’s current
 check beside its facet and canonical name. It replaces the former aggregate `verdict`, `complete`,

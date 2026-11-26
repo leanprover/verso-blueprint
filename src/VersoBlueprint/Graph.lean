@@ -294,7 +294,7 @@ structure GraphModel where
   groupMetadata : Array GroupMetadata := #[]
 deriving Inhabited, Repr, ToJson, FromJson, Quote
 
-private def graphDataSchemaVersion : Nat := 5
+private def graphDataSchemaVersion : Nat := 6
 
 /--
 Finished graph data shared by Lean, generated manifests, and browser clients.
@@ -535,7 +535,7 @@ def eraseDups (xs : Array Name) : Array Name :=
 
 /-- Project native checks and their selected prerequisites onto the compact graph
 statuses. Actionability is exported independently of proof status. -/
-def statusesForAssessment (kind : Data.NodeKind) (assessment : Realizations.NodeAssessment) :
+def statusesForAssessment (assessment : Realizations.NodeAssessment) :
     StatementStatus × ProofStatus := Id.run do
   if !assessment.hasNativeDeclarations then
     return (.unassessed, .unassessed)
@@ -544,12 +544,12 @@ def statusesForAssessment (kind : Data.NodeKind) (assessment : Realizations.Node
     else if assessment.statementDependenciesComplete then .ready
     else .blocked
   let proof :=
-    if assessment.nativeProofComplete then
+    if assessment.proofRoleComplete.getD assessment.nativeProofComplete then
       if assessment.statementDependenciesComplete && assessment.proofDependenciesComplete then
         .formalizedWithAncestors
       else
         .formalized
-    else if assessment.hasNativeBodyRequirement && kind.isTheoremLike then
+    else if assessment.proofRoleComplete == some false then
       .incomplete
     else
       .none
@@ -697,7 +697,7 @@ def mkNode (snapshot : Realizations.Capture.Snapshot)
     let deps := (capturedUses snapshot label `statement).map (·.label)
     let nodeProofDeps := (capturedUses snapshot label `proof).map (·.label)
     let assessment := snapshot.assessmentFor label
-    let (statement, proof) := statusesForAssessment node.kind assessment
+    let (statement, proof) := statusesForAssessment assessment
     let warnings : WarningFlags := {}
     let ref? := resolveRef? label
     mkStyledNode node.kind label deps nodeProofDeps node.parent statement proof warnings ref?
@@ -887,7 +887,7 @@ def nodeData
   match snapshot.registry.nodes.find? (·.label == label) with
   | some node =>
     let assessment := snapshot.assessmentFor label
-    let (statement, proof) := statusesForAssessment node.kind assessment
+    let (statement, proof) := statusesForAssessment assessment
     let title := nodeTitle resolveTitle? label node.title
     {
       label

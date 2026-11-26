@@ -360,6 +360,7 @@
  * @property {boolean} hasNativeDeclarations Whether the node has selected native declarations in its Lean realizations.
  * @property {boolean} hasAxiomLike Whether a selected native declaration has a freshly checked axiom-like status.
  * @property {boolean} nativeStatementComplete Local native statement checks, before Blueprint prerequisites.
+ * @property {boolean | null} proofRoleComplete Whether all selected mathematical proofs pass their local checks, or null when there are none.
  * @property {boolean} hasNativeBodyRequirement Whether the selected declarations require a native proof or implementation check.
  * @property {boolean} nativeProofComplete Local native body checks, separate from expected-goal correspondence.
  * @property {boolean} requiredComplete Whether the generated native requirements and selected prerequisites complete; not universal node completion.
@@ -451,7 +452,7 @@
  * from that topology at the graph finalization boundary.
  *
  * @typedef {Object} BlueprintGraphData
- * @property {5} schemaVersion Current finalized graph payload schema version.
+ * @property {6} schemaVersion Current finalized graph payload schema version.
  * @property {string} key Stable graph/block key.
  * @property {BlueprintGraphNode[]} nodes Graph node payloads.
  * @property {BlueprintGraphEdge[]} edges Derived, deduplicated graph edge payloads with dangling sources omitted.

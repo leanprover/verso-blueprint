@@ -12,6 +12,13 @@ open Informal Data Graph Realizations Translations
 
 namespace Verso.VersoBlueprintTests.BlueprintSummaryStatus
 
+set_option linter.defProp false in
+@[blueprint "summary.proofDef"]
+def proofDef : True := by sorry
+
+@[blueprint "summary.computation"]
+def computation : Nat := by sorry
+
 private def ensure (condition : Bool) (message : String) : TermElabM Unit :=
   unless condition do throwError message
 
@@ -35,6 +42,22 @@ run_cmd liftTermElabM do
   ensure (summary.incompleteDetails.any (·.label == Name.mkSimple "capture.admitted"))
     "Detailed native debt should retain the freshly checked provider status"
 
+  let cases : Array (String × Data.NodeKind × Option Bool × ProofStatus) := #[
+    ("capture.admitted", .theorem, some false, .incomplete),
+    ("summary.proofDef", .definition, some false, .incomplete),
+    ("summary.computation", .definition, none, .none)]
+  let graph := Graph.buildModel snapshot (cases.map fun c => Name.mkSimple c.1) |>.finish "proof-roles" {}
+  for (name, kind, proofComplete, status) in cases do
+    let label := Name.mkSimple name
+    let some node := graph.nodes.find? (·.label == label)
+      | throwError "Missing graph node {label}"
+    ensure (node.kind == some kind && node.proofStatus == status &&
+      (snapshot.assessmentFor label).proofRoleComplete == proofComplete)
+      s!"{label}: graph and capture should distinguish mathematical proofs from computations"
+  let unfinishedDefinitionProofs := snapshot.registry.nodes.countP fun node =>
+    node.kind == .definition && (snapshot.assessmentFor node.label).proofRoleComplete == some false
+  ensure (unfinishedDefinitionProofs > 0 && summary.definitionStatus.noProof == unfinishedDefinitionProofs)
+    "The summary must count unfinished mathematical proofs among definition nodes"
   let complete := snapshot.assessmentFor (Name.mkSimple "capture.complete")
   let dependent := snapshot.assessmentFor (Name.mkSimple "capture.dependent")
   let proseStatement := (⟨Name.mkSimple "capture.complete", `markdown⟩ : RealizationKey).forRole `statement

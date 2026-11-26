@@ -88,16 +88,14 @@ private def bumpEntryStatus (acc : EntryStatusCounts) (flags : EntryStatusFlags)
     noProof := acc.noProof + (if flags.noProof then 1 else 0)
   }
 
-private def entryStatusFlags (assessment : Realizations.NodeAssessment)
-    (node : Realizations.Node) : EntryStatusFlags :=
+private def entryStatusFlags (assessment : Realizations.NodeAssessment) : EntryStatusFlags :=
   let localFormalized := assessment.nativeLocallyComplete
   let withIncompleteCode := assessment.hasNativeDeclarations && !assessment.nativeStatementComplete
-  let noProof := node.kind.isTheoremLike && assessment.hasNativeBodyRequirement && !assessment.nativeProofComplete
   {
     completed := assessment.requiredComplete
     completedDepsNo := localFormalized && !assessment.requiredComplete
     withIncompleteCode
-    noProof
+    noProof := assessment.proofRoleComplete == some false
     hasAxiomLike := assessment.hasAxiomLike
   }
 
@@ -245,7 +243,7 @@ private def mkActionableItem? (state : Environment.State) (snapshot : Realizatio
     (assessment : Realizations.NodeAssessment)
     (usageMap : NameMap UsageCounts) (reverseMap : NameMap (Array Name))
     (label : Name) (node : Realizations.Node) : Option PriorityItem :=
-  let (statementStatus, proofStatus) := Informal.Graph.statusesForAssessment node.kind assessment
+  let (statementStatus, proofStatus) := Informal.Graph.statusesForAssessment assessment
   match Informal.Graph.actionableStageForAssessment? assessment with
   | Option.none => Option.none
   | Option.some stage =>
@@ -262,7 +260,7 @@ private def mkActionableItem? (state : Environment.State) (snapshot : Realizatio
       issueUrl := node.issueUrl
       tags := node.tags.toList
       statementStatus := Informal.Graph.StatementStatus.toText statementStatus
-      proofStatus := if node.kind.isTheoremLike then Informal.Graph.ProofStatus.toText proofStatus else ""
+      proofStatus := if assessment.proofRoleComplete.isSome then Informal.Graph.ProofStatus.toText proofStatus else ""
       directUses := usage.directUses
       downstreamUses
       leanObjects := nodeLeanObjects snapshot label
@@ -423,7 +421,7 @@ private def collectSummaryOverview (ctx : SummaryBuildContext) : Summary :=
     let hasProof := proseRealizations.any fun realization =>
       realization.role == `proof && realizationHasAvailableSource ctx.snapshot realization
     let hasCode := assessment.hasNativeDeclarations
-    let statusFlags := entryStatusFlags assessment node
+    let statusFlags := entryStatusFlags assessment
     let leanSummary := nodeLeanSummary ctx.snapshot label node
     let renderFailures := nodeRenderFailures ctx.state ctx.snapshot label node
     -- This is authored prose coverage inventory, not a validation requirement:
@@ -523,9 +521,9 @@ private structure GroupHealthCounts where
   unlockScore : Nat := 0
 
 private def GroupHealthCounts.addEntry (counts : GroupHealthCounts)
-    (ctx : SummaryBuildContext) (child : Name) (node : Realizations.Node) : GroupHealthCounts :=
+    (ctx : SummaryBuildContext) (child : Name) : GroupHealthCounts :=
   let assessment := ctx.assessmentFor child
-  let statusFlags := entryStatusFlags assessment node
+  let statusFlags := entryStatusFlags assessment
   let readyNow := (Informal.Graph.actionableStageForAssessment? assessment).isSome
   let blockedNow := assessment.hasNativeDeclarations && !statusFlags.completed &&
     !statusFlags.completedDepsNo && !readyNow
@@ -547,8 +545,8 @@ private def collectGroupHealth (ctx : SummaryBuildContext) : List GroupHealthIte
       acc
     else
       let childEntries := ctx.childEntries children
-      let counts := childEntries.foldl (init := ({} : GroupHealthCounts)) fun counts (child, node) =>
-        counts.addEntry ctx child node
+      let counts := childEntries.foldl (init := ({} : GroupHealthCounts)) fun counts (child, _) =>
+        counts.addEntry ctx child
       let nextPriority? :=
         let candidates := childEntries.foldl (init := #[]) fun acc (child, node) =>
           match ctx.actionableItem? child node with

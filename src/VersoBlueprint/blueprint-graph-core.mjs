@@ -145,7 +145,7 @@ export function readGraphJsonScript(root, selector) {
   }
 }
 
-const graphDataSchemaVersion = 5;
+const graphDataSchemaVersion = 6;
 
 /**
  * @param {unknown} value
@@ -193,6 +193,7 @@ function isNodeAssessment(value) {
     "proofDependenciesComplete"
   ];
   return fields.every((field) => typeof value[field] === "boolean") &&
+    (value.proofRoleComplete === null || typeof value.proofRoleComplete === "boolean") &&
     typeof value.selectedLeanUseCount === "number" &&
     Number.isSafeInteger(value.selectedLeanUseCount) && value.selectedLeanUseCount >= 0 &&
     isRecord(value.details);

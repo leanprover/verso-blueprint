@@ -91,7 +91,7 @@ theorem statusDirectTypeOnly (_h : (by sorry : Prop)) : True := True.intro
       statementDependenciesComplete := false
       proofDependenciesComplete := false
     }
-    let (statement, proof) := Graph.statusesForAssessment .definition assessment
+    let (statement, proof) := Graph.statusesForAssessment assessment
     return recordAxioms.contains ``sorryAx &&
       recordStatus.hasTypeGap && recordStatus.dependsOnSorry &&
       !recordStatus.containsExplicitSorry && statement == .blocked && proof == .none &&
@@ -400,7 +400,7 @@ theorem statusDirectTypeOnly (_h : (by sorry : Prop)) : True := True.intro
     empty.blocksStatementCompletion .theorem && empty.blocksProofCompletion &&
     mixed.hasKnownSorry && mixed.hasUnverifiedCoverage &&
     mixed.mergeConservative .proved == mixed &&
-    Graph.statusesForAssessment .theorem unassessed == (.unassessed, .unassessed) &&
+    Graph.statusesForAssessment unassessed == (.unassessed, .unassessed) &&
     Graph.actionableStageForAssessment? blockedProof == none &&
     Graph.actionableStageForAssessment? readyProof == some "proof"
 

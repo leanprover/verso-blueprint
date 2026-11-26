@@ -84,8 +84,8 @@ private def capturedAssessment? (label : String) : Option Realizations.NodeAsses
     let some graphNode := graphNode? label | return false
     let some assessment := renderNode.assessment | return false
     graphNode.assessment == some assessment &&
-      graphNode.statementStatus == (Graph.statusesForAssessment renderNode.kind assessment).1 &&
-      graphNode.proofStatus == (Graph.statusesForAssessment renderNode.kind assessment).2
+      graphNode.statementStatus == (Graph.statusesForAssessment assessment).1 &&
+      graphNode.proofStatus == (Graph.statusesForAssessment assessment).2
   let checks : Array (String × Bool) := #[
     ("graph uses the exact captured assessment", ["sorry.capture.type-only", "sorry.capture.both",
       "sorry.capture.proof-only", "sorry.capture.inline", "sorry.capture.complete"].all sameCapturedAssessment),

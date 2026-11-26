@@ -23,6 +23,9 @@ structure NodeAssessment where
   hasNativeBodyRequirement : Bool := false
   /-- Local own-declaration body checks, not proof of an independent expected goal. -/
   nativeProofComplete : Bool := false
+  /-- Local result for the selected mathematical proof obligations. Absent when
+  the declarations supply only statements or computational implementations. -/
+  proofRoleComplete : Option Bool := none
   /-- Generated native requirements with their selected prerequisites. This
   summary does not aggregate correspondence reviews or alternative proofs. -/
   requiredComplete : Bool := false

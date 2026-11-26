@@ -26,7 +26,7 @@ open Verso.VersoBlueprintTests.SorryImport.Captured
     let some status := Graph.externalDeclProvedStatus {} ref | return false
     let some capturedStatus := capturedRef.provedStatus | return false
     let again := status.mergeConservative capturedStatus
-    let expectedStatuses := Graph.statusesForAssessment captured.kind assessment
+    let expectedStatuses := Graph.statusesForAssessment assessment
     return some status == ref.provedStatus && again == status &&
       status.hasTypeGap && status.hasProofGap &&
       status.containsExplicitSorry && status.dependsOnSorry &&
