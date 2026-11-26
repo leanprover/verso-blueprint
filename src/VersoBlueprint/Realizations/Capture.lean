@@ -477,16 +477,41 @@ private def prepareNative [Monad m] (providers : Providers m) (p : Plan) (step :
     return .error #[{ code := "ambiguous-source", subject := name.toString, message := "Competing owning sources for the same declaration" }]
   return .ok first
 
+private def ordinaryNodeIssue (raw : Raw) (node : NodeStep) : Option Diagnostic :=
+  if !raw.registered.contains node.label then
+    some { code := "missing-source-envelope", subject := node.label.toString
+           message := "Accepted concept has no retained source registrations" }
+  else if let .error diagnostics := Contributions.resolve node.label raw.facts then
+    some { code := "producer-collision", subject := node.label.toString, message := reprStr diagnostics }
+  else none
+
+private def realizationContext (label : Name) (step : RealizationStep) : Except Diagnostic Context :=
+  let contexts := canonical (step.sources.map (·.source.context) ++ step.associations.map (·.context))
+  if contexts.size == 1 then .ok contexts[0]!
+  else .error { code := "source-context-mismatch", subject := label.toString
+                message := "A realization requires one agreed stored source context" }
+
+/-- Schedule only the prefix that the ordinary recipe can reach. The recipe
+still emits structural diagnostics at their original positions. -/
+private def Plan.scheduledChecks (p : Plan) : Array (Name × ObjectKey) := Id.run do
+  let mut requests := #[]
+  for node in p.ordinary do
+    if (ordinaryNodeIssue p.raw node).isSome then return requests
+    for step in node.realizations do
+      unless (realizationContext node.label step).isOk do return requests
+      for declaration in step.declarations do
+        if let some check := p.checks[declaration.check]? then
+          requests := requests.push (check.project, check.witness)
+  return requests
+
 private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : ExceptT (Array Diagnostic) m Collected := do
   let mut collected : Collected := {}
   let mut associationsByObject : Std.HashMap ObjectKey (Except (Array Diagnostic) Unit) := {}
   for node in p.ordinary do
     let label := node.label
     let accepted := node.accepted
-    if !p.raw.registered.contains label then
-      reject "missing-source-envelope" label.toString "Accepted concept has no retained source registrations"
-    if let .error diagnostics := Contributions.resolve label p.raw.facts then
-      reject "producer-collision" label.toString (reprStr diagnostics)
+    if let some issue := ordinaryNodeIssue p.raw node then
+      full (.error #[issue])
     let uses := accepted.uses
     collected := { collected with
       input.nodes := collected.input.nodes.push (contribution `node (toJson (Vir.nameKey label))
@@ -496,10 +521,7 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
       let base := step.key
       let sources := step.sources.map (·.source)
       let associations := step.associations
-      let contexts := canonical (sources.map (·.context) ++ associations.map (·.context))
-      unless contexts.size == 1 do
-        reject "source-context-mismatch" label.toString "A realization requires one agreed stored source context"
-      let context := contexts[0]!
+      let context ← one (realizationContext label step)
       let object (name : Name) : ObjectKey := ⟨context, name.toString⟩
       let mut declarationResults : Array NativeDeclarationResult := #[]
       for declarationStep in step.declarations do
@@ -1079,6 +1101,8 @@ private def answerOnce [Monad m] [MonadLiftT (ST IO.RealWorld) m] [BEq κ] [Hash
 private def entries [BEq κ] [Hashable κ] (answers : Std.HashMap κ α) : Array (ResultEntry κ α) :=
   answers.toArray.map fun (request, result) => { request, result }
 
+initialize registerTraceClass `blueprint.capture.inspection
+
 /-- One effect scope for all providers, including dependent expected goals.
 The supplied reader is a byte-reading seam for tests, not a native-success hook.
 Successful physical reads are shared across every provider family in this call.
@@ -1094,6 +1118,8 @@ def observe (p : Plan) (readFile : System.FilePath → IO String := IO.FS.readFi
       snapshot.modify (·.push (physical, text))
       return text
     let semantics ← NativeLean.newSemanticContext
+    let inspection ← Data.newSorryInspectionSession
+    let preparedBatch ← liftM <| IO.mkRef false
     let documents ← liftM <| IO.mkRef ({} : Std.HashMap DocumentKey (Document × Array Diagnostic))
     let native ← liftM <| IO.mkRef ({} : Std.HashMap NativeRequest (Except Diagnostic NativeSource.Prepared))
     let inline ← liftM <| IO.mkRef ({} : Std.HashMap InlineRequest (Except Diagnostic NativeSource.Prepared))
@@ -1121,16 +1147,24 @@ def observe (p : Plan) (readFile : System.FilePath → IO String := IO.FS.readFi
           match ← sourcePath job request with
           | .error issue => pure (.error issue)
           | .ok path => NativeSource.prepareDocumented request path reader semantics
-      check := fun job => answerOnce checks job (NativeLean.checkDeclaration job.project job.witness)
+      check := fun job => answerOnce checks job do
+        unless ← preparedBatch.get do
+          NativeLean.prepareDeclarations inspection p.scheduledChecks
+          preparedBatch.set true
+        NativeLean.checkDeclaration job.project job.witness (some inspection)
       specification := fun key => answerOnce specifications key
         (ownedDefinition key.expected key.origin key.document).run
       expected := fun key => answerOnce expected key
-        (NativeLean.check key.project key.witness (mkCIdent key.expected) key.documents semantics) }
+        (NativeLean.check key.project key.witness (mkCIdent key.expected) key.documents semantics (some inspection)) }
     -- Shared pure recipe resolves dependent arguments and ordered fatal checks.
     -- Its temporary input is not admitted and never escapes this boundary.
     match ← (assemble providers p).run with
     | .error issues => return .error issues
-    | .ok _ => return .ok {
+    | .ok _ =>
+      if ← isTracingEnabledFor `blueprint.capture.inspection then
+        let work ← inspection.work
+        trace[blueprint.capture.inspection] "Declaration inspections: {work.declarationInspections}; dependency edge visits: {work.edgeVisits}; certificate scans: {work.certificateScans}"
+      return .ok {
         documents := entries (← documents.get), native := entries (← native.get)
         inline := entries (← inline.get), documented := entries (← documented.get)
         checks := entries (← checks.get), specifications := entries (← specifications.get)

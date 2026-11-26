@@ -51,7 +51,7 @@ open Verso.VersoBlueprintTests.BlueprintProofLeanRefs
   let labels ← Environment.labelsForLeanDecl ``Provider.admittedProof
   return node.leanDecls == #[``Provider.admittedProof] &&
     (node.nativeRefsOn `proof).size == 1 &&
-    node.associatedExternalRefs[0]!.provedStatus.isIncomplete &&
+    node.associatedExternalRefs[0]!.provedStatus.any (·.isIncomplete) &&
     labels.size == 1 && labels.contains (Name.mkSimple "proof.imported.repeated")
 
 /-- info: true -/

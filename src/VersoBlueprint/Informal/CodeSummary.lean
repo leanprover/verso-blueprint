@@ -87,7 +87,7 @@ structure DeclSummaryItem where
   previewLookupKey? : Option String := none
   href : Option String := none
   kind : DeclSummaryKind := .definition
-  status : Data.ProvedStatus := .incomplete {}
+  status : Option Data.ProvedStatus := none
   present : Bool := true
 deriving Inhabited, Repr
 
@@ -97,10 +97,10 @@ private structure SummaryTooltipSection where
   emptyText : String := "No associated Lean declarations."
 
 private def declSummaryStatusText (item : DeclSummaryItem) : String :=
-  (item.status.presentation (present := item.present)).summaryText
+  (declarationStatusPresentation item.status item.present).summaryText
 
 private def declSummaryStatusClass (item : DeclSummaryItem) : String :=
-  (item.status.presentation (present := item.present)).codeDeclClass
+  (declarationStatusPresentation item.status item.present).codeDeclClass
 
 private def renderDeclSummaryItems (items : Array DeclSummaryItem) : Array Output.Html :=
   open Verso.Output.Html in
@@ -172,7 +172,7 @@ private def inlineDeclSummaryItems (definedDefs definedTheorems : Array CodeDecl
       previewLookupKey?
       href := hrefOf decl.name
       kind := .definition
-      status := decl.provedStatus
+      status := some decl.provedStatus
     }
   let theoremLikes := definedTheorems.map fun decl =>
     {
@@ -181,12 +181,12 @@ private def inlineDeclSummaryItems (definedDefs definedTheorems : Array CodeDecl
       previewLookupKey?
       href := hrefOf decl.name
       kind := .theoremLike
-      status := decl.provedStatus
+      status := some decl.provedStatus
     }
   defs ++ theoremLikes
 
 private def incompleteSummaryItems (items : Array DeclSummaryItem) : Array DeclSummaryItem :=
-  items.filter fun item => !item.present || item.status.isIncomplete
+  items.filter fun item => !item.present || item.status.any (·.isIncomplete)
 
 def externalDeclKindText? (decl : Data.ExternalRef) : Option String :=
   if !decl.present then
@@ -240,7 +240,7 @@ private def renderSummaryPreview (cdata : ComputedData)
   let items := summaryPreviewItems cdata hrefOf
   let sectionTitle :=
     if items.isEmpty then "Lean declaration display snapshots" else
-      "Associated Lean declarations (source snapshots; display only; validation shown in heading)"
+      "Associated Lean declarations (display only; validation shown in heading)"
   let sections := #[{
     title := sectionTitle
     items
@@ -504,6 +504,8 @@ private def externalIndicatorText
       s!"{declText}, incomplete"
     else
       s!"{declText}, {health.anyGapCount} incomplete"
+  else if health.awaitingCapture > 0 then
+    s!"{declText}, awaiting capture"
   else
     declText
 
@@ -521,19 +523,25 @@ private def externalIndicatorPresentation
   if health.missingDecls > 0 then
     {
       className := "bp_external_status_missing"
-      title := s!"Declaration source snapshot: {health.presentDecls}/{health.totalDecls} present ({health.missingDecls} missing)"
+      title := s!"{health.presentDecls}/{health.totalDecls} declarations present ({health.missingDecls} missing)"
       badgeText
     }
   else if health.anyGapCount > 0 then
     {
       className := "bp_external_status_sorry"
-      title := s!"Declaration source snapshot: all present, {health.anyGapCount} incomplete"
+      title := s!"All declarations present, {health.anyGapCount} incomplete"
+      badgeText
+    }
+  else if health.awaitingCapture > 0 then
+    {
+      className := "bp_external_status_awaiting"
+      title := s!"{health.awaitingCapture} declarations awaiting capture"
       badgeText
     }
   else
     {
       className := "bp_external_status_ok"
-      title := s!"Declaration source snapshot: all {health.totalDecls} present"
+      title := s!"All {health.totalDecls} declarations present"
       badgeText
     }
 
@@ -545,13 +553,13 @@ private def renderExternalPanelIndicator (decls : Array Data.ExternalRef)
   let previewBody := renderSummaryPreview { source := some { externalDecls := decls } } hrefOf
   let presentation := externalIndicatorPresentation decls health
   let summaryTitle :=
-    s!"Lean declaration source snapshot for {label} (display only; not realization validation): " ++
+    s!"Lean declaration display for {label}: " ++
       appendRenderHealthSummary
       (externalCodeEntryTitle health.presentDecls health.totalDecls health.missingDecls health.anyGapCount)
       renderHealth
   let badgeTitle :=
     appendRenderHealthSummary
-      s!"Display snapshot only; not realization validation. {presentation.title}" renderHealth
+    s!"{presentation.title}" renderHealth
   let badge : Output.Html := {{
     <span class={{s!"bp_external_status_badge bp_external_status_badge_summary {presentation.className}"}} title={{badgeTitle}}>
       <span class={{s!"bp_external_status_icon {presentation.className}"}}>{{.text true presentation.iconText}}</span>
@@ -576,7 +584,7 @@ def renderPanelIndicator (label : Data.Label) (cdata : ComputedData)
   | none => { summaryTitle := s!"Lean code for {label}: no associated Lean declarations" }
   | some source =>
     let inlinePanel := renderInlinePanelIndicator label cdata hrefOf
-    let externalPanel := renderExternalPanelIndicator source.externalDecls label hrefOf
+    let externalPanel := renderExternalPanelIndicator source.displayExternalDecls label hrefOf
     if source.literateDeclarations.isEmpty then externalPanel else
     if source.externalDecls.isEmpty then inlinePanel else
       { summaryTitle := inlinePanel.summaryTitle ++ "\n" ++ externalPanel.summaryTitle

@@ -16,7 +16,7 @@ open Verso.VersoBlueprintTests.Blueprint.Support
 private def provedExternalRef (name : Lean.Name) (kind : Data.NodeKind := .definition) : Data.ExternalRef :=
   {
     (Data.ExternalRef.ofName name) with
-      provedStatus := .proved
+      provedStatus := some .proved
       present := true
       kind
   }
@@ -26,7 +26,7 @@ private def sorryExternalRef (name : Lean.Name) (kind : Data.NodeKind := .theore
     (Data.ExternalRef.ofName name) with
       present := true
       kind
-      provedStatus := .incomplete { knownSorry := #[{ location := .proof, refs? := some 1 }] }
+      provedStatus := some (.incomplete { knownSorry := #[{ location := .proof, refs? := some 1 }] })
   }
 
 private def axiomExternalRef (name : Lean.Name) (kind : Data.NodeKind := .theorem) : Data.ExternalRef :=
@@ -34,7 +34,7 @@ private def axiomExternalRef (name : Lean.Name) (kind : Data.NodeKind := .theore
     (Data.ExternalRef.ofName name) with
       present := true
       kind
-      provedStatus := .axiomLike
+      provedStatus := some .axiomLike
   }
 
 private def missingExternalRef (name : Lean.Name) (kind : Data.NodeKind := .definition) : Data.ExternalRef :=
@@ -49,7 +49,7 @@ private def renderFailedExternalRef (name : Lean.Name) (kind : Data.NodeKind := 
     (Data.ExternalRef.ofName name) with
       present := true
       kind
-      provedStatus := .proved
+      provedStatus := some .proved
       render := .error (.exception name "synthetic render failure")
   }
 
@@ -144,7 +144,7 @@ private def panelIndicatorHtml (label : Name) (source : BlockCodeData) : String 
   let panel := panelIndicatorHtml `matrix.siblings source
   hasSubstr heading "Native body: unfinished" &&
     hasSubstr heading "Native Lean requirements: unfinished" &&
-    hasSubstr panel "Associated Lean declarations (source snapshots; display only; validation shown in heading)" &&
+    hasSubstr panel "Associated Lean declarations (display only; validation shown in heading)" &&
     hasSubstr panel "complete source snapshot; realization validation is shown in the heading" &&
     hasSubstr panel "not realization validation"
 

@@ -97,7 +97,7 @@ private theorem positions_insert (positions : NameMap Nat) (key name : Name) (i 
 private def combine (previous ref : ExternalRef) : ExternalRef :=
   let selected := if !previous.present && ref.present then ref else previous
   { selected with
-    provedStatus := ProvedStatus.mergeConservative previous.provedStatus ref.provedStatus }
+    provedStatus := mergeStatus previous.provedStatus ref.provedStatus }
 
 private theorem combine_canonical (previous ref : ExternalRef)
     (h : previous.canonical = ref.canonical) :

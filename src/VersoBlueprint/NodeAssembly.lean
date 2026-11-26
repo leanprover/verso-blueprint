@@ -132,6 +132,9 @@ private def provedStatusMessage : ProvedStatus → String
   | .incomplete info =>
     s!"incomplete(known-sorry={info.knownSorry.size}, unverified={info.unverified.size})"
 
+private def snapshotStatusMessage (ref : ExternalRef) : String :=
+  (ref.provedStatus.map provedStatusMessage).getD "awaiting capture"
+
 private def externalSourceMessage (ref : ExternalRef) : String :=
   let provenance := match ref.provenance with
     | .inWorkspace moduleName sourcePath => s!"workspace:{moduleName}:{sourcePath}"
@@ -181,8 +184,8 @@ private def collisionDifferenceMessage (first record : Record) : String := Id.ru
     let recordSources := referenceFieldMessage record.allReferences externalSourceMessage
     differences := differences.push s!"source metadata ({sources} → {recordSources})"
   if first.allReferences.map (·.provedStatus) != record.allReferences.map (·.provedStatus) then
-    let statuses := referenceFieldMessage first.allReferences (provedStatusMessage ·.provedStatus)
-    let recordStatuses := referenceFieldMessage record.allReferences (provedStatusMessage ·.provedStatus)
+    let statuses := referenceFieldMessage first.allReferences snapshotStatusMessage
+    let recordStatuses := referenceFieldMessage record.allReferences snapshotStatusMessage
     differences := differences.push s!"status ({statuses} → {recordStatuses})"
   if first.allReferences.map (·.render) != record.allReferences.map (·.render) then
     differences := differences.push s!"render differs ({referenceFieldMessage first.allReferences (renderStateMessage ·.render)} → {referenceFieldMessage record.allReferences (renderStateMessage ·.render)})"

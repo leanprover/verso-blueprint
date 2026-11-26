@@ -52,8 +52,8 @@ def statusCaptureBlueprint : BlueprintDocument := .capture statusCaptureDoc.toPa
 
 private def capturedStatus? (label : String) : Option ProvedStatus := do
   let node ← statusCaptureBlueprint.model.nodes.find? (·.label == Name.mkSimple label)
-  let ref ← node.externalRefs[0]?
-  return ref.provedStatus
+  let (_, status) ← node.statementExternalChecks[0]?
+  status
 
 private def capturedAssessment? (label : String) : Option Realizations.NodeAssessment := do
   let node ← statusCaptureBlueprint.model.nodes.find? (·.label == Name.mkSimple label)

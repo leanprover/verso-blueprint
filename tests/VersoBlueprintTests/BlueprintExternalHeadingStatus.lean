@@ -28,7 +28,7 @@ private def proofGapExternalRef (name : Lean.Name) : Data.ExternalRef :=
     (Data.ExternalRef.ofName name) with
       present := true
       kind := .theorem
-      provedStatus := .incomplete { knownSorry := #[{ location := .proof, refs? := some 1 }] }
+      provedStatus := some (.incomplete { knownSorry := #[{ location := .proof, refs? := some 1 }] })
   }
 
 private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
@@ -36,7 +36,7 @@ private def renderFailedExternalRef (name : Lean.Name) : Data.ExternalRef :=
     (Data.ExternalRef.ofName name) with
       present := true
       kind := .theorem
-      provedStatus := .proved
+      provedStatus := some .proved
       render := .error (.exception name "synthetic render failure")
   }
 
@@ -207,7 +207,7 @@ private def unavailableHeading (rendered : CodeSummary.RenderParts) : Bool :=
   let status : ProvedStatus := .incomplete { knownSorry := #[
     { location := .statement, origin := .dependency },
     { location := .unknown, origin := .unknown }] }
-  let ref : ExternalRef := { (ExternalRef.ofName `Hidden.typeOnly) with provedStatus := status }
+  let ref : ExternalRef := { (ExternalRef.ofName `Hidden.typeOnly) with provedStatus := some status }
   let data : BlockData := {
     kind := .theorem, label := `hidden.typeOnly, count := 1, codeData := some { externalDecls := #[ref] } }
   unavailableHeading (CodeSummary.renderParts data { source := data.codeData } (fun _ => none))
@@ -218,8 +218,8 @@ private def unavailableHeading (rendered : CodeSummary.RenderParts) : Bool :=
   let direct : ProvedStatus := .incomplete { knownSorry := #[{ location := .proof, refs? := some 2 }] }
   let inherited : ProvedStatus := .incomplete { knownSorry := #[{ location := .proof, origin := .dependency }] }
   let refs := #[
-    { (ExternalRef.ofName `Direct) with provedStatus := direct },
-    { (ExternalRef.ofName `Inherited) with provedStatus := inherited }]
+    { (ExternalRef.ofName `Direct) with provedStatus := some direct },
+    { (ExternalRef.ofName `Inherited) with provedStatus := some inherited }]
   let data : BlockData := {
     kind := .theorem, label := `mixed.origins, count := 1, codeData := some { externalDecls := refs } }
   unavailableHeading (CodeSummary.renderParts data { source := data.codeData } (fun _ => none))
@@ -230,7 +230,7 @@ private def unavailableHeading (rendered : CodeSummary.RenderParts) : Bool :=
 #guard_msgs in
 #eval!
   let check (status : ProvedStatus) :=
-    let ref : ExternalRef := { (ExternalRef.ofName `Hidden.clean) with provedStatus := status }
+    let ref : ExternalRef := { (ExternalRef.ofName `Hidden.clean) with provedStatus := some status }
     let data : BlockData := {
       kind := .theorem, label := `hidden.clean, count := 1,
       codeData := some { externalDecls := #[ref] } }

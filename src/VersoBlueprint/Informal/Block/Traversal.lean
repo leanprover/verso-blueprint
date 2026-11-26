@@ -154,7 +154,7 @@ private def registerTraversedBlockAssets
     m Unit := do
   let externalDecls := externalDeclsOfBlock blockData
   registerBlockPreviewData id blockData contents
-  registerExternalCodePreviews id externalDecls
+  registerExternalCodePreviews id (blockData.codeData.map (·.displayExternalDecls) |>.getD #[])
   if showsCode then
     registerExternalDeclAnchors id blockData.label externalDecls
 

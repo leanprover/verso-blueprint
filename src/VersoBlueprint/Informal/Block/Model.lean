@@ -159,11 +159,26 @@ def InlineCodeBlocks.literateDeclarations (blocks : InlineCodeBlocks) : Literate
   definedTheorems := blocks.definedTheorems
 }
 
+/-- Each entry identifies an external declaration selected for checking in a
+facet. A missing result records that the capture could not check it. -/
+abbrev ExternalDeclarationChecks := Array (Name × Option Data.ProvedStatus)
+
 /-- Semantic Lean associations. Visible panels and their preview identities live in traversal. -/
 structure BlockCodeData where
   literateDeclarations : LiterateDeclarations := {}
   externalDecls : Array Data.ExternalRef := #[]
+  externalChecks : ExternalDeclarationChecks := #[]
 deriving Repr, Inhabited, FromJson, ToJson, Quote
+
+def BlockCodeData.displayExternalDecls (code : BlockCodeData) : Array Data.ExternalRef :=
+  let checked := code.externalChecks.foldl (init := ({} : NameMap (Option Data.ProvedStatus)))
+    fun checks (name, status) =>
+      checks.insert name (Data.ExternalRef.mergeStatus (checks.getD name none) status)
+  code.externalDecls.map fun decl =>
+    if !decl.present then decl else
+    match checked.get? decl.canonical with
+    | none => decl
+    | some status => { decl with provedStatus := some (status.getD (.incomplete {})) }
 
 def BlockCodeData.isEmpty (code : BlockCodeData) : Bool :=
   code.literateDeclarations.isEmpty && code.externalDecls.isEmpty
@@ -178,6 +193,7 @@ def BlockCodeData.append (left right : BlockCodeData) : BlockCodeData := {
     definedDefs := left.literateDeclarations.definedDefs ++ right.literateDeclarations.definedDefs
     definedTheorems := left.literateDeclarations.definedTheorems ++ right.literateDeclarations.definedTheorems }
   externalDecls := left.externalDecls ++ right.externalDecls
+  externalChecks := left.externalChecks ++ right.externalChecks
 }
 
 /-- Omit empty presentation inputs without selecting between association categories. -/
@@ -188,14 +204,14 @@ def BlockCodeData.nonempty? (code : BlockCodeData) : Option BlockCodeData :=
 def BlockCodeData.summaryExternalDecls (code : BlockCodeData) : Array Data.ExternalRef :=
   let names := code.literateDeclarations.declarations.foldl
     (fun (names : NameSet) decl => names.insert decl.name.eraseMacroScopes) {}
-  (Data.ExternalRef.mergeSnapshots #[] code.externalDecls).filter fun decl =>
+  (Data.ExternalRef.mergeSnapshots #[] code.displayExternalDecls).filter fun decl =>
     !names.contains decl.canonical.eraseMacroScopes
 
 /-- Canonical inline summary entries retain external and repeated inline status
 observations even when the corresponding external display entry is omitted. -/
 def BlockCodeData.summaryLiterateDeclarations (code : BlockCodeData) : LiterateDeclarations := Id.run do
-  let observations := code.externalDecls.map
-      (fun ref => (ref.canonical, if ref.present then ref.provedStatus else .missing)) ++
+  let observations := code.displayExternalDecls.filterMap
+      (fun ref => ref.observedStatus.map (ref.canonical, ·)) ++
     code.literateDeclarations.declarations.map (fun decl => (decl.name, decl.provedStatus))
   let statuses := Data.ProvedStatus.indexByName observations
   let mut seen : NameSet := {}
@@ -316,6 +332,8 @@ structure RenderNode extends BlockMetadata where
   kind : Data.NodeKind := .lemma
   externalRefs : Array Data.ExternalRef := #[]
   proofExternalRefs : Array Data.ExternalRef := #[]
+  statementExternalChecks : ExternalDeclarationChecks := #[]
+  proofExternalChecks : ExternalDeclarationChecks := #[]
   literateDeclarations : LiterateDeclarations := {}
   initialCount : Nat := 0
   occurrence : Option BlockOccurrence := none
@@ -329,14 +347,31 @@ structure BlockData extends BlockMetadata, BlockPresentation where
   codeData : Option BlockCodeData := none
 deriving FromJson, ToJson, Quote
 
+/-- Match the same association selected by the facet's snapshot fold.
+Use its full context before reducing the check to a name local to this facet. -/
+private def externalChecksOn (node : Data.NodeInventory) (placement : Name)
+    (statuses : Std.HashMap Realizations.ObjectKey Data.ProvedStatus) : ExternalDeclarationChecks := Id.run do
+  let mut selected : NameMap SourceData.NativeAssociation := {}
+  for association in node.nativeAssociations do
+    if association.placement == placement then
+      let name := association.reference.canonical.eraseMacroScopes
+      let previous := selected.get? name
+      if previous.isNone || (association.reference.present && !previous.any (·.reference.present)) then
+        selected := selected.insert name association
+  return selected.toArray.map fun (name, association) =>
+    (name, statuses.get? ⟨association.context, name.toString⟩)
+
 def RenderNode.ofNode (label : Data.Label) (node : Data.NodeInventory)
     (author : Option Data.AuthorInfo := none)
-    (assessment : Option Realizations.NodeAssessment := none) : RenderNode := {
+    (assessment : Option Realizations.NodeAssessment := none)
+    (nativeChecks : Option (Std.HashMap Realizations.ObjectKey Data.ProvedStatus) := none) : RenderNode := {
   label
   kind := node.kind
   initialCount := node.count
   externalRefs := node.nativeRefsOn `statement
   proofExternalRefs := node.nativeRefsOn `proof
+  statementExternalChecks := (nativeChecks.map (externalChecksOn node `statement)).getD #[]
+  proofExternalChecks := (nativeChecks.map (externalChecksOn node `proof)).getD #[]
   literateDeclarations := .ofCodes node.inlineCodes
   parent := node.parent
   statementUses := node.usesOn `statement
@@ -365,6 +400,7 @@ def RenderNode.resolve (node : RenderNode) (occurrence : BlockOccurrence) : Bloc
   isProof := occurrence.isProof
   codeData := ({
     externalDecls := if occurrence.isProof then node.proofExternalRefs else node.externalRefs
+    externalChecks := if occurrence.isProof then node.proofExternalChecks else node.statementExternalChecks
     literateDeclarations := if occurrence.isProof then {} else node.literateDeclarations
   } : BlockCodeData).nonempty?
   toBlockPresentation := occurrence.toBlockPresentation
@@ -383,6 +419,8 @@ def RenderNode.ofBlockData (data : BlockData) : RenderNode := {
   kind := data.kind
   externalRefs := if data.isProof then #[] else data.codeData.map (·.externalDecls) |>.getD #[]
   proofExternalRefs := if data.isProof then data.codeData.map (·.externalDecls) |>.getD #[] else #[]
+  statementExternalChecks := if data.isProof then #[] else data.codeData.map (·.externalChecks) |>.getD #[]
+  proofExternalChecks := if data.isProof then data.codeData.map (·.externalChecks) |>.getD #[] else #[]
   literateDeclarations := if data.isProof then {} else data.codeData.map (·.literateDeclarations) |>.getD {}
   initialCount := data.count
   occurrence := some data.toOccurrence

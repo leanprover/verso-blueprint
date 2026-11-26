@@ -234,16 +234,12 @@ private def mkProvenance (workspaceRoot : System.FilePath)
     | none =>
       .outWorkspace moduleName none
 
-private def externalDeclStatusBadge (status : Data.ProvedStatus) : ExternalDeclHeaderBadge :=
-  let view := status.presentation
-  { className := view.externalDeclClass, text := view.externalHeaderText }
-
 /--
 Build a full snapshot for one external declaration reference using the environment
 available at elaboration/registration time.
 -/
 private def externalRefSnapshotWithStatus (opts : Lean.Options) (workspaceRoot : System.FilePath)
-    (ref : Data.ExternalRef) (provedStatus : Data.ProvedStatus) : Lean.CoreM Data.ExternalRef := do
+    (ref : Data.ExternalRef) (provedStatus : Option Data.ProvedStatus) : Lean.CoreM Data.ExternalRef := do
   let env ← getEnv
   let canonical := ref.canonical.eraseMacroScopes
   match env.find? canonical with
@@ -252,7 +248,7 @@ private def externalRefSnapshotWithStatus (opts : Lean.Options) (workspaceRoot :
       ref with
       canonical
       present := false
-      provedStatus := .missing
+      provedStatus := some .missing
       render := .error (.moduleUnavailable canonical)
     }
   | some cinfo =>
@@ -285,7 +281,7 @@ private def externalRefSnapshotWithStatus (opts : Lean.Options) (workspaceRoot :
     let headerSource? := externalDeclHeaderSource? workspaceRoot moduleName? sourcePath? sourceHref?
     let renderResult ←
       (renderDeclHtmlDirectFromInfoE canonical cinfo
-        (headerBadge? := some (externalDeclStatusBadge ref.provedStatus))
+        (hasHeaderBadge := true)
         (headerSource? := headerSource?)).run'
     let render : Data.ExternalDeclRender :=
       match renderResult with
@@ -304,7 +300,7 @@ private def externalRefSnapshotWithStatus (opts : Lean.Options) (workspaceRoot :
 def externalRefSnapshot (opts : Lean.Options) (workspaceRoot : System.FilePath)
     (ref : Data.ExternalRef) : Lean.CoreM Data.ExternalRef := do
   let status ← Data.analyzeDeclaration ref.canonical.eraseMacroScopes
-  externalRefSnapshotWithStatus opts workspaceRoot ref status
+  externalRefSnapshotWithStatus opts workspaceRoot ref (some status)
 
 def workspaceRoot : Lean.CoreM System.FilePath := do
   let cwd ← liftM <| IO.currentDir
@@ -320,6 +316,13 @@ def externalRefSnapshotsAtCurrentDir (opts : Lean.Options)
     (refs : Array Data.ExternalRef) : Lean.CoreM (Array Data.ExternalRef) := do
   let root ← workspaceRoot
   let statuses ← Data.analyzeDeclarations (refs.map (·.canonical.eraseMacroScopes))
-  (refs.zip statuses).mapM fun (ref, status) => externalRefSnapshotWithStatus opts root ref status
+  (refs.zip statuses).mapM fun (ref, status) => externalRefSnapshotWithStatus opts root ref (some status)
+
+/-- Record chapter references in their authoring environment, deferring proof
+inspection to the project capture that can see the selected import view. -/
+def registerExternalRefsAtCurrentDir (opts : Lean.Options)
+    (refs : Array Data.ExternalRef) : Lean.CoreM (Array Data.ExternalRef) := do
+  let root ← workspaceRoot
+  refs.mapM fun ref => externalRefSnapshotWithStatus opts root ref none
 
 end Informal

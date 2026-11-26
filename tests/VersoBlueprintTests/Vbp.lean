@@ -492,7 +492,7 @@ private def jsonArrayHasNullField (values : Array Json) (field : String) : Bool 
       (nativeStatementComplete nativeProofComplete requiredComplete : Bool)
       (kind : Informal.Data.NodeKind := .theorem) : Bool :=
     let statementSource : Informal.BlockCodeData := { externalDecls := #[{
-      (Informal.Data.ExternalRef.ofName `truthDecl) with kind, provedStatus := statement }] }
+      (Informal.Data.ExternalRef.ofName `truthDecl) with kind, provedStatus := some statement }] }
     let proofSource : Informal.BlockCodeData := { literateDeclarations := { definedTheorems := #[{
       name := `truthDecl, provedStatus := proof }] } }
     let source := statementSource.append proofSource

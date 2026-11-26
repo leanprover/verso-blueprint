@@ -298,6 +298,36 @@ run_cmd liftTermElabM do
     before.eAssignment.toList == after.eAssignment.toList &&
     decide (rawBefore = (← Informal.Environment.stagedAuthoring))) "Native check leaked state or persisted observations"
 
+-- A checked union supplies coverage for each witness. Assumptions belong to
+-- individual witnesses, and expected propositions still close their own dependencies.
+run_cmd liftTermElabM do
+  let names := #[`RealizationAdapterFixture.groupedOne, `RealizationAdapterFixture.conditionalProof,
+    `RealizationAdapterFixture.assumption, `RealizationAdapterFixture.groupedOne]
+  let session ← liftM Informal.Data.newSorryInspectionSession
+  NativeLean.prepareDeclarations session (names.map fun name => (`adapterFixture, witness name))
+  let trueGoal ← `(term| True)
+  for name in names do
+    let object := witness name
+    let isolated ← obtain (← NativeLean.checkDeclaration `adapterFixture object)
+    let batched ← obtain (← NativeLean.checkDeclaration `adapterFixture object (some session))
+    ensure (batched.status == isolated.status && batched.roles == isolated.roles &&
+      batched.kind == isolated.kind && batched.statement == isolated.statement && batched.body == isolated.body)
+      "Batched own-declaration observations changed root-specific roles, assumptions, or outcomes"
+    let isolated ← obtain (← NativeLean.check `adapterFixture object trueGoal)
+    let batched ← obtain (← NativeLean.check `adapterFixture object trueGoal (session := some session))
+    ensure (batched.goal == isolated.goal && batched.status == isolated.status &&
+      batched.observation == isolated.observation)
+      "Batched independent-goal observation differs from an isolated check"
+  let work ← session.work
+  ensure (work.certificateScans == 1)
+    "Covered expectations and witnesses must share the union's single certificate"
+  let blockedGoal ← `(term| RealizationAdapterFixture.admittedProposition)
+  match ← NativeLean.check `adapterFixture (witness names[0]!) blockedGoal (session := some session) with
+  | .error issue =>
+    ensure (issue.code == "unverified-expectation")
+      "A new expectation dependency must be inspected independently of a clean witness"
+  | .ok _ => throwError "Certified witness authorized a blocked expectation"
+
 private def assertPendingCorrespondence (p : PreparedModel) (input : Input) (expected : Syntax)
     (interpretation : String) : TermElabM Unit := do
   -- An explicitly authored correspondence still needs its own review.
@@ -639,6 +669,10 @@ run_cmd liftTermElabM do
 -- dynamically import the same module at ordinary visibility to test unavailable
 -- coverage through this provider, including a cached-empty-footprint control.
 private unsafe def hiddenChecks : CoreM Bool := do
+  let visible ← Informal.Data.newSorryInspectionSession
+  visible.prepare #[`sorryImportComplete]
+  unless (← visible.analyzeDeclaration `sorryImportComplete).isProved do
+    throwError "Legacy import failed to provide the complete theorem body"
   liftM enableInitializersExecution
   let output ← liftM <| IO.Process.output {
     cmd := "./scripts/lean-low-priority"
@@ -650,6 +684,30 @@ private unsafe def hiddenChecks : CoreM Bool := do
     {} (loadExts := true) (level := .exported) (arts := setup.importArts)
   withEnv env <| MetaM.run' <| TermElabM.run' do
     let goal ← `(term| True)
+    let reused ← NativeLean.checkDeclaration `adapterFixture (witness `sorryImportComplete) (some visible)
+    ensure (rejected reused) "Changing the import view must invalidate coverage from the visible body"
+    let roots := #[`sorryImportComplete, `sorryImportHiddenHelper, `sorryImportAdmitted,
+      `sorryImportAxiom, `sorryImportTypeOnly]
+    let unavailableExpectation ← `(term| sorryImportSpec)
+    for order in #[roots, roots.reverse] do
+      let session ← liftM Informal.Data.newSorryInspectionSession
+      NativeLean.prepareDeclarations session (order.map fun name => (`adapterFixture, witness name))
+      for name in order do
+        let object := witness name
+        let isolated ← obtain (← NativeLean.checkDeclaration `adapterFixture object)
+        let batched ← obtain (← NativeLean.checkDeclaration `adapterFixture object (some session))
+        ensure (batched.status == isolated.status && batched.roles == isolated.roles &&
+          batched.statement == isolated.statement && batched.body == isolated.body)
+          "Hidden bodies and positive footprints must retain root-specific native observations"
+        let isolated ← obtain (← NativeLean.check `adapterFixture object goal)
+        let batched ← obtain (← NativeLean.check `adapterFixture object goal (session := some session))
+        ensure (batched.status == isolated.status && batched.observation == isolated.observation)
+          "A blocked native union changed the independent-goal observation"
+      match ← NativeLean.check `adapterFixture (witness `sorryImportComplete) unavailableExpectation
+          (session := some session) with
+      | .error diagnostic =>
+        ensure (diagnostic.code == "unverified-expectation") "A shared session must reject a hidden expectation"
+      | .ok _ => throwError "The shared session certified an unavailable expectation"
     let complete ← obtain (← NativeLean.check `adapterFixture (witness `sorryImportComplete) goal)
     let hidden ← obtain (← NativeLean.check `adapterFixture (witness `sorryImportHiddenHelper) goal)
     let admitted ← obtain (← NativeLean.check `adapterFixture (witness `sorryImportAdmitted) goal)
@@ -677,7 +735,6 @@ private unsafe def hiddenChecks : CoreM Bool := do
       "Hidden admitted body retains positive hole evidence"
     ensure (axiomResult.status.any (·.isAxiomLike) && axiomResult.observation.outcome == .failed)
       "Hidden import distinguishes genuine axiom"
-    let unavailableExpectation ← `(term| sorryImportSpec)
     match ← NativeLean.check `adapterFixture (witness `sorryImportComplete) unavailableExpectation with
     | .error diagnostic =>
       ensure (diagnostic.code == "unverified-expectation") "Hidden expectation dependencies must be rejected"

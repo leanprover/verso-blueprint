@@ -683,7 +683,7 @@ This is a VBP stale-artifact diagnostic marker, not a public interchange
 version. It may change whenever the generated-data reader needs a clean
 validation boundary.
 -/
-def manifestInternalSchemaVersion : Nat := 12
+def manifestInternalSchemaVersion : Nat := 13
 
 def manifestInternalSchemaVersionField : String := "vbpInternalSchemaVersion"
 
@@ -1966,11 +1966,8 @@ private def blockCodeData?
     (entry : PreviewCache.Entry)
     (blockData : Informal.BlockData) : Option Informal.BlockCodeData :=
   let code := blockData.codeData.getD {}
-  let externalDecls := externalDeclsFromLeanPreviewKeys state entry.leanCodePreviewKeys
-  let externalDecls := if externalDecls.isEmpty then
-    code.externalDecls
-    else externalDecls
-  { code with externalDecls }.nonempty?
+  if !code.externalDecls.isEmpty then code.nonempty? else
+    { code with externalDecls := externalDeclsFromLeanPreviewKeys state entry.leanCodePreviewKeys }.nonempty?
 
 /-- Per-export inputs, ordered by storage key. Rejected entries remain present as
 `none` so markup fallback cannot mistake corrupt content for an absent facet. -/

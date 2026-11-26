@@ -301,10 +301,11 @@ def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
 
 /-- Capture the rendering projection without retaining elaboration or provenance state. -/
 def capture (state : Informal.Environment.State)
-    (assessmentFor : Name → Option Informal.Realizations.NodeAssessment := fun _ => none) :
+    (assessmentFor : Name → Option Informal.Realizations.NodeAssessment := fun _ => none)
+    (nativeChecks : Option (Std.HashMap Informal.Realizations.ObjectKey Informal.Data.ProvedStatus) := none) :
     Array Informal.RenderNode :=
   state.inventory.toArray.map fun (label, node) =>
-    Informal.RenderNode.ofNode label node (node.owner.bind state.authors.get?) (assessmentFor label)
+    Informal.RenderNode.ofNode label node (node.owner.bind state.authors.get?) (assessmentFor label) nativeChecks
 
 def install (state : TraverseState) (nodes : Array Informal.RenderNode) : TraverseState :=
   nodes.foldl saveNode state

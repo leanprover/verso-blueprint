@@ -206,6 +206,13 @@ package's weak Lake option. The owning module's project is preserved on import.
 Public capture requires unambiguous readable labels; arbitrary typed names remain
 supported by the pure registry.
 
+Ordinary chapter `(lean := ...)` directives register the declaration name,
+kind, owning source, ranges, and display snippet without inspecting the proof
+dependencies. Declaration previews before the project capture show `awaiting
+capture`. The generator uses each declaration's current native check for the
+panel and code preview. Authored uses and optional `autoDeps` inference still
+run during registration.
+
 Explicit contracts and review inputs use `Realizations.Authoring`:
 
 ```lean
@@ -235,6 +242,10 @@ completion. This first slice does not redesign graph layout or aggregate request
 ```sh
 lake exe vbp query status <label>
 ```
+
+`sourceDeclarationSnapshots` reports the declaration inventory from registration
+in each facet. `validation.externalDeclarationChecks` reports the current checks
+for those external declarations when the site has a captured assessment.
 
 Build the owning sources first. Queries read a generated capture; they do not
 recheck edited files. Preview declaration inventories remain display data and

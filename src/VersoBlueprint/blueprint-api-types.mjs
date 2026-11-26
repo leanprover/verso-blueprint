@@ -303,7 +303,8 @@
  * node assessment and its requirements remain the validation authority.
  * @typedef {Object} BlueprintCodeData
  * @property {{definedDefs: Array<{name: string, provedStatus: BlueprintProvedStatus}>, definedTheorems: Array<{name: string, provedStatus: BlueprintProvedStatus}>}} literateDeclarations
- * @property {Array<{canonical: string, present: boolean, provedStatus: BlueprintProvedStatus}>} externalDecls
+ * @property {Array<{canonical: string, present: boolean, provedStatus: BlueprintProvedStatus | null}>} externalDecls Registration-time source inventory.
+ * @property {Array<{0: string, 1: (BlueprintProvedStatus | null), length: number}>} externalChecks Per-declaration results from the current capture.
  */
 
 /**

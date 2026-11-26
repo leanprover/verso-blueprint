@@ -21,6 +21,8 @@ theorem statusAdmittedHelper : True := by
 
 theorem statusConsumer : True := statusAdmittedHelper
 
+theorem statusUsesProofInType : statusAdmittedHelper = True.intro := Eq.refl True.intro
+
 def statusSpec : Prop := by sorry
 
 theorem statusAdmitted (_h : statusSpec) : True := by sorry
@@ -275,6 +277,85 @@ theorem statusDirectTypeOnly (_h : (by sorry : Prop)) : True := True.intro
       mixed.size == 4 && mixed[0]!.isProved && mixed[1]!.dependsOnSorry &&
       mixed[2]!.isAxiomLike && mixed[3]!.isUnverified &&
       (← analyzeDeclarations #[]).isEmpty
+
+-- This union crosses the recursor's back-links. Count actual inspections and
+-- visits before and after per-root checks and an expectation on a covered member.
+/-- info: true -/
+#guard_msgs in
+#eval
+  show CoreM Bool from do
+    let roots := #[``StatusCompleteRecord, ``StatusCompleteRecord.rec, ``StatusCompleteRecord.rec]
+    let (union, _) ← (inspectSorryDependencies roots).run {}
+    let edgeCount := union.declarations.toList.foldl
+      (fun count (_, inspected) => count + inspected.dependencies.size) 0
+    let (first, _) ← (inspectSorryDependencies #[``StatusCompleteRecord]).run {}
+    let (second, _) ← (inspectSorryDependencies #[``StatusCompleteRecord.rec]).run {}
+    let overlapping := first.declarations.size + second.declarations.size > union.declarations.size
+    for order in #[roots, roots.reverse] do
+      let session ← newSorryInspectionSession
+      session.prepare order
+      unless (← order.mapM session.analyzeDeclaration).all (·.isProved) do return false
+      unless ← session.checkDependencies #[``StatusCompleteRecord.mk] do return false
+      let work ← session.work
+      unless work.declarationInspections == union.declarations.size &&
+          work.edgeVisits == edgeCount && work.certificateScans == 1 do return false
+    return overlapping
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show CoreM Bool from do
+    let roots := #[``StatusCompleteRecord, ``StatusRecord, ``statusAdmittedHelper, ``statusUsesProofInType,
+      ``external_axiom_decl, `unknownBatchRoot, ``StatusCompleteRecord]
+    for order in #[roots, roots.reverse] do
+      let session ← newSorryInspectionSession
+      session.prepare order
+      unless (← order.mapM session.analyzeDeclaration) == (← order.mapM analyzeDeclaration) do
+        return false
+      let statementOnly ← session.analyzeDeclaration ``statusUsesProofInType
+      unless statementOnly.hasTypeGap && !statementOnly.hasProofGap do return false
+      let work ← session.work
+      discard <| order.mapM session.analyzeDeclaration
+      let replay ← session.work
+      unless work.certificateScans > 1 && work.certificateScans == replay.certificateScans &&
+          work.edgeVisits == replay.edgeVisits && work.declarationInspections == replay.declarationInspections do
+        return false
+    return true
+
+-- An interrupted preparation publishes no inspections or coverage. A session
+-- also refuses a different environment, even when its selected name still exists.
+/-- info: true -/
+#guard_msgs in
+#eval
+  show CoreM Bool from do
+    let session ← newSorryInspectionSession
+    let token ← IO.CancelToken.new
+    token.set
+    let context : Core.Context ← read
+    let state : Core.State ← get
+    let attempted ← liftM <| ((session.prepare #[``StatusCompleteRecord]).run'
+      { context with cancelTk? := some token } state).toBaseIO
+    let interrupted := match attempted with
+      | .error exception => exception.isInterrupt
+      | .ok _ => false
+    let started ← IO.getNumHeartbeats
+    let attempted ← liftM <| ((session.prepare #[``StatusCompleteRecord.rec]).run'
+      { context with initHeartbeats := started, maxHeartbeats := 100 } state).toBaseIO
+    let exhausted := match attempted with
+      | .error exception => exception.isMaxHeartbeat
+      | .ok _ => false
+    let stopped ← session.work
+    session.prepare #[``StatusCompleteRecord]
+    let env ← getEnv
+    let rejected ← withEnv (env.setMainModule `OtherInspectionEnvironment) do
+      try
+        discard <| session.analyzeDeclaration ``StatusCompleteRecord
+        pure false
+      catch _ =>
+        pure true
+    return interrupted && exhausted && stopped.declarationInspections == 0 && stopped.edgeVisits == 0 &&
+      stopped.certificateScans == 0 && rejected &&
+      (← session.analyzeDeclaration ``StatusCompleteRecord).isProved
 
 -- Closed cycles are legitimate. Open boundaries, hidden bodies, missing roots,
 -- and holes anywhere in a cycle must all prevent production completion.

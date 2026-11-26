@@ -105,8 +105,8 @@ def NodeInventory.summaryExternalRefs (node : NodeInventory) : Array ExternalRef
 from every external and inline association of the same canonical declaration.
 The authored code blocks remain unchanged for rendering and provenance. -/
 def NodeInventory.summaryLiterateCodes (node : NodeInventory) : Array Code := Id.run do
-  let observations := node.associatedExternalRefs.map
-      (fun ref => (ref.canonical, if ref.present then ref.provedStatus else .missing)) ++
+  let observations := node.associatedExternalRefs.filterMap
+      (fun ref => ref.observedStatus.map (ref.canonical, ·)) ++
     node.inlineCodes.flatMap fun code =>
       code.definedDefs.map (fun decl => (decl.name, decl.provedStatus)) ++
       code.definedTheorems.map (fun decl => (decl.name, decl.provedStatus))

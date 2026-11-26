@@ -87,10 +87,30 @@ def declarationRoles (info : Lean.ConstantInfo) : CoreM (Array Name) := do
   if propositionValued then return #[`statement]
   return #[`implementation]
 
+/-- Prepare shared closure coverage for trusted native candidates. Request
+identity, kernel checks, roles and assumptions are still checked separately
+for each witness when its provider runs. -/
+def prepareDeclarations (session : Data.SorryInspectionSession)
+    (requests : Array (Name × ObjectKey)) : CoreM Unit := do
+  let env ← getEnv
+  let mut seen : NameSet := {}
+  let mut roots := #[]
+  for (project, witness) in requests do
+    let .ok name := nativeName project witness | continue
+    if seen.contains name then continue
+    let some info := env.checked.get.find? name | continue
+    if info.isUnsafe then continue
+    if let .axiomInfo _ := info then
+      if let .absent := Data.ConstantInfo.blueprintBodyAccess env info then continue
+    seen := seen.insert name
+    roots := roots.push name
+  session.prepare roots
+
 /-- Check the original checked environment, including declaration universes and
 conservative reachable-body coverage. No expected goal is synthesized from the
 witness; independent-goal proof checking remains `check` below. -/
-def checkDeclaration (project : Name) (witness : ObjectKey) :
+def checkDeclaration (project : Name) (witness : ObjectKey)
+    (session : Option Data.SorryInspectionSession := none) :
     TermElabM (Except Diagnostic CheckedDeclaration) := do
   let saved ← Term.saveState
   try
@@ -111,7 +131,9 @@ def checkDeclaration (project : Name) (witness : ObjectKey) :
       return .error <| issue "unsafe-declaration" witness "Unsafe declaration cannot supply trusted native validation"
     let constant := Lean.mkConst name (info.levelParams.map Level.param)
     checkWithKernel constant
-    let status ← Data.analyzeDeclaration name
+    let status ← match session with
+      | some session => liftM (session.analyzeDeclaration name)
+      | none => Data.analyzeDeclaration name
     let assumptions ← collectAxioms name
     let assumptions := assumptions.map Name.toString
     let roles ← liftM <| declarationRoles info
@@ -152,7 +174,8 @@ closed proposition and concrete universe/package instantiations are preserved.
 The logical project is selected by the caller, not inferred from module names. -/
 def check (project : Name) (witness : ObjectKey) (expected : Syntax)
     (documents : Array DocumentKey := #[])
-    (semantics : SemanticContext := semanticContext) : TermElabM (Except Diagnostic Checked) := do
+    (semantics : SemanticContext := semanticContext)
+    (session : Option Data.SorryInspectionSession := none) : TermElabM (Except Diagnostic Checked) := do
   let saved ← Term.saveState
   try
     let name ← match nativeName project witness with
@@ -173,18 +196,21 @@ def check (project : Name) (witness : ObjectKey) (expected : Syntax)
     checkWithKernel proposition
     unless ← isProp proposition do
       return .error <| issue "non-proposition" witness "Expected term is not a proposition"
-    let (inspection, _) ← (Data.inspectSorryDependencies proposition.getUsedConstants).run {}
-    unless inspection.isComplete do
+    let session ← match session with
+      | some session => pure session
+      | none => liftM Data.newSorryInspectionSession
+    let dependencies := proposition.getUsedConstants
+    unless ← liftM (session.checkDependencies dependencies) do
       return .error <| issue "unverified-expectation" witness
         "Expected proposition has admitted or unavailable dependencies"
     -- This is an opaque structural fingerprint, not the equality algorithm. It
     -- comes from the independently checked expectation, never the witness type.
     let goal : Goal := { context := witness.context, fingerprint := Semantic.fingerprint proposition, documents }
-    let semanticResult ← semantics .implementation project (#[name] ++ proposition.getUsedConstants)
+    let semanticResult ← semantics .implementation project (#[name] ++ dependencies)
     let (context, semanticDiagnostics) := match semanticResult with
       | .ok context => (some context, #[])
       | .error diagnostic => (none, #[diagnostic])
-    let statementResult ← semantics .statement project (#[name] ++ proposition.getUsedConstants)
+    let statementResult ← semantics .statement project (#[name] ++ dependencies)
     let statementContext := statementResult.toOption
     let semanticDiagnostics := (semanticDiagnostics ++ (match statementResult with
       | .ok _ => #[] | .error diagnostic => #[diagnostic])).toList.eraseDups.toArray
@@ -205,7 +231,7 @@ def check (project : Name) (witness : ObjectKey) (expected : Syntax)
     checkWithKernel constant
     -- Kernel-check the conversion too, beyond Meta's unification decision.
     checkWithKernel <| mkApp (mkLambda `w BinderInfo.default proposition (mkConst ``True.intro)) constant
-    let status ← Data.analyzeDeclaration info.name
+    let status ← liftM (session.analyzeDeclaration info.name)
     let assumptions ← collectAxioms info.name
     return .ok {
       goal, status := some status, semanticContext := context, statementContext, semanticDiagnostics

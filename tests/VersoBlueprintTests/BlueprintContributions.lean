@@ -100,7 +100,7 @@ private def otherA := { a with label := `other }
 -- Complete snapshot differences are not collapsed to declaration-name equality.
 private def snapshotA := { a with nativeAssociations := BlueprintNativeFixture.associations `shared `statement #[{
   (ExternalRef.ofName `declA .blueprintAttr) with
-  provedStatus := .incomplete { knownSorry := #[{ location := .proof }] }
+  provedStatus := some (.incomplete { knownSorry := #[{ location := .proof }] })
   provenance := .inWorkspace `A "formalization.lean"
   render := .ok { html := "proof with sorry", hoverPayloads := #[⟨7, "type info"⟩] }
 }] }
@@ -129,8 +129,8 @@ private def proofA : Record := { a with
 -- and proof-facet associations of the same declaration, in either order/replay.
 private def unverifiedRef : ExternalRef := {
   (ExternalRef.ofName `declA .directiveLean) with
-  provedStatus := .incomplete { unverified := #[{
-    location := .statement, declaration := `declA, reason := .bodyUnavailable }] } }
+  provedStatus := some (.incomplete { unverified := #[{
+    location := .statement, declaration := `declA, reason := .bodyUnavailable }] }) }
 private def unverifiedProof : Record := { proofA with nativeAssociations := BlueprintNativeFixture.associations `shared `proof #[unverifiedRef] }
 #guard [[snapshotA, unverifiedProof], [unverifiedProof, snapshotA],
     collector.collect [snapshotA, unverifiedProof, snapshotA, unverifiedProof]].all fun records =>
@@ -141,7 +141,7 @@ private def unverifiedProof : Record := { proofA with nativeAssociations := Blue
     (assembled.node.nativeRefsOn `proof).size == 1 &&
     assembled.node.leanDecls == #[`declA] &&
     match assembled.node.associatedExternalRefs[0]!.provedStatus with
-    | .incomplete info => info.knownSorry.size == 1 && info.unverified.size == 1
+    | some (.incomplete info) => info.knownSorry.size == 1 && info.unverified.size == 1
     | _ => false
 
 -- Collision diagnostics name only the changed snapshot fields, including a
@@ -149,7 +149,7 @@ private def unverifiedProof : Record := { proofA with nativeAssociations := Blue
 private def diagnosticSnapshotA : Record := { a with
   nativeAssociations := BlueprintNativeFixture.associations `shared `statement #[{ (ExternalRef.ofName `declA .directiveLean) with
     present := false
-    provedStatus := .incomplete { knownSorry := #[{ location := .proof }] }
+    provedStatus := some (.incomplete { knownSorry := #[{ location := .proof }] })
     provenance := .outWorkspace `Snapshot "snapshot.lean"
     sourceHref? := some "https://example.invalid/snapshot"
     render := .ok { html := "diagnostic HTML must stay out of the message", hoverPayloads := #[] } }]
@@ -176,7 +176,7 @@ private def collisionMessagesFor (records : List Record) : Array String :=
 -- snapshot comparison must run before that lossy diagnostic projection.
 private def differentSorryLocationSnapshotA : Record := { snapshotA with
   nativeAssociations := BlueprintNativeFixture.associations `shared `statement #[{ snapshotA.allReferences[0]! with
-    provedStatus := .incomplete { knownSorry := #[{ location := .statement }] } }] }
+    provedStatus := some (.incomplete { knownSorry := #[{ location := .statement }] }) }] }
 #guard let messages := collisionMessagesFor [snapshotA, differentSorryLocationSnapshotA]
   messages.any (·.contains "status (incomplete(known-sorry=1, unverified=0) → incomplete(known-sorry=1, unverified=0))")
 #guard collisionMessagesFor [a, diagnosticSnapshotA] ==

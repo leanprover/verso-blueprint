@@ -154,21 +154,27 @@ private def entryResponseJson (manifest : ManifestFile) (entry : Entry) : Json :
     ("proof", proof?.map (fun proof => Json.mkObj (entryDetailFields proof)) |>.getD Json.null)
   ]
 
-/-- Return the captured node assessment separately from legacy declaration display
-snapshots, retaining the latter's facet provenance. This reads persisted output;
-it does not recheck Lean sources or infer completion when capture is absent. -/
+/-- Read captured checks and node assessment alongside the per-facet declaration
+inventory observed at registration. -/
 private def entryStatusJson (manifest : ManifestFile) (entry : Entry) : Json := Id.run do
   let facets := manifest.findBlockEntriesByLabel entry.authoredLabel
   let assessment? := entry.assessment <|> facets.findSome? (·.assessment)
   let mut declarations : Array Json := #[]
+  let mut nativeDeclarations : Array Json := #[]
   for facet in facets do
     let code := facet.codeData.getD {}
     for decl in code.externalDecls do
-      let status := if decl.present then decl.provedStatus else .missing
+      let status := decl.observedStatus.map Informal.Data.ProvedStatus.reportJson |>.getD
+        (Json.mkObj [("verdict", Json.str "awaiting-capture")])
       declarations := declarations.push <| Json.mkObj [
         ("name", nameJson decl.canonical), ("facet", toJson facet.facet),
         ("association", Json.str "external"), ("kind", toJson decl.kind),
-        ("sourceSnapshotStatus", status.reportJson)]
+        ("sourceSnapshotStatus", status)]
+    for (name, status) in code.externalChecks do
+      nativeDeclarations := nativeDeclarations.push <| Json.mkObj [
+        ("name", nameJson name), ("facet", toJson facet.facet),
+        ("status", status.map Informal.Data.ProvedStatus.reportJson |>.getD
+          (Json.mkObj [("verdict", Json.str "unavailable")]))]
     for decl in code.literateDeclarations.declarations do
       declarations := declarations.push <| Json.mkObj [
         ("name", nameJson decl.name), ("facet", toJson facet.facet),
@@ -187,6 +193,7 @@ private def entryStatusJson (manifest : ManifestFile) (entry : Entry) : Json := 
         ("statementDependenciesComplete", toJson assessment.statementDependenciesComplete),
         ("proofDependenciesComplete", toJson assessment.proofDependenciesComplete),
         ("selectedLeanUseCount", toJson assessment.selectedLeanUseCount),
+        ("externalDeclarationChecks", Json.arr nativeDeclarations),
         ("details", assessment.details)]
   return responseJson [
     ("label", nameJson entry.label),

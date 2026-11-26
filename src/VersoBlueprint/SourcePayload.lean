@@ -336,9 +336,10 @@ structure ExternalRef where
   -/
   present : Bool := true
   /--
-  Snapshot of proof/completeness status at registration time.
+  Proof/completeness status observed at registration, if checked then.
+  Ordinary chapter references leave checking to project capture.
   -/
-  provedStatus : ProvedStatus := .incomplete {}
+  provedStatus : Option ProvedStatus := none
   /--
   Snapshot of declaration provenance metadata.
   -/
@@ -361,6 +362,16 @@ deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
 
 def ExternalRef.ofName (name : Name) (origin : ExternalOrigin := .directiveLean) : ExternalRef :=
   { written := name, canonical := name.eraseMacroScopes, origin, kind := .definition }
+
+/-- Absence at registration is known even when no proof check was performed. -/
+def ExternalRef.observedStatus (ref : ExternalRef) : Option ProvedStatus :=
+  if ref.present then ref.provedStatus else some .missing
+
+/-- A reference awaiting capture contributes no evidence to a source-status merge. -/
+def ExternalRef.mergeStatus (previous next : Option ProvedStatus) : Option ProvedStatus :=
+  match previous, next with
+  | some a, some b => some (a.mergeConservative b)
+  | _, _ => previous <|> next
 
 structure RustInlineCode where
   raw : String
@@ -399,7 +410,7 @@ def ExternalRef.mergeSnapshots (current incoming : Array ExternalRef) : Array Ex
       let previous := refs[i]!
       let selected := if !previous.present && ref.present then ref else previous
       refs := refs.set! i { selected with
-        provedStatus := ProvedStatus.mergeConservative previous.provedStatus ref.provedStatus }
+        provedStatus := mergeStatus previous.provedStatus ref.provedStatus }
     | none =>
       positions := positions.insert ref.canonical refs.size
       refs := refs.push ref

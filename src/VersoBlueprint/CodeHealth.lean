@@ -24,7 +24,9 @@ declarations. An empty projection cannot authorize completion. -/
 structure CodeHealth where
   totalDecls : Nat := 0
   missingDecls : Nat := 0
-  provedStatus : Data.ProvedStatus := .incomplete {}
+  awaitingCapture : Nat := 0
+  /-- Aggregate of observations already made. Awaiting declarations carry no status. -/
+  provedStatus : Option Data.ProvedStatus := none
   statementBlocked : Bool := true
   anyGapCount : Nat := 0
   hasAxiomLike : Bool := false
@@ -38,15 +40,18 @@ def CodeHealth.presentDecls (health : CodeHealth) : Nat :=
 
 /-- Fold the canonical status union, never a display-filtered declaration list. -/
 def CodeHealth.ofDeclarations (kind : Data.NodeKind)
-    (observations : Array (Name × Data.ProvedStatus)) : CodeHealth :=
-  let statuses := (Data.ProvedStatus.indexByName observations).toArray
+    (observations : Array (Name × Option Data.ProvedStatus)) : CodeHealth :=
+  let statuses := observations.foldl (init := ({} : NameMap (Option Data.ProvedStatus))) fun out (name, status) =>
+    let name := name.eraseMacroScopes
+    out.insert name (Data.ExternalRef.mergeStatus (out.getD name none) status)
   statuses.foldl (init := {
       totalDecls := statuses.size
-      statementBlocked := false
-      provedStatus := if statuses.isEmpty then .incomplete {} else .proved })
-    fun health (_, status) => {
+      statementBlocked := false })
+    fun health _ status => match status with
+    | none => { health with awaitingCapture := health.awaitingCapture + 1, statementBlocked := true }
+    | some status => {
       health with
-      provedStatus := health.provedStatus.mergeConservative status
+      provedStatus := Data.ExternalRef.mergeStatus health.provedStatus (some status)
       missingDecls := health.missingDecls + if status.isMissing then 1 else 0
       statementBlocked := health.statementBlocked || status.blocksStatementCompletion kind
       anyGapCount := health.anyGapCount + if !status.isMissing && status.isIncomplete then 1 else 0
@@ -56,12 +61,12 @@ def CodeHealth.ofDeclarations (kind : Data.NodeKind)
 def externalDeclMissing (external : ExternalCodeStatus) (decl : Data.ExternalRef) : Bool :=
   !decl.present || external.isMissing decl.canonical.eraseMacroScopes
 
-def externalDeclProvedStatus (external : ExternalCodeStatus) (decl : Data.ExternalRef) : Data.ProvedStatus :=
-  if externalDeclMissing external decl then .missing
-  else decl.provedStatus.mergeConservative (external.provedStatus decl.canonical.eraseMacroScopes)
+def externalDeclProvedStatus (external : ExternalCodeStatus) (decl : Data.ExternalRef) : Option Data.ProvedStatus :=
+  if externalDeclMissing external decl then some .missing
+  else decl.provedStatus.map (·.mergeConservative (external.provedStatus decl.canonical.eraseMacroScopes))
 
 private def externalObservation (external : ExternalCodeStatus) (ref : Data.ExternalRef) :
-    Name × Data.ProvedStatus :=
+    Name × Option Data.ProvedStatus :=
   (ref.canonical.eraseMacroScopes, externalDeclProvedStatus external ref)
 
 def codeHealthOfExternalDecls (kind : Data.NodeKind) (external : ExternalCodeStatus)
@@ -73,8 +78,8 @@ Rows remain available to callers for per-facet provenance and rendering. -/
 def codeHealthOfBlockSources (kind : Data.NodeKind) (external : ExternalCodeStatus)
     (sources : Array Informal.BlockCodeData) : CodeHealth :=
   CodeHealth.ofDeclarations kind <| sources.flatMap fun source =>
-    source.externalDecls.map (externalObservation external) ++
-      source.literateDeclarations.declarations.map fun decl => (decl.name, decl.provedStatus)
+    source.displayExternalDecls.map (externalObservation external) ++
+      source.literateDeclarations.declarations.map fun decl => (decl.name, some decl.provedStatus)
 
 def codeHealthOfBlockSource (kind : Data.NodeKind) (external : ExternalCodeStatus)
     (source? : Option Informal.BlockCodeData) : CodeHealth :=

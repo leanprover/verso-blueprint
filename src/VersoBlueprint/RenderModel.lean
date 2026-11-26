@@ -37,7 +37,10 @@ elab "blueprint_render_model%" : term => do
   let snapshot ← match snapshot with
     | .ok snapshot => pure snapshot
     | .error issues => throwError m!"Cannot capture Blueprint realization state: {repr issues}"
-  let nodes := TraversalIndex.Nodes.capture state fun label => some (snapshot.assessmentFor label)
+  let nativeChecks := snapshot.nativeChecks.foldl
+    (fun (checks : Std.HashMap Realizations.ObjectKey Data.ProvedStatus) checked =>
+      checks.insert checked.declaration checked.status) {}
+  let nodes := TraversalIndex.Nodes.capture state (fun label => some (snapshot.assessmentFor label)) (some nativeChecks)
   let graph := Graph.buildModel snapshot (snapshot.registry.nodes.map (·.label))
     (groupTitles := state.groups.toArray)
   let summary ← Commands.buildSummary snapshot

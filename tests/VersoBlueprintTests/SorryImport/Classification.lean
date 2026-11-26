@@ -140,7 +140,7 @@ private def batchingAndKindControl : CoreM Bool := do
     { (ExternalRef.ofName name) with kind := .theorem }
   return statuses == individual && statuses[0]!.isProved &&
     statuses[1]!.isUnverified && statuses[2]!.hasKnownSorry &&
-    statuses[3]!.isAxiomLike && refs.map (·.provedStatus) == statuses &&
+    statuses[3]!.isAxiomLike && refs.map (·.provedStatus) == statuses.map some &&
     refs[1]!.kind == .theorem && refs[2]!.kind == .theorem
 
 -- Independently inspecting actual bodies resolves both clean and omitted-hole
@@ -172,20 +172,18 @@ private def externalRefRenderingControl : CoreM Bool := do
   let missingRef ← externalRefSnapshotAtCurrentDir {} (ExternalRef.ofName `unknownSorryImport)
   let nestedRef ← externalRefSnapshotAtCurrentDir {} {
     (ExternalRef.ofName `sorryImportNestedHypothesis) with kind := .theorem }
-  let renderHasUnknown := match ref.render with
-    | .ok html => html.html.contains "depends on sorry"
-    | _ => false
-  let proofRenderHasUnknown := match proofRef.render with
-    | .ok html => html.html.contains "sorry detected" &&
-        !html.html.contains "depends on sorry" && !html.html.contains "contains sorry"
-    | _ => false
+  let html := (ExternalCode.renderPreviewHtml #[ref]).asString
+  let proofHtml := (ExternalCode.renderPreviewHtml #[proofRef]).asString
+  let renderHasUnknown := html.contains "depends on sorry"
+  let proofRenderHasUnknown := proofHtml.contains "sorry detected" &&
+    !proofHtml.contains "depends on sorry" && !proofHtml.contains "contains sorry"
   -- These refs are provider inventory only. A rendered ref or cached status
   -- does not establish current Blueprint completion.
   return ref.present && renderHasUnknown && proofRenderHasUnknown &&
-    ref.provedStatus.sorryEvidence == #[statementDependency, unlocalized] && ref.provedStatus.hasUnverifiedCoverage &&
+    ref.provedStatus.any (fun status => status.sorryEvidence == #[statementDependency, unlocalized] && status.hasUnverifiedCoverage) &&
     completeRef.present &&
-    nestedRef.provedStatus.sorryEvidence == #[statementDependency] && nestedRef.provedStatus.hasUnverifiedCoverage &&
-    !missingRef.present && missingRef.provedStatus == .missing
+    nestedRef.provedStatus.any (fun status => status.sorryEvidence == #[statementDependency] && status.hasUnverifiedCoverage) &&
+    !missingRef.present && missingRef.provedStatus == some .missing
 
 -- A missing collector extension cannot authorize body absence. The exposed
 -- numeric consumer actually uses the admitted value; this is not an unused-let

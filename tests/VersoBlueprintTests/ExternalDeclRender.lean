@@ -242,6 +242,8 @@ private def htmlTestContext :
       (Informal.Data.ExternalRef.ofName `Ext.external.strategy_render_fail) with
         present := true
         kind := .theorem
+        provedStatus := some .proved
+        sourceHref? := some "https://example.invalid/Lean.lean#L7"
         render := .error (.exception `Ext.external.strategy_render_fail "synthetic render failure")
     }
     let expectedError :=
@@ -254,6 +256,7 @@ private def htmlTestContext :
     let (pageErrorHtml, _) :=
       Id.run <| (renderPage #[failedRef] htmlTestContext).run {}
     let pageErrorHtml := pageErrorHtml.asString
+    let errorFooter := "bp_external_decl_footer_status bp_external_decl_error\">render failed"
     pure <|
       payloadCount > 0 &&
       hoverState.dedup.contentId.size == payloadCount &&
@@ -263,18 +266,16 @@ private def htmlTestContext :
       !pageHtml.contains "data-bp-external-hover-local=\"" &&
       !pageHtml.contains "data-bp-external-hover-inline-local=\"" &&
       !pageHtml.contains "class=\"hover-info\"" &&
+      !pageHtml.contains "bp_external_decl_footer_status" &&
       !cacheHtml.contains "data-bp-external-hover-local=\"" &&
       !cacheHtml.contains "data-bp-external-hover-inline-local=\"" &&
       !cacheHtml.contains "class=\"hover-info\"" &&
       previewHtml.contains "class=\"hover-info\"" &&
       !previewHtml.contains "data-bp-external-hover-local=\"" &&
       !previewHtml.contains "data-bp-external-hover-inline-local=\"" &&
-      previewErrorHtml.contains "bp_external_decl_render_error" &&
-      previewErrorHtml.contains expectedError &&
-      cacheErrorHtml.contains "bp_external_decl_render_error" &&
-      cacheErrorHtml.contains expectedError &&
-      pageErrorHtml.contains "bp_external_decl_render_error" &&
-      pageErrorHtml.contains expectedError
+      #[previewErrorHtml, cacheErrorHtml, pageErrorHtml].all (fun errorHtml =>
+        errorHtml.contains "bp_external_decl_render_error" && errorHtml.contains expectedError &&
+          errorHtml.contains errorFooter && errorHtml.contains "https://example.invalid/Lean.lean#L7")
 
 /-- info: true -/
 #guard_msgs in

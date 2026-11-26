@@ -1956,7 +1956,7 @@ metavariables and info state on every exit, retaining traces for diagnosis.
 Providers share the caller's budget; observation does not reset it per request.
 The standard `BlueprintDocument` capture reuses this assessment for graph,
 summary, headings and manifest queries. `CodeHealth` is only declaration-panel
-inventory; its former completion helpers are removed.
+inventory.
 
 Native validity, independently authored expected propositions and prose
 correspondence are separate contracts. `hasNativeBodyRequirement` records whether a
@@ -1990,7 +1990,8 @@ assessment from unavailable validation. Captured data includes
 `hasNativeDeclarations`, `nativeStatementComplete`, `hasNativeBodyRequirement`,
 `nativeProofComplete`,
 `requiredComplete`, `statementDependenciesComplete`, `proofDependenciesComplete`
-and `details`. It replaces the former aggregate `verdict`, `complete`,
+and `details`. `validation.externalDeclarationChecks` reports each external declaration’s current
+check beside its facet and canonical name. It replaces the former aggregate `verdict`, `complete`,
 `statementComplete`, `proofComplete` and `declarations` fields.
 `asOf: "captured-build"` means the answer describes the last generation;
 `"uncaptured"` means no assessment was supplied. Query does not recheck sources.
@@ -2001,8 +2002,12 @@ than reconstructing readiness from status colors.
 
 Generated data clients can use `resolveLabel(label, { facet: "statement" })`
 and `resolveLabel(label, { facet: "proof" })` from `api/data.mjs`, or `loadManifest`,
-to read each entry's `codeData`. External associations carry `provedStatus` in
-`externalDecls`; inline facts carry it in
+to read each entry's `codeData`. An ordinary external directive has `provedStatus: null` in
+`externalDecls` while awaiting capture. The registration inventory persists across
+imports. `externalChecks` contains pairs of canonical names and statuses from
+the current capture. A null result in one of these pairs means the declaration
+could not be checked. Eager producers can supply a registration-time status.
+Inline facts carry their status in
 `literateDeclarations.definedDefs` and `definedTheorems`. Missing external
 references (`present: false`) are visible in this display inventory. The captured
 assessment is completion authority. A declaration-keyed preview or
@@ -2014,6 +2019,6 @@ Source counts are obtained only after semantic analysis using
 
 The status payload migrated from `containsSorry: [...]` to
 `incomplete: { knownSorry: [...], unverified: [...] }`; defaults are conservative.
-The internal manifest marker is now 12; the CLI rejects older generations.
+The internal manifest marker is now 13; the CLI rejects older generations.
 Regenerate persisted artifacts and handle both evidence arrays. The generated
 manifest schema validates the nested axes, origins, and verification reasons.

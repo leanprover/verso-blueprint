@@ -122,7 +122,7 @@ def resolveExternalCodeList [MonadResolveName m] [MonadOptions m] [MonadLiftT Co
         logWarningAt labelSyntax m!"{msg}; keeping parsed name"
         let ref := parsedExternalRef ref
         pushExternalRefUnique label labelSyntax acc ref
-  liftM <| externalRefSnapshotsAtCurrentDir (← getOptions) resolvedRefs
+  liftM <| registerExternalRefsAtCurrentDir (← getOptions) resolvedRefs
 
 end
 
@@ -167,15 +167,15 @@ wording and CSS classification cannot drift between compact and expanded rows.
 private structure ExternalDeclStatusView where
   className : String
   panelText : String
+  headerText : String
 
 private def externalDeclStatusView (item : LinkedExternalDecl) : ExternalDeclStatusView :=
-  let statusView := item.decl.provedStatus.presentation (present := item.decl.present)
-  let (className, panelText) :=
-    if item.decl.present && (externalRenderFailure? item.decl).isSome then
-      ("bp_external_decl_error", "render failed")
-    else
-      (statusView.externalDeclClass, statusView.externalPanelText)
-  { className, panelText }
+  let statusView := declarationStatusPresentation item.decl.provedStatus item.decl.present
+  if (externalRenderFailure? item.decl).isSome then
+    { className := "bp_external_decl_error", panelText := "render failed", headerText := "render failed" }
+  else
+    { className := statusView.externalDeclClass, panelText := statusView.externalPanelText,
+      headerText := statusView.externalHeaderText }
 
 private def externalDeclNode (item : LinkedExternalDecl) : Output.Html :=
   open Verso.Output.Html in
@@ -236,18 +236,19 @@ is adapted to its destination hover table.
 -/
 private def externalDeclRenderedWith [Monad m]
     (renderHtml : ExternalDeclRenderedHtml → m String)
+    (status : ExternalDeclStatusView)
     (item : LinkedExternalDecl) : m Output.Html := do
   match item.decl.render with
   | .ok renderedHtml =>
-    let renderedHtml ← renderHtml renderedHtml
+    let renderedHtml ← renderHtml (renderedHtml.withHeaderBadge ⟨status.className, status.headerText⟩)
     pure <| .tag "div" #[("class", "bp_external_decl_rendered")] (.text false renderedHtml)
   | .error err =>
     pure <| .tag "pre"
       #[("class", "bp_external_decl_stmt bp_external_decl_render_error")]
       (.text true s!"Render failed: {err.message}")
 
-private def externalDeclRendered (item : LinkedExternalDecl) : Output.Html :=
-  Id.run <| externalDeclRenderedWith (fun renderedHtml => pure renderedHtml.selfContained) item
+private def externalDeclRendered (status : ExternalDeclStatusView) (item : LinkedExternalDecl) : Output.Html :=
+  Id.run <| externalDeclRenderedWith (fun renderedHtml => pure renderedHtml.selfContained) status item
 
 private def registerPageHoverPayload [Monad m]
     (payload : ExternalDeclHoverPayload) :
@@ -289,9 +290,10 @@ private def renderedHtmlWithPageHovers [Monad m]
   renderedHtmlWithHoverTable registerPageHoverPayload renderedHtml
 
 private def externalDeclRenderedWithPageHovers [Monad m]
+    (status : ExternalDeclStatusView)
     (item : LinkedExternalDecl) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m Output.Html :=
-  externalDeclRenderedWith renderedHtmlWithPageHovers item
+  externalDeclRenderedWith renderedHtmlWithPageHovers status item
 
 private def missingExternalDeclBody : Output.Html :=
   open Verso.Output.Html in
@@ -302,7 +304,7 @@ private def missingExternalDeclBody : Output.Html :=
   }}
 
 private def externalDeclRowDataWith [Monad m]
-    (renderBody : LinkedExternalDecl → m Output.Html)
+    (renderBody : ExternalDeclStatusView → LinkedExternalDecl → m Output.Html)
     (item : LinkedExternalDecl) : m ExternalDeclRowData := do
   let status := externalDeclStatusView item
   if !item.decl.present then
@@ -313,7 +315,7 @@ private def externalDeclRowDataWith [Monad m]
       body := missingExternalDeclBody
     }
   else
-    let body ← renderBody item
+    let body ← renderBody status item
     if (externalRenderFailure? item.decl).isSome then
       pure {
         liAttrs := #[("class", "bp_external_decl_item")] ++
@@ -347,14 +349,14 @@ rendering and generated-cache rendering pass hover-table body renderers, but all
 paths share the row status, anchors, and footer layout.
 -/
 private def renderExternalDeclRowsWith [Monad m]
-    (renderBody : LinkedExternalDecl → m Output.Html)
+    (renderBody : ExternalDeclStatusView → LinkedExternalDecl → m Output.Html)
     (linkedDecls : Array LinkedExternalDecl) : m (Array Output.Html) :=
   linkedDecls.mapM fun item => do
     let rowData ← externalDeclRowDataWith renderBody item
     pure <| renderExternalDeclRow rowData
 
 private def renderExternalDeclRows (linkedDecls : Array LinkedExternalDecl) : Array Output.Html :=
-  Id.run <| renderExternalDeclRowsWith (fun item => pure <| externalDeclRendered item) linkedDecls
+  Id.run <| renderExternalDeclRowsWith (fun status item => pure <| externalDeclRendered status item) linkedDecls
 
 private def renderExternalDeclList (rows : Array Output.Html) : Output.Html :=
   open Verso.Output.Html in
@@ -375,9 +377,10 @@ private def renderedHtmlWithCacheHovers
   renderedHtmlWithHoverTable registerCacheHoverPayload renderedHtml
 
 private def externalDeclRenderedWithCacheHovers
+    (status : ExternalDeclStatusView)
     (item : LinkedExternalDecl) :
     ExternalDeclCacheHoverRender Output.Html :=
-  externalDeclRenderedWith renderedHtmlWithCacheHovers item
+  externalDeclRenderedWith renderedHtmlWithCacheHovers status item
 
 /--
 Render the canonical hover-preview body for external Lean code references.

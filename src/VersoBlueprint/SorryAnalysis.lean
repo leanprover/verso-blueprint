@@ -85,16 +85,22 @@ theorem certifiedNoSorry_closed (roots : Array Name) (declarations : InspectedDe
       (Bool.and_eq_true_iff.mp (checked name info hget)).1).1).1).1
     simpa using hn
 
-/-- Core soundness law: certified completion excludes a reachable sorryAx.
-The production checker uses this exact certificate; no negative cache premise
-appears in the statement. Extraction uses the ordinary checked Lean declaration API. -/
-theorem certifiedNoSorry_not_reachable (roots : Array Name) (declarations : InspectedDeclarations)
-    (h : certifiedNoSorry roots declarations = true) (root : Name) (hroot : root ∈ roots.toList) :
+/-- Every member of the certified closed region has a hole-free dependency
+closure, including members reached as dependencies of an explicit root. -/
+theorem certifiedNoSorry_not_reachable_of_mem (roots : Array Name) (declarations : InspectedDeclarations)
+    (h : certifiedNoSorry roots declarations = true) (root : Name) (hroot : root ∈ declarations) :
     ¬declarations.reachable root ``sorryAx := by
   intro hreach
-  obtain ⟨hroots, hclosed, hnoSorry⟩ := certifiedNoSorry_closed roots declarations h
-  have hmem := hreach (fun name => name ∈ declarations) (hroots root hroot) hclosed
+  obtain ⟨_, hclosed, hnoSorry⟩ := certifiedNoSorry_closed roots declarations h
+  have hmem := hreach (fun name => name ∈ declarations) hroot hclosed
   exact hnoSorry ``sorryAx hmem rfl
+
+/-- Core soundness law for an explicit root. -/
+theorem certifiedNoSorry_not_reachable (roots : Array Name) (declarations : InspectedDeclarations)
+    (h : certifiedNoSorry roots declarations = true) (root : Name) (hroot : root ∈ roots.toList) :
+    ¬declarations.reachable root ``sorryAx :=
+  certifiedNoSorry_not_reachable_of_mem roots declarations h root
+    ((certifiedNoSorry_closed roots declarations h).1 root hroot)
 
 /-- Runtime result of the full inspection, before axis attribution. -/
 structure SorryInspection where
@@ -155,37 +161,55 @@ def inspectDeclaration [Monad m] [MonadEnv m] (name : Name) : m InspectedDeclara
     unverified
   }
 
-/-- Cache of actual declaration views within one stable environment inspection.
-It stores graph nodes, not premature empty closure results for recursive names. -/
-abbrev SorryInspectionM (m : Type → Type) := StateT InspectedDeclarations m
+/-- Work done by the sorry inspector. Edge visits count edges enqueued in the
+walk, including edges to names already visited. Certificate scans count calls
+to the closed-graph predicate, which may short-circuit on blockers. -/
+structure SorryInspectionWork where
+  declarationInspections : Nat := 0
+  edgeVisits : Nat := 0
+  certificateScans : Nat := 0
+  deriving Inhabited, Repr
+
+/-- The immediate inspection cache holds checked graph nodes and flags. Each
+walk still constructs its own reachable region, including on cache hits. -/
+structure SorryInspectionState where
+  inspected : InspectedDeclarations := {}
+  work : SorryInspectionWork := {}
+
+abbrev SorryInspectionM (m : Type → Type) := StateT SorryInspectionState m
+
+def recordSorryCertificateScan [Monad m] : SorryInspectionM m Unit :=
+  modify fun state => { state with work.certificateScans := state.work.certificateScans + 1 }
 
 /-- Breadth-first inspection of actual checked dependencies. In blocker-search
 mode, stop at the first observed hole or verification failure. Partial graphs
 never certify absence: `isComplete` still requires closed coverage of every edge.
 Full mode collects the entire closure, including cycles, before certification. -/
-partial def inspectSorryDependencies [Monad m] [MonadEnv m] (roots : Array Name)
+def inspectSorryDependencies [Monad m] [MonadEnv m] (roots : Array Name)
     (stopAtBlocker : Bool := false) : SorryInspectionM m SorryInspection := do
-  let declarations ← visit { dList := roots.toList } {}
+  let { inspected, work := priorWork } ← modifyGet fun state => (state, {})
+  let mut cache := inspected
+  let mut work := priorWork
+  let mut declarations : InspectedDeclarations := {}
+  let mut pending : Std.Queue Name := { dList := roots.toList }
+  repeat
+    let some (name, rest) := pending.dequeue? | break
+    pending := rest
+    if declarations.contains name then continue
+    let cached := cache[name]?
+    let info ← match cached with
+      | some info => pure info
+      | none => inspectDeclaration name
+    if cached.isNone then
+      cache := cache.insert name info
+      work := { work with declarationInspections := work.declarationInspections + 1 }
+    declarations := declarations.insert name info
+    if stopAtBlocker && (name == ``sorryAx || info.directSorry ||
+        info.cachedSorry || info.unverified.isSome) then
+      break
+    work := { work with edgeVisits := work.edgeVisits + info.dependencies.size }
+    pending := info.dependencies.foldl (fun queue dep => queue.enqueue dep) pending
+  set ({ inspected := cache, work } : SorryInspectionState)
   return { roots, declarations }
-where
-  visit (pending : Std.Queue Name) (declarations : InspectedDeclarations) :
-      SorryInspectionM m InspectedDeclarations := do
-    match pending.dequeue? with
-    | none => return declarations
-    | some (name, pending) =>
-      if declarations.contains name then return ← visit pending declarations
-      let cache ← get
-      let info ← match cache[name]? with
-        | some info => pure info
-        | none =>
-          let info ← inspectDeclaration name
-          modify (·.insert name info)
-          pure info
-      let declarations := declarations.insert name info
-      if stopAtBlocker && (name == ``sorryAx || info.directSorry ||
-          info.cachedSorry || info.unverified.isSome) then
-        return declarations
-      let pending := info.dependencies.foldl (fun queue dep => queue.enqueue dep) pending
-      visit pending declarations
 
 end Informal.Data

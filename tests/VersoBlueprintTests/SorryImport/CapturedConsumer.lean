@@ -23,10 +23,11 @@ open Verso.VersoBlueprintTests.SorryImport.Captured
     let some capturedRef := captured.externalRefs[0]? | return false
     let some assessment := captured.assessment | return false
     let some graphNode := statusCaptureBlueprint.model.graph.nodes.find? (·.label == label) | return false
-    let status := Graph.externalDeclProvedStatus {} ref
-    let again := status.mergeConservative capturedRef.provedStatus
+    let some status := Graph.externalDeclProvedStatus {} ref | return false
+    let some capturedStatus := capturedRef.provedStatus | return false
+    let again := status.mergeConservative capturedStatus
     let expectedStatuses := Graph.statusesForAssessment captured.kind assessment
-    return status == ref.provedStatus && again == status &&
+    return some status == ref.provedStatus && again == status &&
       status.hasTypeGap && status.hasProofGap &&
       status.containsExplicitSorry && status.dependsOnSorry &&
       assessment.hasNativeDeclarations && !assessment.nativeProofComplete &&

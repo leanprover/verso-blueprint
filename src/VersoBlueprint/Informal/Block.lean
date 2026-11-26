@@ -88,7 +88,7 @@ private def informalBlockToHtml (renderPreview : PreviewResources.Render := Prev
           | none => #[]
         let attrs := s.htmlId id ++ sourceBackedAttrs
         let codeHint? := data.codeData
-        let externalDecls := codeHint?.map (·.externalDecls) |>.getD #[]
+        let externalDecls := codeHint?.map (·.displayExternalDecls) |>.getD #[]
         let getDeclHref (decl : Name) : Option String :=
           Resolve.resolveInformalDeclHref? s data.label decl
         let getDeclAnchorAttrs (decl : Data.ExternalRef) : Array (String × String) :=
