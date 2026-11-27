@@ -90,6 +90,12 @@ run_cmd liftTermElabM do
     id := `undocumentedSource, moduleName := request.moduleName, source := sourcePath }
   let nativeOnly ← obtain (source.realizeNative nativeOrigin
     { label := `undocumentedNative, title := "Undocumented native source" } `lean)
+  match ({ source with roles := #[`extraRole] }).realizeNative nativeOrigin
+      { label := `undocumentedNative, title := "Undocumented native source" } `lean with
+  | .error diagnostic =>
+    ensure (diagnostic.code == "unsupported-native-role")
+      s!"Unexpected error for unknown standalone native role: {diagnostic.code}"
+  | .ok _ => throwError "Standalone realizeNative accepted an unknown role"
   let nativeOnly ← obtain (admit nativeOnly)
   ensure (nativeOnly.realizations.size == source.roles.size && nativeOnly.documents.isEmpty &&
     nativeOnly.objects.all (fun object => object.resolution == .resolved && object.document.isNone) &&
@@ -1016,6 +1022,10 @@ run_cmd liftTermElabM do
         " The inner declaration owns the original range inside `seal`. "),
       (``RealizationParserFixture.unsealed, `markdown,
         " The inner declaration owns the original range inside `unseal`. "),
+      (``RealizationParserFixture.inLeft, `markdown,
+        " Left declaration comment inside `in`. "),
+      (``RealizationParserFixture.inRight, `markdown,
+        " Right declaration comment inside `in`. "),
       (``RealizationParserFixture.attributed, `markdown,
         " The inner declaration owns the original range inside `attribute`. "),
       (``RealizationParserFixture.verso, `verso, " Verso syntax with *emphasis*. "),

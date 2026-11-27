@@ -180,10 +180,10 @@ private partial def declarations (command : Syntax) : Array Syntax :=
   else if command.isOfKind ``Parser.Command.«mutual» then
     command[1].getArgs.flatMap declarations
   -- Lean's `in` command combinator elaborates `command[0]` in a temporary scope
-  -- and then elaborates `command[2]` with its own original declaration ranges.
-  -- Unwrap only `command[2]` without enumerating every possible scope command.
+  -- and then elaborates `command[2]`, preserving each child's original ranges.
+  -- Unwrap both command children without enumerating scope commands.
   else if command.isOfKind ``Parser.Command.«in» then
-    declarations command[2]
+    declarations command[0] ++ declarations command[2]
   else #[]
 
 private def originalRange? (text : String) (stx : Syntax) : Option Syntax.Range := do
@@ -697,21 +697,23 @@ def Prepared.realizeNative (source : Prepared) (origin : Origin) (node : Realiza
   let witness := source.declaration
   unless !source.roles.isEmpty do
     throw <| issue "unsupported-native-role" source.canonical "Checked declaration has no supported direct content role"
-  let modelFor (role : Name) : Realization := {
+  let roleSpecs ← source.roles.mapM fun role =>
+    match NativeLean.roleSpec? role with
+    | some spec => pure (role, spec)
+    | none => throw <| issue "unsupported-native-role" source.canonical
+        s!"Unsupported direct native content role: {role}"
+  let models := roleSpecs.map fun (role, spec) => ({
     key := key.forRole role, context := witness.context, role
     declarations := #[{
       object := witness
-      projection := (NativeLean.roleSpec? role).map (·.projection) |>.getD .implementation
-      required := #[] }] }
-  let roles := source.roles
-  let models := roles.map modelFor
+      projection := spec.projection
+      required := #[] }] } : Realization)
   return {
     nodes := #[sourceContribution origin `node node]
     objects := #[sourceContribution origin `object { key := witness, resolution := .resolved }]
     realizations := models.mapIdx fun index model =>
       sourceContribution origin (Name.mkSimple s!"native-role-{index}") model
-    bindingInputs := roles.flatMap fun role =>
-      let spec := (NativeLean.roleSpec? role).getD ⟨.implementation, NativeLean.bodyValidator, NativeLean.sourceContext⟩
+    bindingInputs := roleSpecs.flatMap fun (role, spec) =>
       let (slot, content?) := match spec.projection with
         | .statement => (`nativeStatementContext, source.statementContext)
         | .implementation => (`nativeSourceContext, source.semanticContext)

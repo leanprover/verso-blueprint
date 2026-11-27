@@ -27,13 +27,13 @@ bind informal statements and reviews to the checked declaration. Because Lean
 stores only the overall declaration range and identifier selection range, not
 the modifier doc-comment range, `verso-blueprint` currently re-parses the
 owning Lean source file without elaboration, replays `open` / `namespace` /
-`section` / `end` / `set_option` parser contexts, maintains a partial
-`in`-wrapper whitelist (`isDeclarationScope`), and walks parsed modifiers.
+`section` / `end` / `set_option` parser contexts, unwraps `mutual` and `in`
+command wrappers, and walks parsed modifiers.
 
 This re-parsing machinery has been the single largest source of regressions in
-realization capture (missing wrapper forms such as `omit ... in`, `include ... in`,
-`unseal ... in`, relative `open scoped` interactions, and parser-recovery edge
-cases).
+realization capture (previously requiring a partial `in`-wrapper whitelist that
+missed `omit ... in`, `include ... in`, `unseal ... in`, plus relative
+`open scoped` interactions and parser-recovery edge cases).
 
 ## Roadmap Decision
 
@@ -49,7 +49,7 @@ Confirmed against Lean `v4.35.0`:
   (declaration identifier), discarding the `docComment` child span.
 - `src/VersoBlueprint/Realizations/NativeSource.lean` (`openParserNamespaces`,
   `setParserOption`, `enterParserScopes`, `advanceParserContext`,
-  `parseSourceWith`, `isDeclarationScope`, `declarations`,
+  `parseSourceWith`, `declarations`,
   `docCommentSyntaxAtRanges`) recovers doc-comment spans from source text
   without re-elaboration. Note that `prepareInlineBlock` also shares
   `parseSource` to verify declarations inside Verso Lean fences, so retiring the
@@ -82,7 +82,7 @@ buffer (after confirming via `UPC-0022` that the docstring is not inherited).
 ## Evidence
 
 - `src/VersoBlueprint/Realizations/NativeSource.lean` (`parseSourceWith`,
-  `advanceParserContext`, `isDeclarationScope`, `docCommentSyntaxAtRanges`)
+  `advanceParserContext`, `declarations`, `docCommentSyntaxAtRanges`)
 - `tests/VersoBlueprintTests/BlueprintRealizationAdapter/ParserSource.lean`
 - `Lean/Elab/DeclarationRange.lean` (`v4.35.0`)
 
@@ -90,8 +90,8 @@ buffer (after confirming via `UPC-0022` that the docstring is not inherited).
 
 `NativeSource.lean` re-parses the owning source file in the final syntax
 environment while replaying standalone `open`, `namespace`, `section`, `end`,
-and `set_option` commands, unwraps a fixed whitelist of `in`-wrappers
-(`isDeclarationScope`), matches the declaration by `(range, selectionRange)`,
+and `set_option` commands, unwraps `mutual` and `in` command wrappers in
+`declarations`, matches the declaration by `(range, selectionRange)`,
 and slices the `docComment` syntax span. Once `UPC-0022` and `UPC-0023` land,
-delete the ordinary-file command replay, scope replay, `isDeclarationScope`
-whitelist, and modifier comment scan.
+delete the ordinary-file command replay, scope replay, wrapper unwrapping, and
+modifier comment scan.

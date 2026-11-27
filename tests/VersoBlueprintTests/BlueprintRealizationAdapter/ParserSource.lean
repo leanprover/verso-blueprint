@@ -59,6 +59,11 @@ unseal Nat.add in
 theorem unsealed : True := True.intro
 end
 
+/-- Left declaration comment inside `in`. -/
+theorem inLeft : True := True.intro in
+/-- Right declaration comment inside `in`. -/
+theorem inRight : True := True.intro
+
 attribute [local simp] Nat.add_zero in
 /-- The inner declaration owns the original range inside `attribute`. -/
 theorem attributed : True := True.intro
