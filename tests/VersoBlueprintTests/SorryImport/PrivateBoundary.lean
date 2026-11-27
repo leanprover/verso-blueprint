@@ -39,4 +39,20 @@ private unsafe def withPrivateProvider (importAll : Bool) (action : CoreM Bool) 
   let complete ← analyzeDeclaration `PrivateSorryBoundary.exposedCompleteConsumer
   return !hole.isProved && hole.hasKnownSorry && complete.isProved
 
+/-- info: true -/
+#guard_msgs in
+#eval withPrivateProvider false do
+  -- In exported module imports, `completeBridge` appears as an `.axiomInfo`;
+  -- `registerExternalRef` must still recover its original `.theorem` kind.
+  let env ← getEnv
+  let isAxiom := match env.find? `PrivateSorryBoundary.completeBridge with
+    | some (.axiomInfo _) => true
+    | _ => false
+  let registered ← Informal.registerExternalRef {} (System.FilePath.mk ".") {
+    written := `PrivateSorryBoundary.completeBridge
+    canonical := `PrivateSorryBoundary.completeBridge
+    kind := .definition
+  }
+  return isAxiom && registered.present && registered.kind == .theorem
+
 end Verso.VersoBlueprintTests.SorryImport.PrivateBoundary

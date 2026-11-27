@@ -259,7 +259,14 @@ def registerExternalRef (opts : Lean.Options) (workspaceRoot : System.FilePath)
       | some nodeKind => pure nodeKind
       | none =>
         match cinfo with
-        | .axiomInfo _ | .opaqueInfo _ =>
+        | .axiomInfo _ =>
+          -- Imported module-system theorems and definitions can appear as axioms
+          -- in the exported environment; recover their original declaration kind.
+          match Lean.getOriginalConstKind? env canonical with
+          | some .thm => pure .theorem
+          | some .defn => pure .definition
+          | _ => pure ref.kind
+        | .opaqueInfo _ =>
           pure ref.kind
         | _ =>
           throwError m!"Unsupported external Lean reference '{ref.written}' (canonical '{canonical}') with kind '{Informal.Data.ConstantInfo.blueprintKindText cinfo}'. Only definition-like declarations, theorems, and axiom-like placeholders are currently supported."
