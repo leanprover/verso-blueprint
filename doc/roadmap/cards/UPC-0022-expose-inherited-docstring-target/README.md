@@ -10,7 +10,7 @@ Issue: none linked
 PR: none linked
 Upstream timing: as soon as possible
 Removal target: `ownDocstringMetadata` effective-vs-direct comparison workaround in `src/VersoBlueprint/Realizations/NativeSource.lean`
-Related cards: none
+Related cards: UPC-0023, UPC-0025
 
 ## Summary
 

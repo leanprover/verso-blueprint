@@ -1,6 +1,6 @@
 # Blueprint Roadmap Cards
 
-Last reviewed: 2026-08-22
+Last reviewed: 2026-11-27
 
 This directory tracks maintainer planning cards for scoped implementation and
 upstream follow-up work. Cards are not end-user setup docs, option references,
@@ -91,6 +91,9 @@ one exists.
 | Lake build graph | [`UPC-0019 Module-Level Lake Input Dependencies`](./cards/UPC-0019-module-level-lake-input-dependencies/README.md) | Lake | medium |
 | Directive parsing | [`UPC-0011 List-Valued Directive Arguments`](./cards/UPC-0011-list-valued-directive-arguments/README.md) | Verso | medium |
 | Docstring metadata | [`UPC-0022 Expose Inherited Docstring Target Query`](./cards/UPC-0022-expose-inherited-docstring-target/README.md) | Lean | medium |
+| Docstring spans | [`UPC-0023 Record Own Doc-Comment Source Ranges`](./cards/UPC-0023-record-declaration-docstring-ranges/README.md) | Lean | high |
+| Verso fences | [`UPC-0024 Expose Verso Lean Fence Source Mapping`](./cards/UPC-0024-expose-verso-lean-fence-source-mapping/README.md) | Verso | medium |
+| Module provenance | [`UPC-0025 Loaded-Module Verified Source Query`](./cards/UPC-0025-loaded-module-verified-source-query/README.md) | Lake | medium |
 
 ## Triage Candidates
 
