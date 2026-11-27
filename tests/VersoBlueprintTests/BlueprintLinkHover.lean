@@ -178,7 +178,7 @@ pub fn unrendered_attachment() {}
     ("hover:unrendered", none, false),
     ("hover:placeholder", none, true),
     ("hover:proof", some (PreviewCache.proofKey (Name.mkSimple "hover:proof")), true),
-    ("hover:markup", some (PreviewSource.externalMarkupKey (Name.mkSimple "hover:markup")), true),
+    ("hover:markup", some (PreviewCache.statementKey (Name.mkSimple "hover:markup")), true),
     ("hover:source-only", some (PreviewSource.externalMarkupKey (Name.mkSimple "hover:source-only")), false)
   ]
   unless references.size == cases.size do
