@@ -92,6 +92,7 @@ structure Registry where
   private evidenceIndex : Std.HashMap RequirementKey (Array Evidence)
   private requiredIndex : Std.HashMap Subject (Array RequirementKey) := {}
   private contentAvailability : Std.HashMap Subject ContentAvailability := {}
+  private requirementAvailability : Std.HashMap RequirementKey (Array Diagnostic) := {}
   private bindings : Std.HashMap RequirementKey ContentBinding := {}
   private localValues : Std.HashMap RequirementKey Result := {}
   private resultValues : Std.HashMap RequirementKey Result := {}
@@ -353,34 +354,35 @@ private def selectedInput (scope : ContentScope) (native : Bool) (input : Bindin
     (!(native && (input.name == NativeLean.sourceContext || input.name == NativeLean.statementContext)) ||
       input.name == sourceTag scope)
 
-private def Registry.documentIssues (r : Registry) (key : DocumentKey) : Array Diagnostic :=
-  match r.documentIndex[key]? with
-  | some document =>
-    if blank document.text then #[issue "content-unavailable" key "Selected canonical source is empty"] else #[]
-  | none => #[issue "content-unavailable" key "Selected canonical source is missing"]
-
-/-- A resolved object is available through its source document, except a Lean
-declaration: the compiled environment establishes its content, so its
-availability does not depend on any document. -/
-private def Registry.objectObservationIssues (r : Registry) (key : ObjectKey)
-    (observation : Option ObjectObservation) : Array Diagnostic :=
-  match observation with
-  | some observation =>
-    if observation.resolution != .resolved then
-      #[issue "object-unavailable" key s!"{repr observation.resolution}: {observation.explanation}"]
-    else if key.context.language == `lean then #[]
-    else match observation.document with
-      | some document => r.documentIssues document
-      | none => #[issue "object-unavailable" key "No canonical source document for selected declaration"]
-  | none => #[issue "object-unavailable" key "No source resolution observation"]
-
-private def Registry.objectIssues (r : Registry) (key : ObjectKey) : Array Diagnostic :=
-  r.objectObservationIssues key r.objectIndex[key]?
-
 private structure SelectedContent where
   parts : Array String := #[]
   availability : ContentAvailability := {}
   deriving Inhabited
+
+private def ContentAvailability.issues (availability : ContentAvailability)
+    (includeSemantics : Bool := true) : Array Diagnostic :=
+  canonical (availability.sourceIssues ++ if includeSemantics then availability.semanticIssues else #[])
+
+private def selectDocument (documents : Std.HashMap DocumentKey SelectedContent)
+    (key : DocumentKey) : SelectedContent :=
+  documents[key]?.getD {
+    availability.sourceIssues := #[issue "content-unavailable" key "Selected canonical source is missing"] }
+
+/-- A foreign declaration binds the identity and bytes of its source document.
+Lean declarations instead use current compiled semantics. -/
+private def Registry.selectObject (r : Registry) (documents : Std.HashMap DocumentKey SelectedContent)
+    (key : ObjectKey) : SelectedContent := Id.run do
+  let some observation := r.objectIndex[key]? | return {
+    availability.sourceIssues := #[issue "object-unavailable" key "No source resolution observation"] }
+  let native := key.context.language == `lean
+  let source := if native then {} else match observation.document with
+    | some document => selectDocument documents document
+    | none => {
+      availability.sourceIssues := #[issue "object-unavailable" key "No canonical source document for selected declaration"] }
+  if observation.resolution != .resolved then
+    return { source with availability.sourceIssues := #[
+      issue "object-unavailable" key s!"{repr observation.resolution}: {observation.explanation}"] }
+  return source
 
 private def bindingInputPart (input : BindingInput) : String :=
   (BindingEncoding.bindingInput input).compress
@@ -394,7 +396,7 @@ private def combineAvailability (selections : Array SelectedContent) : ContentAv
 
 /-- Resolve an owned declaration or document once for both its binding parts
 and availability. Role projections and endpoint order remain structural. -/
-private def Registry.selectContent (r : Registry) (documents : Std.HashMap DocumentKey String)
+private def Registry.selectContent (r : Registry) (documents : Std.HashMap DocumentKey SelectedContent)
     (subjectInputs : Std.HashMap Subject (Array BindingInput)) :
     Std.HashMap Subject SelectedContent := Id.run do
   let inputs (subject : Subject) (scope : ContentScope) (native : Bool) :=
@@ -416,32 +418,30 @@ private def Registry.selectContent (r : Registry) (documents : Std.HashMap Docum
       let object := declaration.object
       let subject := Subject.declaration model.key object
       let native := object.context.language == `lean
-      let observation := r.objectIndex[object]?
+      let source := r.selectObject documents object
       let inputs := inputs subject declaration.projection native
-      let provenance := if native then #[] else
-        observation.toArray.flatMap fun value => value.document.toArray.map (documents[·]!)
-      let issues := r.objectObservationIssues object observation
       let selection : SelectedContent := {
         parts := #[(BindingEncoding.subject subject).compress, (toJson declaration.projection).compress] ++
-          inputs.map bindingInputPart ++ provenance
+          inputs.map bindingInputPart ++ source.parts
         availability := {
-          sourceIssues := declaration.sourceIssues ++ issues
+          sourceIssues := declaration.sourceIssues ++ source.availability.sourceIssues
           semanticIssues := if native && !(inputs.any (·.name == sourceTag declaration.projection)) then
             #[issue "semantic-context-unavailable" object
               "Selected native content lacks its requested semantic descriptor"] else #[] } }
       declarations := declarations.push selection
       associationIssues := associationIssues ++ declaration.sourceIssues
-      observationIssues := observationIssues ++ issues
+      observationIssues := observationIssues ++ source.availability.sourceIssues
       content := content.insert subject selection
+    let selectedDocuments := model.documents.map (selectDocument documents)
     let sourceIssues := associationIssues ++
       if model.documents.isEmpty && declarations.isEmpty then
         #[issue "content-unavailable" subject "Selected subject has no associated source content"]
-      else model.documents.flatMap (r.documentIssues ·) ++ observationIssues
+      else selectedDocuments.flatMap (·.availability.sourceIssues) ++ observationIssues
     content := content.insert subject {
       parts := if !boundModels.contains subject then #[] else
         #[(BindingEncoding.realizationKey model.key).compress,
         (BindingEncoding.context model.context).compress, Vir.nameKey model.role] ++
-        (inputs subject .statement false).map bindingInputPart ++ model.documents.map (documents[·]!) ++
+        (inputs subject .statement false).map bindingInputPart ++ selectedDocuments.flatMap (·.parts) ++
         declarations.map (fun declaration => SHA256.tagged "vbp.owned-declaration.v3" declaration.parts)
       availability := {
         sourceIssues, semanticIssues := declarations.flatMap (·.availability.semanticIssues) } }
@@ -469,30 +469,73 @@ private def Registry.selectContent (r : Registry) (documents : Std.HashMap Docum
       content := insert content (.claim claim.key) #[claim]
   return content
 
+/-- Add the content selected by an exact validation contract to its subject.
+An owned witness already contributes its binding parts through the subject.
+For a claim or relation, the independently selected witness contributes its
+own source. Lean goal documents are provenance; the provider selects and checks
+those separately, and its expected context binds the checked semantics. -/
+private def Registry.selectRequirementContent (r : Registry)
+    (content : Std.HashMap Subject SelectedContent) (documents : Std.HashMap DocumentKey SelectedContent)
+    (inputs : Array BindingInput) (requirement : Requirement) : SelectedContent := Id.run do
+  let key := requirement.key
+  let selected := content[key.subject]?.getD {}
+  let parts := #[(BindingEncoding.requirement requirement).compress] ++ selected.parts ++
+    (inputs.filter (·.name == selectedUsesFor key)).map bindingInputPart
+  let .proof goal witness := requirement.expected
+    | return { parts, availability := {
+        sourceIssues := selected.availability.sourceIssues
+        semanticIssues := if requirement.expected.isNativeDeclarationCheck then #[]
+          else selected.availability.semanticIssues } }
+  let witnessSelection : SelectedContent := match key.subject.realization? with
+    | some owner =>
+      let subject := Subject.declaration owner witness
+      match content[subject]? with
+      | some selection => { selection with parts := #[] }
+      | none => { availability.sourceIssues := #[issue "unknown-declaration" subject
+          "Declaration is not owned by the selected realization"] }
+    | none => r.selectObject documents witness
+  let witnessIssues := witnessSelection.availability.sourceIssues
+  let witnessIssues := if witnessIssues.isEmpty then witnessIssues else
+    witnessIssues.push (issue "witness-unavailable" witness "No current resolved witness source")
+  let goalSources := (goal.documents.filter (·.context.language != `lean)).map (selectDocument documents)
+  let descriptors := inputs.filter (·.name == NativeLean.expectedContextFor key)
+  -- For a proof of an exact Lean declaration, the independent provider's
+  -- descriptor covers that witness. Whole models and endpoints select the
+  -- other declarations' semantic content as well.
+  let subjectSemantics := match key.subject with
+    | .declaration .. => #[]
+    | _ => selected.availability.semanticIssues
+  return {
+    parts := parts ++ #[(BindingEncoding.objectKey witness).compress] ++
+      descriptors.map bindingInputPart ++ goalSources.flatMap (·.parts) ++ witnessSelection.parts
+    availability := {
+      sourceIssues := selected.availability.sourceIssues ++ witnessIssues ++ goalSources.flatMap (·.availability.sourceIssues)
+      semanticIssues := subjectSemantics ++ if descriptors.isEmpty then
+        #[issue "semantic-context-unavailable" key
+          "Expected proposition/witness lacks current provider/build semantic inputs"] else #[] } }
+
 /-- Prerequisite identities are in the requirement encoding. Their contents
 and evidence do not become selections of this contract. -/
 private def Registry.deriveBindings (r : Registry) : Registry := Id.run do
   let documents := r.documents.foldl (fun out document =>
-    out.insert document.key (fingerprint "vbp.document.v3" (BindingEncoding.document document)))
-    ({} : Std.HashMap DocumentKey String)
+    out.insert document.key {
+      parts := #[fingerprint "vbp.document.v3" (BindingEncoding.document document)]
+      availability.sourceIssues := if blank document.text then
+        #[issue "content-unavailable" document.key "Selected canonical source is empty"] else #[] })
+    ({} : Std.HashMap DocumentKey SelectedContent)
   let subjectInputs := r.bindingInputs.foldl (fun out input =>
     out.insert input.subject ((out[input.subject]?.getD #[]).push input))
     ({} : Std.HashMap Subject (Array BindingInput))
   let content := r.selectContent documents subjectInputs
   let mut bindings := {}
+  let mut requirementAvailability := {}
   for requirement in r.requirements do
     let key := requirement.key
-    let selected := content[key.subject]?.getD {}
-    let inputs := subjectInputs[key.subject]?.getD #[]
-    let mut parts := #[(BindingEncoding.requirement requirement).compress] ++ selected.parts ++
-      (inputs.filter (·.name == selectedUsesFor key)).map bindingInputPart
-    if let .proof goal witness := requirement.expected then
-      let descriptors := inputs.filter (·.name == NativeLean.expectedContextFor key)
-      parts := parts ++ #[(BindingEncoding.objectKey witness).compress] ++
-        descriptors.map bindingInputPart ++ (goal.documents.filter (·.context.language != `lean)).map (documents[·]!)
-    bindings := bindings.insert key ("vbp-binding-sha256-v3:" ++ SHA256.tagged "vbp.assessment.v3" parts)
+    let selected := r.selectRequirementContent content documents (subjectInputs[key.subject]?.getD #[]) requirement
+    bindings := bindings.insert key ("vbp-binding-sha256-v3:" ++ SHA256.tagged "vbp.assessment.v3" selected.parts)
+    requirementAvailability := requirementAvailability.insert key selected.availability.issues
   let contentAvailability := content.fold (fun out subject selected => out.insert subject selected.availability) {}
-  return { r with bindings, contentAvailability }
+  return { r with bindings, contentAvailability, requirementAvailability }
 
 /-- Exact bindings are derived once from this immutable admitted input. -/
 def Registry.bindingFor (r : Registry) (key : RequirementKey) : Option ContentBinding :=
@@ -511,7 +554,7 @@ private def Registry.subjectContentIssues (r : Registry) (subject : Subject) : A
 private def Registry.availabilityIssues (r : Registry) (subject : Subject)
     (includeSemantics : Bool := true) : Array Diagnostic :=
   match r.contentAvailability[subject]? with
-  | some available => canonical (available.sourceIssues ++ if includeSemantics then available.semanticIssues else #[])
+  | some available => available.issues includeSemantics
   | none => match subject.translation? with
     | some key => #[issue "unknown-translation" key "Missing relation"]
     | none => r.subjectContentIssues subject
@@ -540,29 +583,9 @@ private def Registry.computeLocalResult (r : Registry) (key : RequirementKey) : 
       candidates := candidates.filter (·.id == id)
       if candidates.isEmpty then
         reviewIssues := #[issue "missing-current-review" id "Selected judgment is unavailable"]
-  match req.expected with
-  | .proof _ witness =>
-    let unavailable := match key.subject.realization? with
-      | some owner => r.subjectContentIssues (.declaration owner witness)
-      | none => r.objectIssues witness
-    if !unavailable.isEmpty then
-      return {
-        status := .blocked
-        diagnostics := unavailable.push (issue "witness-unavailable" witness "No current resolved witness source") }
-    -- A correspondence proof validates selected endpoints as well as a formal
-    -- goal. The standalone witness can stay checked on its own realization.
-    if key.subject.translation?.isSome then
-      let selected := r.availabilityIssues key.subject
-      if !selected.isEmpty then return { status := .blocked, diagnostics := selected }
-    unless r.bindingInputs.any (fun input => input.subject == key.subject &&
-        input.name == NativeLean.expectedContextFor key) do
-      return { status := .blocked, diagnostics := #[issue "semantic-context-unavailable" key
-        "Expected proposition/witness lacks current provider/build semantic inputs"] }
-  | _ =>
-    let unavailable := if req.expected.isNativeDeclarationCheck then r.subjectContentIssues key.subject
-      else r.availabilityIssues key.subject
-    if !unavailable.isEmpty then
-      return { status := .blocked, diagnostics := canonical (unavailable ++ reviewIssues) }
+  let unavailable := r.requirementAvailability[key]?.getD #[]
+  if !unavailable.isEmpty then
+    return { status := .blocked, diagnostics := canonical (unavailable ++ reviewIssues) }
   if !reviewIssues.isEmpty then return { status := .pending, diagnostics := reviewIssues }
   let binding := (r.bindingFor key).getD ""
   if candidates.any (fun evidence => (evidence.mismatch? req binding).isNone) then

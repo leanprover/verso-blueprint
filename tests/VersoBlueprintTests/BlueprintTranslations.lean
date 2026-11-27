@@ -690,6 +690,107 @@ def withMissingProofHelper : IO Input := do
         (proof.status == .blocked && hasIssue proof "unknown-declaration" &&
           hasIssue proof "witness-unavailable")
 
+-- A relation's foreign witness and separately named goal source are selected
+-- alongside the endpoints. All proof observations in this fixture are mocks.
+#eval show IO Unit from do
+  let witness := { rocqObject with native := "Foreign.externalProof" }
+  let witnessDoc : DocumentKey := ⟨rocqContext, "ExternalProof.v"⟩
+  let goalDoc : DocumentKey := ⟨rocqContext, "GoalOnly.v"⟩
+  let goal := { goal with context := rocqContext, documents := #[goalDoc] }
+  let foreignProof : RequirementKey := ⟨.claim claimKey, `foreignProof⟩
+  let input : Input := { fixture with
+    documents := fixture.documents ++ #[
+      contribution `foreignProofSource { key := witnessDoc, text := "MOCK old witness proof" },
+      contribution `foreignGoalSource { key := goalDoc, text := "MOCK separately authored goal" }]
+    objects := fixture.objects.push (contribution `foreignWitness {
+      key := witness, resolution := .resolved, document := some witnessDoc })
+    claims := fixture.claims.map fun record => { record with value.required := #[foreignProof] }
+    requirements := fixture.requirements.push (contribution `foreignProof {
+      key := foreignProof, expected := .proof goal witness }) }
+  let input ← withMockEvidence input `boundNativeProof proofKey mockProof
+  let input ← withMockEvidence input `boundForeignProof foreignProof (mockProof goal witness)
+  let before ← registry input
+  expect "foreign witness: original evidence completes the claim and translation"
+    ((before.resultForRequirement foreignProof).complete && (before.resultFor (.translation translationKey)).complete)
+  let edit (key : DocumentKey) (text : String) : Input :=
+    { input with documents := input.documents.map fun record =>
+      if record.value.key == key then { record with value.text := text } else record }
+  let changed ← registry (edit witnessDoc "MOCK different witness proof")
+  let relocatedDoc := { witnessDoc with path := "relocated/ExternalProof.v" }
+  let relocated ← registry { input with
+    documents := input.documents.map fun record =>
+      if record.value.key == witnessDoc then { record with value.key := relocatedDoc } else record
+    objects := input.objects.map fun record =>
+      if record.value.key == witness then { record with value.document := some relocatedDoc } else record }
+  for current in #[changed, relocated] do
+    let result := current.resultForRequirement foreignProof
+    expect "foreign witness: bytes and identity each stale a previously checked proof"
+      (current.bindingFor foreignProof != before.bindingFor foreignProof &&
+        result.status == .pending && hasIssue result "stale-content" &&
+        !(current.resultFor (.translation translationKey)).complete &&
+        current.bindingFor proofKey == before.bindingFor proofKey &&
+        (current.resultForRequirement proofKey).complete)
+  let emptyGoal ← registry (edit goalDoc " ")
+  let proof := emptyGoal.resultForRequirement foreignProof
+  expect "foreign proof: empty selected goal source blocks current assessment"
+    (proof.status == .blocked && hasIssue proof "content-unavailable" &&
+      !hasIssue proof "witness-unavailable" &&
+      emptyGoal.bindingFor foreignProof != before.bindingFor foreignProof &&
+      (emptyGoal.resultFor (.translation translationKey)).status == .blocked)
+  let emptyWitness ← registry (edit witnessDoc "")
+  let proof := emptyWitness.resultForRequirement foreignProof
+  expect "foreign proof: empty witness source retains the exact witness diagnostic"
+    (proof.status == .blocked && hasIssue proof "content-unavailable" && hasIssue proof "witness-unavailable")
+
+-- A proof scoped to the realization selects the whole owner. A separate
+-- declaration-local proof still selects only its witness. Both are mock checks.
+#eval show IO Unit from do
+  let jointProof : RequirementKey := ⟨.realization leanProofKey, `jointProof⟩
+  let extraDoc : DocumentKey := ⟨leanContext, "OwnedExtra.lean"⟩
+  let sibling := { leanObject with native := "Fixture.sibling" }
+  let siblingIssue : Diagnostic := {
+    code := "sibling-source-unavailable", subject := sibling.native
+    message := "MOCK selected sibling source is unavailable" }
+  let input : Input := { fixture with
+    documents := fixture.documents.push (contribution `extraSource {
+      key := extraDoc, text := "MOCK source selected by the whole realization" })
+    objects := fixture.objects.push (contribution `siblingObject { key := sibling, resolution := .resolved })
+    bindingInputs := fixture.bindingInputs.push (contribution `siblingSemantics {
+      subject := .declaration leanProofKey sibling, name := NativeLean.sourceContext
+      content := "MOCK selected sibling implementation semantics" })
+    realizations := fixture.realizations.map fun record =>
+      if record.value.key != leanProofKey then record else { record with value := {
+        record.value with
+        documents := #[extraDoc], required := #[jointProof]
+        declarations := record.value.declarations.push { object := sibling } } }
+    requirements := (fixture.requirements.map fun record =>
+      if record.value.key == reviewKey then { record with value.prerequisites := #[jointProof] }
+      else record).push (contribution `jointRequirement { key := jointProof, expected := .proof goal leanObject }) }
+  let input ← withMockEvidence input `localProofPassed proofKey mockProof
+  let input ← withMockEvidence input `jointProofPassed jointProof mockProof
+  let input ← withMockEvidence input `reviewPassed reviewKey mockReview
+  let before ← registry input
+  expect "realization proof: available owner and sibling allow the proof and dependent review"
+    ((before.resultForRequirement jointProof).complete && (before.resultForRequirement reviewKey).complete)
+  let emptyDoc : Input := { input with documents := input.documents.map fun record =>
+    if record.value.key == extraDoc then { record with value.text := "" } else record }
+  let badSibling : Input := { input with realizations := input.realizations.map fun record =>
+    if record.value.key != leanProofKey then record else { record with value := {
+      record.value with declarations := record.value.declarations.map fun declaration =>
+        if declaration.object == sibling then { declaration with sourceIssues := #[siblingIssue] }
+        else declaration } } }
+  for (candidate, issue) in #[(emptyDoc, "content-unavailable"), (badSibling, siblingIssue.code)] do
+    let current ← registry candidate
+    let joint := current.resultForRequirement jointProof
+    let downstream := current.resultForRequirement reviewKey
+    expect "realization proof: unavailable owner content blocks proof and dependent review"
+      ((current.resultFor (.realization leanProofKey)).status == .blocked &&
+        joint.status == .blocked && hasIssue joint issue && !hasIssue joint "witness-unavailable" &&
+        (current.localResult reviewKey).complete && downstream.status == .blocked &&
+        hasIssue downstream "unfinished-prerequisite")
+    expect "declaration proof: selected sibling and whole-owner document do not widen a native proof"
+      (current.bindingFor proofKey == before.bindingFor proofKey && (current.resultForRequirement proofKey).complete)
+
 -- Prerequisite order and repetition are irrelevant to the contract, while
 -- producer replay still checks the original records exactly.
 #eval show IO Unit from do
