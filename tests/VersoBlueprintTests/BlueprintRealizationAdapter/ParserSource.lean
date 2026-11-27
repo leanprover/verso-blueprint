@@ -32,11 +32,32 @@ variable {n : Nat}
 
 variable (n) in
 /-- An own comment, with Unicode 😀 before the name. -/ noncomputable def wrappedVariable : Nat := n
+
+set_option linter.unusedSectionVars false in
+include n in
+/-- The inner declaration owns the original range inside `include`. -/
+theorem includedVariable : True := True.intro
+
+section
+include n
+
+omit n in
+/-- The inner declaration owns the original range inside `omit`. -/
+theorem omittedVariable : True := True.intro
+end
 end
 
 seal Nat.add in
 /-- The inner declaration owns the original range inside `seal`. -/
 theorem sealed : True := True.intro
+
+section
+seal Nat.add
+
+unseal Nat.add in
+/-- The inner declaration owns the original range inside `unseal`. -/
+theorem unsealed : True := True.intro
+end
 
 attribute [local simp] Nat.add_zero in
 /-- The inner declaration owns the original range inside `attribute`. -/

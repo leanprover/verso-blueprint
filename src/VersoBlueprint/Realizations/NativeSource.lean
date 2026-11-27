@@ -173,21 +173,16 @@ def newSourceParser : CoreM SourceParser := do
     cache.modify (·.insert key parsed)
     return parsed
 
-private def isDeclarationScope (command : Syntax) : Bool :=
-  command.isOfKind ``Parser.Command.set_option || command.isOfKind ``Parser.Command.open ||
-    command.isOfKind ``Parser.Command.variable || command.isOfKind ``Parser.Command.attribute ||
-    (match command with | `(command| seal $_ids*) => true | _ => false)
-
 private partial def declarations (command : Syntax) : Array Syntax :=
   -- Mathlib's `lemma` parser has the same modifier and declaration ID slots
   -- as `theorem`. Keep the original syntax and never execute its macro.
   if command.isOfKind ``Parser.Command.declaration || command.isOfKind `lemma then #[command]
   else if command.isOfKind ``Parser.Command.«mutual» then
     command[1].getArgs.flatMap declarations
-  -- Lean's parser handles the scoped syntax of these command wrappers. Only
-  -- unwrap their enclosed command; do not search arbitrary syntax subtrees or
-  -- replace the declaration/name ranges with the enclosing wrapper's range.
-  else if command.isOfKind ``Parser.Command.«in» && isDeclarationScope command[0] then
+  -- Lean's `in` command combinator elaborates `command[0]` in a temporary scope
+  -- and then elaborates `command[2]` with its own original declaration ranges.
+  -- Unwrap only `command[2]` without enumerating every possible scope command.
+  else if command.isOfKind ``Parser.Command.«in» then
     declarations command[2]
   else #[]
 
@@ -706,7 +701,7 @@ def Prepared.realizeNative (source : Prepared) (origin : Origin) (node : Realiza
     key := key.forRole role, context := witness.context, role
     declarations := #[{
       object := witness
-      projection := if role == `statement then .statement else .implementation
+      projection := (NativeLean.roleSpec? role).map (·.projection) |>.getD .implementation
       required := #[] }] }
   let roles := source.roles
   let models := roles.map modelFor
@@ -716,11 +711,12 @@ def Prepared.realizeNative (source : Prepared) (origin : Origin) (node : Realiza
     realizations := models.mapIdx fun index model =>
       sourceContribution origin (Name.mkSimple s!"native-role-{index}") model
     bindingInputs := roles.flatMap fun role =>
-      if role == `statement then
-        source.statementContext.toArray.map fun content => sourceContribution origin `nativeStatementContext {
-          subject := .declaration (key.forRole role) witness, name := NativeLean.statementContext, content }
-      else source.semanticContext.toArray.map fun content => sourceContribution origin `nativeSourceContext {
-        subject := .declaration (key.forRole role) witness, name := NativeLean.sourceContext, content } }
+      let spec := (NativeLean.roleSpec? role).getD ⟨.implementation, NativeLean.bodyValidator, NativeLean.sourceContext⟩
+      let (slot, content?) := match spec.projection with
+        | .statement => (`nativeStatementContext, source.statementContext)
+        | .implementation => (`nativeSourceContext, source.semanticContext)
+      content?.toArray.map fun content => sourceContribution origin slot {
+        subject := .declaration (key.forRole role) witness, name := spec.contextName, content } }
 
 /-- Materialize two explicitly named source representations of the same concept,
 without observations or fragment admission. The native source identity comes
