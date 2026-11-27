@@ -136,11 +136,11 @@ private def batchingAndKindControl : CoreM Bool := do
     `sorryImportAdmitted, `sorryImportAxiom]
   let statuses ← analyzeDeclarations names
   let individual ← names.mapM statusOf
-  let refs ← externalRefSnapshotsAtCurrentDir {} <| names.map fun name =>
+  let refs ← registerExternalRefsAtCurrentDir {} <| names.map fun name =>
     { (ExternalRef.ofName name) with kind := .theorem }
   return statuses == individual && statuses[0]!.isProved &&
     statuses[1]!.isUnverified && statuses[2]!.hasKnownSorry &&
-    statuses[3]!.isAxiomLike && refs.map (·.provedStatus) == statuses.map some &&
+    statuses[3]!.isAxiomLike && refs.all (fun ref => ref.present && ref.provedStatus.isNone) &&
     refs[1]!.kind == .theorem && refs[2]!.kind == .theorem
 
 -- Independently inspecting actual bodies resolves both clean and omitted-hole
@@ -163,14 +163,17 @@ private def importAllBodyCoverageControl : CoreM Bool := do
     exposed.dependsOnSorry && !exposed.isProved
 
 private def externalRefRenderingControl : CoreM Bool := do
-  let ref ← externalRefSnapshotAtCurrentDir {} {
+  let checkedReference (reference : ExternalRef) : CoreM ExternalRef := do
+    let reference ← registerExternalRefAtCurrentDir {} reference
+    return { reference with provedStatus := some (← statusOf reference.canonical) }
+  let ref ← checkedReference {
     (ExternalRef.ofName `sorryImportTypeOnly) with kind := .theorem }
-  let proofRef ← externalRefSnapshotAtCurrentDir {} {
+  let proofRef ← checkedReference {
     (ExternalRef.ofName `sorryImportComposed) with kind := .theorem }
-  let completeRef ← externalRefSnapshotAtCurrentDir {} {
+  let completeRef ← registerExternalRefAtCurrentDir {} {
     (ExternalRef.ofName `sorryImportComplete) with kind := .theorem }
-  let missingRef ← externalRefSnapshotAtCurrentDir {} (ExternalRef.ofName `unknownSorryImport)
-  let nestedRef ← externalRefSnapshotAtCurrentDir {} {
+  let missingRef ← registerExternalRefAtCurrentDir {} (ExternalRef.ofName `unknownSorryImport)
+  let nestedRef ← checkedReference {
     (ExternalRef.ofName `sorryImportNestedHypothesis) with kind := .theorem }
   let html := (ExternalCode.renderPreviewHtml #[ref]).asString
   let proofHtml := (ExternalCode.renderPreviewHtml #[proofRef]).asString

@@ -14,7 +14,7 @@ theorem additional : True := original
 
 run_cmd Lean.Elab.Command.liftCoreM do
   let node := Name.mkSimple "canonical.native"
-  let reference ← externalRefSnapshotAtCurrentDir (← getOptions)
+  let reference ← registerExternalRefAtCurrentDir (← getOptions)
     (Data.ExternalRef.ofName ``additional)
   unless reference.present do throwError "Actual native attachment did not resolve"
   let some _ ← Environment.contributeRecord {
@@ -24,7 +24,7 @@ run_cmd Lean.Elab.Command.liftCoreM do
       placement := `statement, reference }]
     priority := none, source := none } {}
     | throwError "Actual scoped native attachment was rejected"
-  let missing ← externalRefSnapshotAtCurrentDir (← getOptions)
+  let missing ← registerExternalRefAtCurrentDir (← getOptions)
     (Data.ExternalRef.ofName `CanonicalNativePersistence.notDeclared)
   unless !missing.present do throwError "Missing-source control unexpectedly resolved"
   let some _ ← Environment.contributeRecord {

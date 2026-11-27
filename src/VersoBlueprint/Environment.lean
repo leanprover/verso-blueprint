@@ -28,21 +28,17 @@ Elaboration-time builder for the single currently open directive.
 This stays separate from `Data.NodeInventory`: it collects authored metadata and uses
 before the final checked contribution is assembled.
 -/
-structure InProgress where
+structure DirectiveDraft extends Data.NodeContribution where
   label : Label
-  kind : Data.InProgressKind := .proof
   externalRefs : Array ExternalRef := #[]
   /-- Explicit external docstring plus its directly observed format. -/
   adoption : Option (SourceData.AdoptedDocstring × Name) := none
-  parent : Option Parent := none
   priority : Option String := none
-  owner : Option AuthorId := none
-  tags : Array String := #[]
-  effort : Option String := none
-  prUrl : Option String := none
-  issueUrl : Option String := none
   uses : Array SourceData.UseDeclaration := #[]
 deriving Inhabited, Repr
+
+private def DirectiveDraft.role (draft : DirectiveDraft) : Name :=
+  if draft.kind.isSome then `statement else `proof
 
 inductive ImportedConflictKind where
   | node
@@ -176,7 +172,7 @@ structure State where
   importedConflicts : Array ImportedConflict := #[]
   importedConflictsReported : Bool := false
   /-- At most one directive can be open; nested declarations are rejected. -/
-  activeDirective : Option InProgress := none
+  activeDirective : Option DirectiveDraft := none
   /-- Configuration belongs to this exact module and is never imported. -/
   authoringProject? : Option (Name × Name) := none
   authoringRecords : Array AuthoringRecord := #[]
@@ -243,58 +239,55 @@ private def addNodeLeanDeclLabels
     NameMap (Array Label) :=
   node.leanDecls.foldl (init := leanNameLabels) fun acc decl => addLeanDeclLabel acc decl label
 
-/-- Commit all node stores together only after the shared reducer accepts the registration. -/
-private def State.addNode (state : State) (label origin contributor : Name)
-    (incoming : Array SourceData.Registration) (facts : List Record) : Except (Array String) (State × NodeInventory) := do
-  let authored := incoming.any (·.claimsAuthoredNode)
-  let pending := (state.nodeRegistrations.getD label {}).append origin contributor incoming true authored
+private def assembleNode (label : Label) (pending : NodeRegistrations)
+    (records : List Record) : Except (Array String) NodeInventory := do
   if pending.authoredOriginConflict then
     throw #[s!"Label {label} was independently introduced by authored contributions"]
-  let records := facts.foldl (fun records record => collector.insert record records) state.factRecords
-  let assembled ← NodeAssembly.assemble label pending.registrations records.reverse
-  let node := { assembled.node with
+  let assembled ← NodeAssembly.assemble label pending.registrations records
+  return { assembled.node with
     origin := pending.authoredOrigin?.getD pending.origin
     modules := pending.contributors }
-  return ({ state with
+
+private def State.installNode (state : State) (label : Label) (node : NodeInventory) : State :=
+  { state with
     inventory := state.inventory.insert label node
     nextCount := max state.nextCount (node.count + 1)
-    leanNameLabels := addNodeLeanDeclLabels state.leanNameLabels label node
+    leanNameLabels := addNodeLeanDeclLabels state.leanNameLabels label node }
+
+private def insertFacts (facts records : List Record) : List Record :=
+  facts.foldl (fun records record => collector.insert record records) records
+
+/-- Assemble all ordinary stores before publishing any of them. -/
+private def State.addNode (state : State) (label : Label) (moduleName : Name)
+    (incoming : SourceData.Registration) (facts : List Record) : Except (Array String) (State × NodeInventory) := do
+  let previous := state.nodeRegistrations.getD label {}
+  let origin := previous.authoredOrigin?.getD moduleName
+  let pending := previous.append origin moduleName #[incoming] true incoming.claimsAuthoredNode
+  let records := insertFacts facts state.factRecords
+  let node ← assembleNode label pending records.reverse
+  return ({ state.installNode label node with
     nodeRegistrations := state.nodeRegistrations.insert label pending
     factRecords := records
-    localFactRecords := facts.foldl (fun records record => collector.insert record records) state.localFactRecords
-    }, node)
+    localFactRecords := insertFacts facts state.localFactRecords }, node)
 
 /-- Resolve every imported label against the complete decoded evidence set. -/
 private def State.reassembleImported (state : State) : State := Id.run do
-  let mut inventory : NameMap NodeInventory := {}
-  let mut leanNameLabels : NameMap (Array Label) := {}
-  let mut nextCount := 1
-  let mut conflicts := state.importedConflicts
+  let mut assembled := { state with inventory := {}, leanNameLabels := {}, nextCount := 1 }
   let records := state.factRecords.reverse
   for (label, pending) in state.nodeRegistrations.toArray do
-    if pending.authoredOriginConflict then
-      let origins := pending.contributors
-      conflicts := pushImportedConflict conflicts .node label
-        #[s!"Label {label} was independently introduced by authored contributions"] origins
-    else match NodeAssembly.assemble label pending.registrations records with
-    | .ok assembled =>
-      let node := { assembled.node with
-        origin := pending.authoredOrigin?.getD pending.origin
-        modules := pending.contributors }
-      inventory := inventory.insert label node
-      nextCount := max nextCount (node.count + 1)
-      leanNameLabels := addNodeLeanDeclLabels leanNameLabels label node
+    match assembleNode label pending records with
+    | .ok node => assembled := assembled.installNode label node
     | .error reasons =>
-      conflicts := pushImportedConflict conflicts .node label reasons
-        pending.contributors
-  return { state with inventory, leanNameLabels, nextCount, importedConflicts := sortImportedConflicts conflicts }
+      let conflicts := pushImportedConflict assembled.importedConflicts .node label reasons pending.contributors
+      assembled := { assembled with importedConflicts := conflicts }
+  return { assembled with importedConflicts := sortImportedConflicts assembled.importedConflicts }
 
 /-- Decode imports as raw evidence; resolution and node diagnostics happen once below. -/
 private def State.collectImportedEntry (state : State) : Entry → State
   | .authoring record => { state with authoringRecords := state.authoringRecords.push record }
   | .node label origin contributor contributions facts authored =>
     let pending := (state.nodeRegistrations.getD label {}).append origin contributor contributions false authored
-    let records := facts.foldl (fun records record => collector.insert record records) state.factRecords
+    let records := insertFacts facts state.factRecords
     { state with
       nodeRegistrations := state.nodeRegistrations.insert label pending
       factRecords := records
@@ -437,15 +430,13 @@ def stageNativeExpectation (id node expectedProposition : Name) :
     CoreM (Except (Array Realizations.Diagnostic) Unit) :=
   stageAuthoring id {} #[(node, expectedProposition)]
 
-/-- Record a successful attribute registration in module application order. -/
-def registerBlueprintAttributeLabel (label : Label) : m Unit := do
-  let moduleName := (← getEnv).mainModule
-  modify fun state => {
-    state with
+private def State.recordAttributeLabel (state : State) (moduleName : Name) (label : Label) : State :=
+  let label := label.eraseMacroScopes
+  { state with
     blueprintAttributeLabelsByModule :=
-      addBlueprintAttributeLabel state.blueprintAttributeLabelsByModule moduleName label.eraseMacroScopes
+      addBlueprintAttributeLabel state.blueprintAttributeLabelsByModule moduleName label
     localBlueprintAttributeLabelsByModule :=
-      addBlueprintAttributeLabel state.localBlueprintAttributeLabelsByModule moduleName label.eraseMacroScopes }
+      addBlueprintAttributeLabel state.localBlueprintAttributeLabelsByModule moduleName label }
 
 /-- Labels contributed by attributes applied in this exact module, in application order. -/
 def blueprintAttributeLabelsForModule (moduleName : Name) : m (Array Label) := do
@@ -462,33 +453,43 @@ def reportImportedConflicts : m Unit := do
       logError conflict.message
     return { state with importedConflictsReported := true }
 
-/-- Commit one checked registration after its admission inputs have been validated. -/
-private def commitContribution (label : Label) (contribution : SourceData.Registration) (facts : List Record) :
-    m (Option NodeInventory) := do
+private def hasErrorsSince [MonadLiftT CoreM m] (messageCount : Nat) : m Bool := do
+  let messages := (← liftM Core.getMessageLog).reportedPlusUnreported
+  return (messages.toArray.extract messageCount messages.size).any (·.severity == .error)
+
+/-- Publish a complete node registration, including the module catalog for an
+attribute. An attribute cannot publish after reporting a newly found import conflict. -/
+private def commitContribution [MonadLiftT CoreM m] (label : Label) (contribution : SourceData.Registration) (facts : List Record)
+    (attributeRegistration : Bool := false) : m (Option NodeInventory) := do
+  let messageCount ← if attributeRegistration then
+    pure (← liftM Core.getMessageLog).reportedPlusUnreported.size
+  else pure 0
+  reportImportedConflicts
   let mainModule ← getMainModule
   let state := informalExt.getState (← getEnv)
-  let origin := (state.nodeRegistrations.getD label {}).authoredOrigin?.getD mainModule
-  match state.addNode label origin mainModule #[contribution] facts with
+  match state.addNode label mainModule contribution facts with
   | .ok (state, node) =>
-    modifyEnv (informalExt.setState · state)
+    if attributeRegistration then
+      if ← hasErrorsSince messageCount then return none
+    let state := if attributeRegistration then state.recordAttributeLabel mainModule label else state
+    modify fun _ => state
     return some node
   | .error reasons =>
     for reason in reasons do logError reason
     return none
 
 /-- Register a node payload under an explicit label. -/
-def contribute (label : Label) (contribution : SourceData.Registration) : m (Option NodeInventory) := do
-  reportImportedConflicts
+def contribute [MonadLiftT CoreM m] (label : Label) (contribution : SourceData.Registration) : m (Option NodeInventory) :=
   commitContribution label contribution []
 
-/--
-Register a producer-identified selected record with a node payload.
-The record is the sole owner of the selected label, external references, and priority.
--/
-def contributeRecord (fact : Record) (contribution : SourceData.Registration) :
-    m (Option NodeInventory) := do
-  reportImportedConflicts
+/-- Register a producer-identified selected record with a node payload. -/
+def contributeRecord [MonadLiftT CoreM m] (fact : Record) (contribution : SourceData.Registration) :
+    m (Option NodeInventory) :=
   commitContribution fact.label contribution [fact]
+
+/-- Admit an ordinary attribute association and export its catalog entry together. -/
+def contributeAttribute (fact : Record) (payload : SourceData.Registration) : CoreM (Option NodeInventory) :=
+  commitContribution fact.label payload [fact] (attributeRegistration := true)
 
 def checkLabelAndNesting (label : Label) (kind : Data.InProgressKind) : m Bool := do
   let { inventory, activeDirective, .. } := informalExt.getState (← getEnv)
@@ -516,21 +517,17 @@ def checkLabelAndNesting (label : Label) (kind : Data.InProgressKind) : m Bool :
     logError m!"Cannot declare nested definitions"
     return false
 
-private def InProgress.toRegistration (current : InProgress) (count : Nat) (ref : Syntax)
+private def DirectiveDraft.toRegistration (current : DirectiveDraft) (count : Nat) (ref : Syntax)
     (blocks : Array (Verso.Doc.Block Verso.Genre.Manual)) : CoreM SourceData.Registration := do
-  let role := match current.kind with | .statement _ => `statement | .proof => `proof
   let format := current.adoption.map (·.2) |>.getD `verso
-  let source ← sourceAt current.label format (some role) format (.prose { stx := ref, previewBlocks := blocks }) ref
+  let source ← sourceAt current.label format (some current.role) format (.prose { stx := ref, previewBlocks := blocks }) ref
   let source := { source with adoption := current.adoption.map (·.1) }
   return {
-    kind := match current.kind with | .statement kind => some kind | .proof => none
-    count := match current.kind with | .statement _ => count | .proof => 0
+    toNodeContribution := { current.toNodeContribution with count := if current.kind.isSome then count else 0 }
     sources := #[source]
-    uses := current.uses
-    parent := current.parent, owner := current.owner, tags := current.tags
-    effort := current.effort, prUrl := current.prUrl, issueUrl := current.issueUrl }
+    uses := current.uses }
 
-private def InProgress.selectedFact? (current : InProgress) (ref : Syntax) : CoreM (Option Record) := do
+private def DirectiveDraft.selectedFact? (current : DirectiveDraft) (ref : Syntax) : CoreM (Option Record) := do
   let externalRefs := current.externalRefs
   if externalRefs.isEmpty && current.priority.isNone then
     return none
@@ -542,7 +539,7 @@ private def InProgress.selectedFact? (current : InProgress) (ref : Syntax) : Cor
     let context : Realizations.Context := ⟨`lean, ← sourceProject⟩
     associations := externalRefs.map fun reference => {
       realization := ⟨current.label, `lean⟩, context
-      placement := match current.kind with | .statement _ => `statement | .proof => `proof
+      placement := current.role
       reference }
   return some {
     id := {
@@ -556,31 +553,16 @@ private def InProgress.selectedFact? (current : InProgress) (ref : Syntax) : Cor
     priority := current.priority
     source }
 
-private def hasErrorsSince [MonadLiftT CoreM m] (messageCount : Nat) : m Bool := do
-  let messages := (← liftM Core.getMessageLog).reportedPlusUnreported
-  return (messages.toArray.extract messageCount messages.size).any (·.severity == .error)
-
-/-- Plan ordinary admission and the module catalog in one transaction. Source
-capture happens after the owning build; no opt-in default enrollment is needed. -/
-def contributeAttribute (fact : Record) (payload : SourceData.Registration) : CoreM (Option NodeInventory) := do
-  let messageCount := (← Core.getMessageLog).reportedPlusUnreported.size
-  reportImportedConflicts
+private def withDirectiveTransaction [MonadExceptOf Exception m] [MonadLiftT CoreM m]
+    (action : m (Option α)) : m (Option α) := do
   let before := informalExt.getState (← getEnv)
-  let moduleName ← getMainModule
-  let origin := (before.nodeRegistrations.getD fact.label {}).authoredOrigin?.getD moduleName
-  match before.addNode fact.label origin moduleName #[payload] [fact] with
-  | .error reasons =>
-    for reason in reasons do logError reason
-    return none
-  | .ok (candidate, node) =>
-    let candidate := { candidate with
-      blueprintAttributeLabelsByModule :=
-        addBlueprintAttributeLabel candidate.blueprintAttributeLabelsByModule moduleName fact.label.eraseMacroScopes
-      localBlueprintAttributeLabelsByModule :=
-        addBlueprintAttributeLabel candidate.localBlueprintAttributeLabelsByModule moduleName fact.label.eraseMacroScopes }
-    if ← hasErrorsSince messageCount then return none
-    modify fun _ => candidate
-    return some node
+  let result ← try action catch exception =>
+    modify fun _ => before
+    throw exception
+  match result with
+  | some _ => modify fun state => { state with activeDirective := before.activeDirective }
+  | none => modify fun _ => before
+  return result
 
 /--
 Elaborate and register one directive as a scoped Blueprint-state transaction.
@@ -589,40 +571,24 @@ or exceptions restore all Blueprint stores. Other Lean environment changes and
 messages are retained. Every exit restores the enclosing directive scope.
 -/
 def withDirective [MonadExceptOf Exception m] [MonadLiftT CoreM m]
-    (prepare : m InProgress) (ref : Syntax)
+    (prepare : m DirectiveDraft) (ref : Syntax)
     (body : m (α × Array (Verso.Doc.Block Verso.Genre.Manual))) : m (Option (α × Nat)) := do
   reportImportedConflicts
-  let before := informalExt.getState (← getEnv)
-  let messageCount := (← liftM Core.getMessageLog).reportedPlusUnreported.size
-  let result ← try
+  withDirectiveTransaction do
+    let messageCount := (← liftM Core.getMessageLog).reportedPlusUnreported.size
     let frame ← prepare
-    if (← hasErrorsSince messageCount) || !(← checkLabelAndNesting frame.label frame.kind) then
-      pure none
-    else
-      modify fun state => { state with activeDirective := some frame }
-      let (value, blocks) ← body
-      if ← hasErrorsSince messageCount then
-        pure none
-      else
-        let state := informalExt.getState (← getEnv)
-        match state.activeDirective with
-        | none =>
-          logError "Internal error: Blueprint directive scope was closed during elaboration"
-          pure none
-        | some current =>
-          let contribution ← liftM <| current.toRegistration state.nextCount ref blocks
-          let fact? ← liftM <| current.selectedFact? ref
-          let node? ← match fact? with
-            | some fact => contributeRecord fact contribution
-            | none => contribute frame.label contribution
-          pure <| node?.map fun node => (value, node.count)
-  catch exception =>
-    modify fun _ => before
-    throw exception
-  match result with
-  | some _ => modify fun state => { state with activeDirective := before.activeDirective }
-  | none => modify fun _ => before
-  return result
+    let kind := frame.kind.map InProgressKind.statement |>.getD .proof
+    if (← hasErrorsSince messageCount) || !(← checkLabelAndNesting frame.label kind) then return none
+    modify fun state => { state with activeDirective := some frame }
+    let (value, blocks) ← body
+    if ← hasErrorsSince messageCount then return none
+    let state := informalExt.getState (← getEnv)
+    let some current := state.activeDirective
+      | logError "Internal error: Blueprint directive scope was closed during elaboration"; return none
+    let contribution ← liftM <| current.toRegistration state.nextCount ref blocks
+    let fact? ← liftM <| current.selectedFact? ref
+    let node? ← commitContribution frame.label contribution fact?.toList
+    return node?.map fun node => (value, node.count)
 
 def addUse (stx : Syntax) (useRef : UseRef) : m Unit := do
   match (informalExt.getState (← getEnv)).activeDirective with
@@ -631,11 +597,8 @@ def addUse (stx : Syntax) (useRef : UseRef) : m Unit := do
     modify fun state =>
       { state with activeDirective := some { current with uses := current.uses.push {
         node := current.label
-        role := match current.kind with | .statement _ => `statement | .proof => `proof
+        role := current.role
         reference := useRef } } }
-
-def addDep (stx : Syntax) (dep : Name) : m Unit :=
-  addUse stx { label := dep }
 
 def getNodeInventory? (label : Label) : m (Option NodeInventory) := do
   return (informalExt.getState (← getEnv)).inventory.get? label

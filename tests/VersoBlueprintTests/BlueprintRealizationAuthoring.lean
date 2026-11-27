@@ -391,7 +391,7 @@ private def insideDirective : TermElabM Unit := do
 run_cmd liftTermElabM do
   isolated do
     let before := Environment.informalExt.getState (← getEnv)
-    let result ← Environment.withDirective (pure { label := `outerFailure, kind := .statement .lemma }) .missing do
+    let result ← Environment.withDirective (pure { label := `outerFailure, kind := some .lemma }) .missing do
       insideDirective
       logError "Synthetic enclosing directive failure"
       pure ((), #[])
@@ -403,7 +403,7 @@ run_cmd liftTermElabM do
     let before := Environment.informalExt.getState (← getEnv)
     let mut caught := false
     try
-      discard <| Environment.withDirective (pure { label := `outerException, kind := .statement .lemma }) .missing do
+      discard <| Environment.withDirective (pure { label := `outerException, kind := some .lemma }) .missing do
         insideDirective
         throwError "Synthetic enclosing directive exception"
         pure ((), #[])

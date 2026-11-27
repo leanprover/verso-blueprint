@@ -492,8 +492,10 @@ private def request (job : NativeRequest) : CoreM (Except Diagnostic NativeSourc
     return .error {
       code := "missing-declaration", subject := name.toString
       message := "Declaration is not in the current checked environment" }
-  let owner := (env.getModuleIdxFor? name).bind (fun index => env.header.moduleNames[index.toNat]?)
-    |>.getD env.mainModule
+  let some owner := ExternalModuleSource.moduleNameForDecl? env name
+    | return .error {
+      code := "source-association-unavailable", subject := name.toString
+      message := "Cannot determine the current declaration owner" }
   if let some moduleName := job.moduleName? then
     if moduleName != owner then return .error {
       code := "source-association-unavailable", subject := name.toString
@@ -786,8 +788,7 @@ private def ownedDefinition (name : Name) (origin : Origin) (source : Document) 
     | reject "invalid-expectation" name.toString "Expected a checked owned Prop definition, not an axiom" #[origin]
   unless info.safety == .safe do
     reject "invalid-expectation" name.toString "Expected a safe proposition definition" #[origin]
-  let owner := (env.getModuleIdxFor? name).bind (fun index => env.header.moduleNames[index.toNat]?) |>.getD env.mainModule
-  unless owner == origin.moduleName do
+  unless ExternalModuleSource.moduleNameForDecl? env name == some origin.moduleName do
     reject "wrong-expectation-owner" name.toString "Specification belongs to another module" #[origin]
   let some ranges ← findDeclarationRanges? name
     | reject "source-association-unavailable" name.toString "Specification has no native declaration ranges" #[origin]

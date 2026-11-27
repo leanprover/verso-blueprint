@@ -22,9 +22,6 @@ def fixtureStatus (typeRefs proofRefs : Nat) : Data.ProvedStatus :=
       (if typeRefs > 0 then #[{ location := .statement, refs? := some typeRefs }] else #[]) ++
       (if proofRefs > 0 then #[{ location := .proof, refs? := some proofRefs }] else #[]) }
 
-def mkInformal (deps : Array Name := #[]) : InformalData :=
-  { stx := .missing, useDeclarations := deps.map (fun label => { label }), elabStx := #[] }
-
 def mkDefDecl (name : Name) (typeSorry : Bool := false) : LiterateDef :=
   {
     name

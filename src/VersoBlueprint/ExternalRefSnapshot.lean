@@ -167,15 +167,6 @@ private def externalDeclHeaderSource?
       href? := sourceHref?
     }
 
-private def moduleNameForDecl? (env : Lean.Environment) (decl : Lean.Name) : Option Lean.Name := do
-  match env.getModuleIdxFor? decl with
-  | some moduleIdx => env.header.moduleNames[moduleIdx.toNat]?
-  | none =>
-    if env.mainModule.isAnonymous then
-      none
-    else
-      some env.mainModule
-
 private def currentSourcePath? (workspaceRoot : System.FilePath) : Lean.CoreM (Option System.FilePath) := do
   let fileName ← Lean.getFileName
   if fileName.isEmpty || fileName.startsWith "<" then
@@ -212,14 +203,8 @@ private def sourcePathForModule? (workspaceRoot : System.FilePath)
     return ← currentSourcePath? workspaceRoot
   if let some idx := moduleIdx? then
     if (env.getModulePackageByIdx? idx).isSome then
-      let some owner ← liftM (ExternalModuleSource.find? env idx) | return none
-      -- The owning checkout may have changed since this module was compiled.
-      return ← liftM <| do
-        try
-          let text ← IO.FS.readFile owner.path
-          if Lake.Hash.ofText text != owner.textHash then return none
-          normalizeSourcePath? workspaceRoot owner.path
-        catch _ => pure none
+      let .ok (owner, _) ← liftM (ExternalModuleSource.verifiedSource env idx) | return none
+      return ← liftM <| normalizeSourcePath? workspaceRoot owner.path
   RuntimeCache.cachedModuleSourcePath? workspaceRoot moduleName do
     let srcSearchPath ← Lean.getSrcSearchPath
     match ← srcSearchPath.findModuleWithExt "lean" moduleName with
@@ -253,12 +238,10 @@ private def mkProvenance (workspaceRoot : System.FilePath)
     | none =>
       .outWorkspace moduleName none
 
-/--
-Build a full snapshot for one external declaration reference using the environment
-available at elaboration/registration time.
--/
-private def externalRefSnapshotWithStatus (opts : Lean.Options) (workspaceRoot : System.FilePath)
-    (ref : Data.ExternalRef) (provedStatus : Option Data.ProvedStatus) : Lean.CoreM Data.ExternalRef := do
+/-- Register source and presentation information for a native attachment.
+Current proof inspection belongs to capture. -/
+def registerExternalRef (opts : Lean.Options) (workspaceRoot : System.FilePath)
+    (ref : Data.ExternalRef) : Lean.CoreM Data.ExternalRef := do
   let env ← getEnv
   let canonical := ref.canonical.eraseMacroScopes
   match env.find? canonical with
@@ -284,11 +267,11 @@ private def externalRefSnapshotWithStatus (opts : Lean.Options) (workspaceRoot :
       ref with
       canonical
       present := true
-      provedStatus
+      provedStatus := none
       kind := nodeKind
     }
     let ranges? ← findDeclarationRanges? canonical
-    let moduleName? := moduleNameForDecl? env canonical
+    let moduleName? := ExternalModuleSource.moduleNameForDecl? env canonical
     let sourcePath? ←
       match moduleName? with
       | some moduleName => sourcePathForModule? workspaceRoot moduleName (env.getModuleIdxFor? canonical)
@@ -315,33 +298,19 @@ private def externalRefSnapshotWithStatus (opts : Lean.Options) (workspaceRoot :
       render
     }
 
-/-- Capture a checked external declaration and its current semantic status. -/
-def externalRefSnapshot (opts : Lean.Options) (workspaceRoot : System.FilePath)
-    (ref : Data.ExternalRef) : Lean.CoreM Data.ExternalRef := do
-  let status ← Data.analyzeDeclaration ref.canonical.eraseMacroScopes
-  externalRefSnapshotWithStatus opts workspaceRoot ref (some status)
-
 def workspaceRoot : Lean.CoreM System.FilePath := do
   let cwd ← liftM <| IO.currentDir
   liftM <| IO.FS.realPath cwd
 
-def externalRefSnapshotAtCurrentDir (opts : Lean.Options)
+def registerExternalRefAtCurrentDir (opts : Lean.Options)
     (ref : Data.ExternalRef) : Lean.CoreM Data.ExternalRef := do
-  externalRefSnapshot opts (← workspaceRoot) ref
-
-/-- Related associations share one checked union certificate when clean.
-Rendering and provenance remain per declaration; status is never caller-supplied. -/
-def externalRefSnapshotsAtCurrentDir (opts : Lean.Options)
-    (refs : Array Data.ExternalRef) : Lean.CoreM (Array Data.ExternalRef) := do
-  let root ← workspaceRoot
-  let statuses ← Data.analyzeDeclarations (refs.map (·.canonical.eraseMacroScopes))
-  (refs.zip statuses).mapM fun (ref, status) => externalRefSnapshotWithStatus opts root ref (some status)
+  registerExternalRef opts (← workspaceRoot) ref
 
 /-- Record chapter references in their authoring environment, deferring proof
 inspection to the project capture that can see the selected import view. -/
 def registerExternalRefsAtCurrentDir (opts : Lean.Options)
     (refs : Array Data.ExternalRef) : Lean.CoreM (Array Data.ExternalRef) := do
   let root ← workspaceRoot
-  refs.mapM fun ref => externalRefSnapshotWithStatus opts root ref none
+  refs.mapM fun ref => registerExternalRef opts root ref
 
 end Informal

@@ -208,7 +208,7 @@ private def captureWithAuthored (base : Lean.Environment) (id : Name)
 run_cmd liftCoreM <| Realizations.Authoring.configureProject project
 
 run_cmd liftCoreM do
-  let reference ← externalRefSnapshotAtCurrentDir (← getOptions)
+  let reference ← registerExternalRefAtCurrentDir (← getOptions)
     (Data.ExternalRef.ofName ``BlueprintAssessmentSnapshot.customWitness .blueprintAttr)
   unless reference.present do throwError "Custom-base control needs a real checked native declaration"
   let moduleName ← getMainModule

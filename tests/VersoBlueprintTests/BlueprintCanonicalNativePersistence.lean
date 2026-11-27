@@ -62,7 +62,7 @@ run_cmd Lean.Elab.Command.liftCoreM do
   -- statement/proof slot.
   let beforeArbitraryFacet ← getEnv
   try
-    let ref ← externalRefSnapshotAtCurrentDir (← getOptions)
+    let ref ← registerExternalRefAtCurrentDir (← getOptions)
       (Data.ExternalRef.ofName `Nat.add_assoc)
     unless ref.present do throwError "Arbitrary-facet control needs a real current native declaration"
     let selected : Realizations.RealizationKey := ⟨label, `arbitraryFacet⟩
@@ -100,7 +100,7 @@ run_cmd Lean.Elab.Command.liftCoreM do
   let before := Environment.informalExt.getState (← getEnv)
   let failed ← try
     let _ : Option (Unit × Nat) ← Environment.withDirective
-      (pure { label, kind := .proof }) .missing do
+      (pure { label }) .missing do
         let some _ ← Environment.contributeRecord { fresh with nativeAssociations := #[{
           association with realization := ⟨label, `inner⟩ }] } { tags := #["inner"] }
           | throwError "Inner native control did not pass ordinary registration"

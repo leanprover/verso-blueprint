@@ -12,21 +12,6 @@ namespace Informal.Data
 open Lean
 set_option doc.verso true
 
-/-- An assembled body and the declarations needed to validate its dependencies. -/
-structure InformalData extends InformalBody where
-  /-- One declaration per label and authority; manual precedence never erases validation evidence. -/
-  useDeclarations : Array UseRef := #[]
-deriving Repr, Inhabited
-
-def InformalData.hasBody (data : InformalData) : Bool := data.toInformalBody.hasBody
-
-/-- Effective dependency edges, with manual metadata taking precedence. -/
-def InformalData.deps (data : InformalData) : Array UseRef :=
-  UseRef.mergeByLabel #[] data.useDeclarations
-
-def InformalData.dependencyLabels (data : InformalData) : Array Label :=
-  data.deps.map (·.label)
-
 /-- The compiled node information of one label: the checked assembly of all its
 registrations, together with their module provenance. It is derived state,
 rebuilt from the persisted registrations on import, and never exported itself.
@@ -54,21 +39,16 @@ def NodeInventory.usesOn (node : NodeInventory) (role : Name) : Array UseRef :=
 /-- A named prose view for rendering. Admission permits one nonempty prose body
 per realization and role. Dependency-only views retain the ordinary placeholder behavior;
 this presentation value is never stored or used to infer validation scope. -/
-def NodeInventory.proseView (node : NodeInventory) (realization role : Name) : Option InformalData := Id.run do
+def NodeInventory.proseView (node : NodeInventory) (realization role : Name) : Option InformalBody := Id.run do
   let bodies := node.sources.filterMap fun source =>
     if source.destination.realization.name != realization || source.destination.role != some role then none
     else match source.payload with | .prose body => some body | _ => none
-  let body := bodies.find? (·.hasBody) <|> bodies[0]?
-  let useDeclarations := ((node.uses.filter (·.role == role)).map (·.reference)).foldl
-    (fun refs ref => if refs.contains ref then refs else refs.push ref) #[]
-  match body with
-  | some body => return some { toInformalBody := body, useDeclarations }
-  | none => return if useDeclarations.isEmpty then none
-    else some { stx := .missing, useDeclarations }
+  return bodies.find? (·.hasBody) <|> bodies[0]? <|>
+    (if node.uses.any (·.role == role) then some { stx := .missing } else none)
 
 /-- The ordinary displayed prose for a role, including Markdown declaration
 docstrings. Prefer a Verso body when present, then Markdown, then placeholders. -/
-def NodeInventory.defaultProseView (node : NodeInventory) (role : Name) : Option InformalData :=
+def NodeInventory.defaultProseView (node : NodeInventory) (role : Name) : Option InformalBody :=
   let verso := node.proseView `verso role
   let markdown := node.proseView `markdown role
   verso.filter (·.hasBody) <|> markdown.filter (·.hasBody) <|> verso <|> markdown
@@ -94,40 +74,6 @@ def NodeInventory.externalAssociationSnapshots (node : NodeInventory) : Array Ex
 snapshot; node-level projections retain every observed status conservatively. -/
 def NodeInventory.associatedExternalRefs (node : NodeInventory) : Array ExternalRef :=
   ExternalRef.mergeSnapshots #[] node.externalAssociationSnapshots
-
-/-- External summary entries not already supplied by a compiled literate declaration. -/
-def NodeInventory.summaryExternalRefs (node : NodeInventory) : Array ExternalRef :=
-  let names := node.inlineCodes.foldl (init := ({} : NameSet)) fun names code =>
-    code.definedDeclNames.foldl (fun names name => names.insert name) names
-  node.associatedExternalRefs.filter fun ref => !names.contains ref.canonical.eraseMacroScopes
-
-/-- Prefer each inline declaration once for summaries, preserving status evidence
-from every external and inline association of the same canonical declaration.
-The authored code blocks remain unchanged for rendering and provenance. -/
-def NodeInventory.summaryLiterateCodes (node : NodeInventory) : Array Code := Id.run do
-  let observations := node.associatedExternalRefs.filterMap
-      (fun ref => ref.observedStatus.map (ref.canonical, ·)) ++
-    node.inlineCodes.flatMap fun code =>
-      code.definedDefs.map (fun decl => (decl.name, decl.provedStatus)) ++
-      code.definedTheorems.map (fun decl => (decl.name, decl.provedStatus))
-  let statuses := ProvedStatus.indexByName observations
-  let mut seen : NameSet := {}
-  let mut codes := #[]
-  for code in node.inlineCodes do
-    let mut definitions := #[]
-    let mut theorems := #[]
-    for decl in code.definedDefs do
-      let name := decl.name.eraseMacroScopes
-      unless seen.contains name do
-        seen := seen.insert name
-        definitions := definitions.push { decl with provedStatus := statuses.getD name decl.provedStatus }
-    for decl in code.definedTheorems do
-      let name := decl.name.eraseMacroScopes
-      unless seen.contains name do
-        seen := seen.insert name
-        theorems := theorems.push { decl with provedStatus := statuses.getD name decl.provedStatus }
-    codes := codes.push { code with definedDefs := definitions, definedTheorems := theorems }
-  return codes
 
 def NodeInventory.leanDecls (node : NodeInventory) : Array Name :=
   let external := node.externalAssociationSnapshots.foldl (init := #[]) fun acc ref =>

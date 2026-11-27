@@ -73,12 +73,9 @@ theorem dependentAttachedResult : True := True.intro
       kind := .theorem
       nativeAssociations := BlueprintNativeFixture.associations `providerSnapshot `proof #[ref]
       sources := #[BlueprintNativeFixture.source `providerSnapshot `lean none `lean (.leanInline code)] }
-    unless node.summaryExternalRefs.isEmpty && node.associatedExternalRefs.size == 1 &&
-        node.associatedExternalRefs[0]!.provedStatus == some status &&
-        node.summaryLiterateCodes[0]!.definedTheorems[0]!.provedStatus.reportJson == status.reportJson do
-      throw <| IO.userError "Inline display precedence discarded external status evidence"
-    let source : BlockCodeData := { externalDecls := #[ref], literateDeclarations := {
-      definedTheorems := #[{ name := good.canonical, provedStatus := .proved }] } }
+    let source : BlockCodeData := {
+      externalDecls := node.associatedExternalRefs
+      literateDeclarations := .ofCodes node.inlineCodes }
     unless source.summaryExternalDecls.isEmpty && source.externalDecls.size == 1 &&
         source.externalDecls[0]!.provedStatus == some status &&
         source.summaryLiterateDeclarations.declarations[0]!.provedStatus.reportJson == status.reportJson do
@@ -233,7 +230,7 @@ private def contributeProofReferences (label : Data.Label) (references : Array D
   Environment.contributeRecord fact payload
 
 run_meta do
-  let ref ← externalRefSnapshotAtCurrentDir {}
+  let ref ← registerExternalRefAtCurrentDir {}
     (Data.ExternalRef.ofName ``Provider.secondProof)
   let some _ ← contributeProofReferences (Name.mkSimple "proof.imported.associations") #[ref]
     | throwError "Could not extend the imported proof associations"
@@ -245,8 +242,9 @@ run_meta do
 -- Re-observe a compiled admitted proof with a synthetic neutral snapshot.
 -- This is a projection/replay control, not a claim about classifier output.
 run_meta do
-  let ref ← externalRefSnapshotAtCurrentDir {}
+  let ref ← registerExternalRefAtCurrentDir {}
     (Data.ExternalRef.ofName ``Provider.admittedProof)
+  let ref := { ref with provedStatus := some (← Data.analyzeDeclaration ref.canonical) }
   let neutral := { ref with provedStatus := some .proved }
   let some _ ← contributeProofReferences (Name.mkSimple "proof.imported.repeated") #[neutral, ref]
     | throwError "Could not repeat the imported proof association"
@@ -261,8 +259,9 @@ run_meta do
 -- snapshot supplies the actual admitted proof's classification.
 run_meta do
   withEnv (← getEnv) do
-    let ref ← externalRefSnapshotAtCurrentDir {}
+    let ref ← registerExternalRefAtCurrentDir {}
       (Data.ExternalRef.ofName ``Provider.admittedProof)
+    let ref := { ref with provedStatus := some (← Data.analyzeDeclaration ref.canonical) }
     let code : Data.Code := { stx := .missing, definedTheorems := #[{
       name := ``Provider.admittedProof, provedStatus := .proved }] }
     let some _ ← contributeProofReferences (Name.mkSimple "proof.inline.overlap") #[ref] {
@@ -270,10 +269,14 @@ run_meta do
       | throwError "Could not register inline/external overlap"
     let some node ← Environment.getNodeInventory? (Name.mkSimple "proof.inline.overlap")
       | throwError "Missing inline/external overlap"
-    unless node.associatedExternalRefs.size == 1 &&
-        node.associatedExternalRefs[0]!.provedStatus.any (·.isIncomplete) &&
+    let source : BlockCodeData := {
+      externalDecls := node.associatedExternalRefs
+      literateDeclarations := .ofCodes node.inlineCodes }
+    unless source.externalDecls.size == 1 &&
+        source.externalDecls[0]!.provedStatus.any (·.isIncomplete) &&
         node.inlineCodes[0]!.definedTheorems[0]!.provedStatus == .proved &&
-        node.summaryLiterateCodes[0]!.definedTheorems[0]!.provedStatus.isIncomplete do
+        source.summaryExternalDecls.isEmpty &&
+        source.summaryLiterateDeclarations.definedTheorems[0]!.provedStatus.isIncomplete do
       throwError "Inline/external provider snapshots were not preserved independently"
 
 /- Page HTML, cached proof previews, manifest facets, and node queries retain the same proof refs. -/

@@ -251,15 +251,8 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
   | cfg, contents => do
     let blockRef ← getRef
     let label := cfg.label
-    let prepare := do
-      let resolved ← cfg.resolveForDirective kind isProof
-      pure ({
-        label, kind := resolved.envKind, externalRefs := resolved.externalRefs, adoption := resolved.adoption
-        parent := resolved.parent, priority := resolved.priority, owner := resolved.owner
-        tags := resolved.tags, effort := resolved.effort, prUrl := resolved.prUrl
-        issueUrl := resolved.issueUrl
-        uses := resolved.uses } : Environment.InProgress)
-    let some ((retainedContents, sourceRef), count) ← Environment.withDirective prepare blockRef do
+    let some ((retainedContents, sourceRef), count) ←
+      Environment.withDirective (cfg.resolveForDirective kind isProof) blockRef do
         let parsedContents ← parseDirectiveSourceMetadata cfg contents
         if cfg.leanDocstring.isSome && !parsedContents.body.isEmpty then
           throwErrorAt blockRef "An adopted docstring and an explicit Verso body compete for the default statement"
@@ -268,9 +261,9 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
           | some raw => do
             let env ← getEnv
             let name := raw.trimAscii.toString.toName
-            match Docstring.directCompiled? env name with
-            | some doc => pure (← liftM <| Docstring.statementBlocks doc).1
-            | none => pure #[]
+            match Docstring.directCompiled env name with
+            | .ok doc => pure (← liftM <| Docstring.statementBlocks doc).1
+            | .error _ => pure #[]
         let (previewBlocks, retainedContents) ← liftM <| retainElaboratedBlocks contents
         pure ((retainedContents, parsedContents.sourceRef?), if cfg.leanDocstring.isSome then #[] else previewBlocks)
       | return ← ``(Block.concat #[])

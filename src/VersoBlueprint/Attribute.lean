@@ -203,7 +203,7 @@ private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref
   let deps ← resolveAutoDeps decl label cfg (docstring?.map (fun (_, deps, _) => deps) |>.getD #[])
   let opts ← getOptions
   let extRef ←
-    externalRefSnapshotAtCurrentDir opts (Data.ExternalRef.ofName decl .blueprintAttr)
+    registerExternalRefAtCurrentDir opts (Data.ExternalRef.ofName decl .blueprintAttr)
 
   let some position := ref.getPos?
     | throwError "'[blueprint]' attributes require a stable source position"

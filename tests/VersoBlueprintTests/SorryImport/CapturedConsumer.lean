@@ -9,7 +9,7 @@ import VersoBlueprintTests.SorryImport.Captured
 open Lean Informal Informal.Data
 open Verso.VersoBlueprintTests.SorryImport.Captured
 
--- Exercise persistence of the actual attribute snapshot and the serialized
+-- Compare the deferred attribute registration with the serialized
 -- BlueprintDocument capture across a compiled producer/consumer boundary.
 /-- info: true -/
 #guard_msgs in
@@ -20,14 +20,13 @@ open Verso.VersoBlueprintTests.SorryImport.Captured
     let some node := state.inventory.get? label | return false
     let some ref := (node.nativeRefsOn `statement)[0]? | return false
     let some captured := statusCaptureBlueprint.model.nodes.find? (·.label == label) | return false
-    let some capturedRef := captured.externalRefs[0]? | return false
+    let some code := captured.toBlockData.codeData | return false
+    let some capturedRef := code.displayExternalDecls[0]? | return false
     let some assessment := captured.assessment | return false
     let some graphNode := statusCaptureBlueprint.model.graph.nodes.find? (·.label == label) | return false
-    let some status := Graph.externalDeclProvedStatus {} ref | return false
-    let some capturedStatus := capturedRef.provedStatus | return false
-    let again := status.mergeConservative capturedStatus
+    let some (_, some status) := captured.statementExternalChecks.find? (·.1 == ref.canonical) | return false
     let expectedStatuses := Graph.statusesForAssessment assessment
-    return some status == ref.provedStatus && again == status &&
+    return ref.present && ref.provedStatus.isNone && capturedRef.provedStatus == some status &&
       status.hasTypeGap && status.hasProofGap &&
       status.containsExplicitSorry && status.dependsOnSorry &&
       assessment.hasNativeDeclarations && !assessment.nativeProofComplete &&

@@ -212,7 +212,7 @@ private def htmlTestContext :
 #eval
   show Lean.CoreM Bool from do
     let opts ← Lean.getOptions
-    let ref ← Informal.externalRefSnapshotAtCurrentDir opts (Informal.Data.ExternalRef.ofName `Nat.add)
+    let ref ← Informal.registerExternalRefAtCurrentDir opts (Informal.Data.ExternalRef.ofName `Nat.add)
     let some payloadCount :=
       (match ref.render with
       | .ok rendered =>
@@ -283,19 +283,19 @@ private def htmlTestContext :
 #eval
   show Lean.CoreM Bool from do
     let opts ← Lean.getOptions
-    let sameDef ← Informal.externalRefSnapshotAtCurrentDir opts
+    let sameDef ← Informal.registerExternalRefAtCurrentDir opts
       (Informal.Data.ExternalRef.ofName `Verso.VersoBlueprintTests.ExternalDeclRender.sameModuleRenderDef)
-    let sameAbbrev ← Informal.externalRefSnapshotAtCurrentDir opts
+    let sameAbbrev ← Informal.registerExternalRefAtCurrentDir opts
       (Informal.Data.ExternalRef.ofName `Verso.VersoBlueprintTests.ExternalDeclRender.sameModuleRenderAbbrev)
-    let sameUnsafeDef ← Informal.externalRefSnapshotAtCurrentDir opts
+    let sameUnsafeDef ← Informal.registerExternalRefAtCurrentDir opts
       (Informal.Data.ExternalRef.ofName `Verso.VersoBlueprintTests.ExternalDeclRender.sameModuleRenderUnsafeDef)
-    let sameUnsafeAbbrev ← Informal.externalRefSnapshotAtCurrentDir opts
+    let sameUnsafeAbbrev ← Informal.registerExternalRefAtCurrentDir opts
       (Informal.Data.ExternalRef.ofName `Verso.VersoBlueprintTests.ExternalDeclRender.sameModuleRenderUnsafeAbbrev)
-    let importedDef ← Informal.externalRefSnapshotAtCurrentDir opts
+    let importedDef ← Informal.registerExternalRefAtCurrentDir opts
       (Informal.Data.ExternalRef.ofName `Nat.add)
-    let importedThm ← Informal.externalRefSnapshotAtCurrentDir opts
+    let importedThm ← Informal.registerExternalRefAtCurrentDir opts
       ({ (Informal.Data.ExternalRef.ofName `Nat.add_assoc) with kind := .theorem })
-    let missing ← Informal.externalRefSnapshotAtCurrentDir opts
+    let missing ← Informal.registerExternalRefAtCurrentDir opts
       (Informal.Data.ExternalRef.ofName `No.Such.Declaration)
     pure <|
       sameDef.present &&
@@ -332,10 +332,10 @@ private def importedSourceLinkControl : CoreM Bool := IO.FS.withTempDir fun cons
   Lean.searchPathRef.set (consumer :: searchPath)
   try
     let reference := Informal.Data.ExternalRef.ofName `sorryImportCompleteDef
-    let automatic ← Informal.externalRefSnapshot {} consumer reference
+    let automatic ← Informal.registerExternalRef {} consumer reference
     let template := "https://source.example.invalid/{repoRelpath}#L{line}"
     let options := ({} : Options).set `verso.blueprint.externalCode.sourceLinkTemplate template
-    let custom ← Informal.externalRefSnapshot options consumer reference
+    let custom ← Informal.registerExternalRef options consumer reference
     let some range := automatic.range? | return false
     let gitRoot? ← Informal.Git.toplevelAt? workspace
     let repository? ← liftM <| gitRoot?.bindM Informal.Git.repositoryInfoAtRoot?

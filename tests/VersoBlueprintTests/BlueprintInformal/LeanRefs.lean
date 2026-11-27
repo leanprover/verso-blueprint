@@ -36,7 +36,7 @@ private def attachedInductiveCtorAndRecursor? : CoreM (Option (Name × Name)) :=
 private def externalRefRejectedWithKind (decl : Name) (expectedKind : String) : CoreM Bool := do
   let opts ← getOptions
   try
-    let _ ← Informal.externalRefSnapshotAtCurrentDir opts (Informal.Data.ExternalRef.ofName decl)
+    let _ ← Informal.registerExternalRefAtCurrentDir opts (Informal.Data.ExternalRef.ofName decl)
     pure false
   catch ex =>
     let msg ← liftM <| ex.toMessageData.toString

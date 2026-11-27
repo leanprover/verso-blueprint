@@ -246,13 +246,6 @@ def Registration.claimsAuthoredNode (registration : Registration) : Bool :=
   registration.kind.isSome || registration.sources.any fun source =>
     match source.payload with | .prose body => body.hasBody | _ => false
 
-/-- Exact source lookup for producers/consumers that require one role. -/
-def Registration.proseAt (registration : Registration) (key : RealizationKey)
-    (context : Context) (role : Name) : Array Data.InformalBody :=
-  registration.sources.filterMap fun source =>
-    if source.destination != ⟨key, some role⟩ || source.context != context then none else
-      match source.payload with | .prose body => some body | _ => none
-
 /-- Native associations preserve Lean's typed identity and every snapshot field.
 The collector must retain the whole association, including its destination, in
 producer equality. Foreign identifiers never enter this Lean-provider type. -/

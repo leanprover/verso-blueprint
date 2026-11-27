@@ -9,6 +9,7 @@ import VersoManual
 import VersoBlueprint.Data
 import VersoBlueprint.DependencyAnalysis
 import VersoBlueprint.DirectiveArgParsing
+import VersoBlueprint.Docstring.Compiled
 import VersoBlueprint.Environment
 import VersoBlueprint.ExternalModuleSource
 import VersoBlueprint.Informal.ExternalCode
@@ -38,8 +39,6 @@ structure Config where
   label : Data.Label
   /-- Syntax node of the original label argument. -/
   labelSyntax : Syntax := Syntax.missing
-  /-- Optional Lean/external-code references associated with either facet. -/
-  lean : Option String := none
   /-- Canonical declaration from the Lean attachment whose own comment supplies the statement. -/
   leanDocstring : Option String := none
   /-- Optional local override for automatic dependency inference. -/
@@ -102,7 +101,6 @@ def Config.parse : ArgParse m Config :=
     {
       label := parsedLabel.label
       labelSyntax := parsedLabel.labelSyntax
-      lean := lean
       leanDocstring
       autoDeps := autoDeps
       parent := parent.map LabelNameParsing.parse
@@ -128,22 +126,6 @@ instance : FromArgs Config m where
   fromArgs := Config.parse
 
 end
-
-/-- Directive configuration after proof-vs-statement validation and name resolution. -/
-structure ResolvedConfig where
-  label : Data.Label
-  labelSyntax : Syntax
-  adoption : Option (SourceData.AdoptedDocstring × Name) := none
-  envKind : Data.InProgressKind
-  externalRefs : Array Data.ExternalRef := #[]
-  parent : Option Data.Parent := none
-  priority : Option String := none
-  owner : Option Data.AuthorId := none
-  tags : Array String := #[]
-  effort : Option String := none
-  prUrl : Option String := none
-  issueUrl : Option String := none
-  uses : Array SourceData.UseDeclaration := #[]
 
 private def resolvePriority? {m}
     [Monad m] [MonadOptions m] [MonadLog m] [AddMessageContext m] [MonadFileMap m]
@@ -241,20 +223,16 @@ private def docstringSelection (refs : Array Data.ExternalRef) (name : String) (
   let env ← getEnv
   let some idx := env.getModuleIdxFor? canonical
     | throwError "'leanDocstring' requires an imported declaration"
-  let format := if Lean.versoDocStringExt.find? (level := .server) env canonical |>.isSome then `verso else `markdown
-  let moduleName := env.header.moduleNames[idx.toNat]!
-  let unavailable (message : String) : Realizations.Diagnostic :=
-    { code := "source-association-unavailable", subject := name, message }
+  let some moduleName := ExternalModuleSource.moduleNameAt? env idx
+    | throwError "'leanDocstring' could not determine the imported declaration's module"
+  let format := match Docstring.directCompiled env canonical with
+    | .ok (.inl _) | .error .missing => `markdown
+    | .ok (.inr _) | .error .ambiguous => `verso
   let owner : Except Realizations.Diagnostic (String × String) ← do
-    let some source ← ExternalModuleSource.find? env idx
-      | pure <| .error (unavailable "The imported module has no matching Lake source input and output artifact")
-    try
-      let text ← IO.FS.readFile source.path
-      if Lake.Hash.ofText text != source.textHash then
-        pure <| .error (unavailable "Owning source differs from the text input of the compiled module")
-      else
-        pure <| .ok (source.path.toString, SHA256.text text)
-    catch _ => pure <| .error (unavailable "Cannot read the compiled module's owning source")
+    match ← ExternalModuleSource.verifiedSource env idx with
+    | .ok (source, text) => pure (.ok (source.path.toString, SHA256.text text))
+    | .error message =>
+      pure (.error { code := "source-association-unavailable", subject := name, message })
   return ({
     consumerModule := env.mainModule, canonical, moduleName
     package := env.getModulePackageByIdx? idx, owner }, format)
@@ -269,9 +247,7 @@ transaction rejects the registration if resolution logged any errors.
 def Config.resolveForDirective {m}
     [Monad m] [MonadResolveName m] [MonadOptions m] [MonadLiftT CoreM m] [MonadEnv m]
     [MonadLog m] [AddMessageContext m] [MonadFileMap m] [MonadError m]
-    (cfg : Config) (kind : Data.NodeKind) (isProof : Bool) : m ResolvedConfig := do
-  let envKind : Data.InProgressKind :=
-    if isProof then .proof else .statement kind
+    (cfg : Config) (kind : Data.NodeKind) (isProof : Bool) : m Environment.DirectiveDraft := do
   let resolvedExternalCode ←
     ExternalCode.resolveExternalCodeList cfg.label cfg.labelSyntax kind cfg.externalCode
   let adoption ← cfg.leanDocstring.mapM fun name =>
@@ -298,8 +274,8 @@ def Config.resolveForDirective {m}
   let uses := inferredUses ++ SourceData.usesFor cfg.label none authoredAxis cfg.metadataUses
   pure {
     label := cfg.label
-    labelSyntax := cfg.labelSyntax
-    envKind, adoption
+    kind := if isProof then none else some kind
+    adoption
     externalRefs := resolvedExternalCode
     parent := cfg.parent
     priority

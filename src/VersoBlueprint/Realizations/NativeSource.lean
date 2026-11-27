@@ -3,9 +3,10 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import Lean.DocString.Extension
 import Lean.Parser.Module
 import Lean.Elab.DeclarationRange
+import VersoBlueprint.Docstring.Compiled
+import VersoBlueprint.ExternalModuleSource
 import VersoBlueprint.Validation.Lean
 import VersoBlueprint.Translations
 
@@ -277,10 +278,7 @@ private def checkOwner (request : Request) : CoreM (Except Diagnostic Unit) := d
   let env ← getEnv
   unless (env.checked.get.find? name).isSome do
     return .error <| issue "missing-declaration" name "Declaration is not in the current checked environment"
-  let nativeModule := match env.getModuleIdxFor? name with
-    | some index => env.header.moduleNames[index.toNat]?
-    | none => some env.mainModule
-  if nativeModule != some request.moduleName then
+  if ExternalModuleSource.moduleNameForDecl? env name != some request.moduleName then
     return .error <| issue "source-association-unavailable" name "Source module disagrees with current declaration owner"
   return .ok ()
 
@@ -288,12 +286,11 @@ private def checkOwner (request : Request) : CoreM (Except Diagnostic Unit) := d
 -- Verso result stores parsed content and has no comparable Markdown string.
 private def ownDocstringMetadata (name : Name) : CoreM (Except Diagnostic (Option String)) := do
   let env ← getEnv
-  return match Lean.docStringExt.find? (level := .server) env name,
-      Lean.versoDocStringExt.find? (level := .server) env name with
-    | some markdown, none => .ok (some markdown)
-    | none, some _ => .ok none
-    | none, none => .error <| issue "unsupported-docstring" name "No direct own native docstring metadata"
-    | some _, some _ => .error <| issue "ambiguous-docstring" name "Conflicting own native docstring formats"
+  return match Docstring.directCompiled env name with
+    | .ok (.inl markdown) => .ok (some markdown)
+    | .ok (.inr _) => .ok none
+    | .error .missing => .error <| issue "unsupported-docstring" name "No direct own native docstring metadata"
+    | .error .ambiguous => .error <| issue "ambiguous-docstring" name "Conflicting own native docstring formats"
 
 private def preparedAt (request : Request) (ranges : DeclarationRanges)
     (semantics : NativeLean.SemanticContext) :
