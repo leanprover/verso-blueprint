@@ -225,8 +225,11 @@ source records; it does not admit a fragment or mutate query state. `expectNativ
 names a proposition definition owned by that specification module. If two modules
 state the same proposition for one ordinary proof, capture compares the checked
 definition bodies, retains both origins and includes both source documents in
-the shared expected-goal contract. Different structural goals conflict, and an
-unreadable specification leaves that contract unavailable. An ordinary proof
+the shared expected-goal contract. Capture compares each specification with
+the current compiler buffer or, for an import, the source input recorded by
+the loaded module's build. If a supplying file is unreadable or its text no
+longer matches, the shared expected proof cannot complete. Different structural
+goals still conflict. An ordinary proof
 dependency selects the target's native proof check regardless of the result of
 an independently authored expected goal.
 

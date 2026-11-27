@@ -488,7 +488,8 @@ structure Observations where
   inline : Array (ResultEntry InlineRequest (Except Diagnostic NativeSource.Prepared)) := #[]
   documented : Array (ResultEntry NativeRequest (Except Diagnostic NativeSource.Documented)) := #[]
   checks : Array (ResultEntry CheckRequest (Except Diagnostic NativeLean.CheckedDeclaration)) := #[]
-  specifications : Array (ResultEntry SpecificationKey (Except (Array Diagnostic) Unit)) := #[]
+  /-- An owned definition can identify the goal even when its source is unverified. -/
+  specifications : Array (ResultEntry SpecificationKey (Except (Array Diagnostic) (Option Diagnostic))) := #[]
   expected : Array (ResultEntry ExpectedKey (Except Diagnostic NativeLean.Checked)) := #[]
 
 /-- The same assembly recipe is interpreted once with real providers and once
@@ -499,7 +500,7 @@ private structure Providers (m : Type → Type) where
   inline : InlineRequest → ExceptT (Array Diagnostic) m (Except Diagnostic NativeSource.Prepared)
   documented : NativeRequest → ExceptT (Array Diagnostic) m (Except Diagnostic NativeSource.Documented)
   check : CheckRequest → ExceptT (Array Diagnostic) m (Except Diagnostic NativeLean.CheckedDeclaration)
-  specification : SpecificationKey → ExceptT (Array Diagnostic) m (Except (Array Diagnostic) Unit)
+  specification : SpecificationKey → ExceptT (Array Diagnostic) m (Except (Array Diagnostic) (Option Diagnostic))
   expected : ExpectedKey → ExceptT (Array Diagnostic) m (Except Diagnostic NativeLean.Checked)
 
 private def readDocument (reader : System.FilePath → IO String) (key : DocumentKey) :
@@ -823,7 +824,8 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
     contribution `object (BindingEncoding.objectKey key) value
   return { collected with input.objects := objects }
 
-private def ownedDefinition (name : Name) (origin : Origin) (source : Document) : CaptureM Unit := do
+private def ownedDefinition (name : Name) (origin : Origin) (source : Document) :
+    CaptureM (Option Diagnostic) := do
   let env ← getEnv
   let some (.defnInfo info) := env.checked.get.find? name
     | reject "invalid-expectation" name.toString "Expected a checked owned Prop definition, not an axiom" #[origin]
@@ -835,9 +837,16 @@ private def ownedDefinition (name : Name) (origin : Origin) (source : Document) 
     | reject "source-association-unavailable" name.toString "Specification has no native declaration ranges" #[origin]
   -- The checked, owned definition still identifies the goal if its source
   -- cannot be read. Capture then records the authored validation as unavailable.
-  if blank source.text then return
+  if blank source.text then return none
   let commands ← one (← NativeSource.parseSource name source.key.path source.text)
   discard <| one (NativeSource.declarationAtRanges name source.text ranges.range ranges.selectionRange commands)
+  -- Equal declaration ranges identify the parsed syntax, but only the owning
+  -- compiler input can associate that syntax with the checked definition.
+  let request : NativeSource.Request := {
+    canonical := name, moduleName := origin.moduleName, project := source.key.context.project }
+  match ← NativeSource.owningSource request source.key.path (fun _ => pure source.text) with
+  | .ok _ => return none
+  | .error issue => return some { issue with origins := #[origin] }
 
 private def collectAuthored [Monad m] (providers : Providers m) (p : Plan)
     (collected : Collected) : ExceptT (Array Diagnostic) m Collected := do
@@ -849,6 +858,7 @@ private def collectAuthored [Monad m] (providers : Providers m) (p : Plan)
       let key := (goal.project, goal.node)
       groups.insert key (pushUnique (groups[key]?.getD #[]) goal.specification.document)
   let mut sourceFailures : Std.HashMap (Name × Name) (Option String) := {}
+  let mut expectedObservations : Array ((Name × Name) × Name × Origin × RequirementKey × ProofObservation) := #[]
   for step in p.authored do
     let record := step.record
     for (goalRequest, index) in step.goals.zipIdx do
@@ -866,14 +876,14 @@ private def collectAuthored [Monad m] (providers : Providers m) (p : Plan)
       let some updated := model.attachDeclarationRequirement? expectedKey | noOwner
       let specification := goalRequest.specification
       let (specDoc, issues) ← providers.document specification.document
-      full (← providers.specification {
+      let sourceIssue ← full (← providers.specification {
         expected := specification.expected, origin := specification.origin, document := specDoc })
       let group := (goalRequest.project, node)
       let specDocuments := specificationDocuments[group]?.getD #[specDoc.key]
       let documents := canonical (specDocuments ++
         (collected.input.objects.filter (·.value.key == witness)).filterMap (·.value.document))
-      -- An unreadable co-owner's source makes this shared expectation
-      -- unavailable even if a sibling producer has a successful observation.
+      -- Source unavailability gates the shared expectation, including evidence
+      -- from a sibling producer whose own source is verified.
       let failure ← match sourceFailures[group]? with
         | some failure => pure failure
         | none => do
@@ -887,14 +897,9 @@ private def collectAuthored [Monad m] (providers : Providers m) (p : Plan)
               failure := some "Canonical source is empty"
               break
           pure failure
-      sourceFailures := sourceFailures.insert group failure
+      sourceFailures := sourceFailures.insert group (failure <|> sourceIssue.map (·.message))
       let checked ← one (← providers.expected {
         project := goalRequest.project, expected := goalRequest.expected, witness, documents })
-      let observation := match failure with
-        | none => checked.observation
-        | some reason => { checked.observation with
-            outcome := .unavailable, coverage := .subject
-            explanation := s!"{reason} for expected proposition '{goalRequest.expected}'" }
       let input := { collected.input with
         documents := collected.input.documents.push (authoredContribution record.origin `specification index specDoc)
         realizations := collected.input.realizations.map fun contribution =>
@@ -908,9 +913,10 @@ private def collectAuthored [Monad m] (providers : Providers m) (p : Plan)
             subject := expectedKey.subject, name := NativeLean.expectedContextFor expectedKey, content }) }
       collected := { collected with
         input := input
-        sourceDiagnostics := collected.sourceDiagnostics.addNode node (issues ++ checked.semanticDiagnostics)
-        observations := collected.observations.push ((authoredContribution record.origin `expectedObservation index ()).origin,
-          expectedKey, .proof observation) }
+        sourceDiagnostics := collected.sourceDiagnostics.addNode node
+          (issues ++ sourceIssue.toArray ++ checked.semanticDiagnostics) }
+      let origin := (authoredContribution record.origin `expectedObservation index ()).origin
+      expectedObservations := expectedObservations.push (group, goalRequest.expected, origin, expectedKey, checked.observation)
     let batch := record.authored
     for (key, index) in batch.sources.zipIdx do
       let (document, issues) ← providers.document key
@@ -932,7 +938,16 @@ private def collectAuthored [Monad m] (providers : Providers m) (p : Plan)
           observation := .review judgment.observation })
       reviewSelections := collected.input.reviewSelections ++
         batch.reviewSelections.mapIdx (authoredContribution record.origin `reviewSelection) } }
-  return collected
+  -- Wait for each producer's own source check before publishing its group's
+  -- proof evidence. The earlier checks and their fatal diagnostics stay ordered.
+  let finalizedObservations := expectedObservations.map fun (group, expected, origin, key, observation) =>
+    let observation := match sourceFailures[group]?.join with
+      | none => observation
+      | some reason => { observation with
+          outcome := .unavailable, coverage := .subject
+          explanation := s!"{reason} for expected proposition '{expected}'" }
+    (origin, key, Observation.proof observation)
+  return { collected with observations := collected.observations ++ finalizedObservations }
 
 /-- Select the native contracts a use requires of its target, independently of
 their outcomes. A label's ordinary Lean declarations form one development, and a
@@ -1270,7 +1285,8 @@ def observe (p : Plan) (readFile : System.FilePath → IO String := IO.FS.readFi
     let inline ← liftM <| IO.mkRef ({} : Std.HashMap InlineRequest (Except Diagnostic NativeSource.Prepared))
     let documented ← liftM <| IO.mkRef ({} : Std.HashMap NativeRequest (Except Diagnostic NativeSource.Documented))
     let checks ← liftM <| IO.mkRef ({} : Std.HashMap CheckRequest (Except Diagnostic NativeLean.CheckedDeclaration))
-    let specifications ← liftM <| IO.mkRef ({} : Std.HashMap SpecificationKey (Except (Array Diagnostic) Unit))
+    let specifications ← liftM <| IO.mkRef ({} :
+      Std.HashMap SpecificationKey (Except (Array Diagnostic) (Option Diagnostic)))
     let expected ← liftM <| IO.mkRef ({} : Std.HashMap ExpectedKey (Except Diagnostic NativeLean.Checked))
     let providers : Providers TermElabM := {
       document := fun key => answerOnce documents key (readDocument reader key)

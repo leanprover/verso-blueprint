@@ -94,15 +94,21 @@ def find? (env : Environment) (idx : ModuleIdx) : IO (Option Owner) := do
         selected := some owner
   return selected
 
+/-- Read the owning source input once and check the compiler's normalized text
+hash. The caller handles read errors and any additional source path checks. -/
+def Owner.readVerified? (owner : Owner) (readFile : FilePath → IO String := IO.FS.readFile) :
+    IO (Option String) := do
+  let text ← readFile owner.path
+  return if Lake.Hash.ofText text == owner.textHash then some text else none
+
 /-- Read the selected artifact's source input and compare its Lake text hash.
 Callers that replay an already admitted selection separately check exact bytes. -/
 def verifiedSource (env : Environment) (idx : ModuleIdx) : IO (Except String (Owner × String)) := do
   let some owner ← find? env idx
     | return .error "The imported module has no matching Lake source input and output artifact"
   try
-    let text ← IO.FS.readFile owner.path
-    unless Lake.Hash.ofText text == owner.textHash do
-      return .error "Owning source differs from the text input of the compiled module"
+    let some text ← owner.readVerified?
+      | return .error "Owning source differs from the text input of the compiled module"
     return .ok (owner, text)
   catch _ =>
     return .error "Cannot read the compiled module's owning source"

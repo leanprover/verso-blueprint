@@ -327,30 +327,33 @@ private def checkSourcePath (request : Request) (sourcePath : String) : Except D
 
 /-- Confirm the path resolves to the current file or to the loaded module's
 verified source input before using any source text for native metadata. -/
-private def owningSource (request : Request) (sourcePath : String)
+def owningSource (request : Request) (sourcePath : String)
     (readSource : System.FilePath → IO String) : CoreM (Except Diagnostic String) := do
+  if let .error diagnostic ← checkOwner request then return .error diagnostic
+  if let .error diagnostic := checkSourcePath request sourcePath then return .error diagnostic
   let env ← getEnv
   let name := request.canonical
   let wrongOwner := issue "source-association-unavailable" name
     "Source path does not resolve to the checked declaration's owning file"
   let sourceUnavailable := issue "source-unavailable" name "Cannot read the declaration's owning source"
-  let owner ← match env.getModuleIdxFor? name with
+  let owner? ← match env.getModuleIdxFor? name with
     | some idx =>
       let some owner ← ExternalModuleSource.find? env idx | return .error wrongOwner
-      pure (owner.path, some owner.textHash)
-    | none => pure (System.FilePath.mk (← getFileName), none)
-  let (ownerPath, sourceHash) := owner
-  let text ← try
+      pure (some owner)
+    | none => pure none
+  let ownerPath := (owner?.map (·.path)).getD (System.FilePath.mk (← getFileName))
+  let text? ← try
     let physical ← IO.FS.realPath sourcePath
     unless physical == (← IO.FS.realPath ownerPath) do return .error wrongOwner
-    readSource physical
+    match owner? with
+    | some owner => owner.readVerified? (fun _ => readSource physical)
+    | none =>
+      let text ← readSource physical
+      pure (if text.crlfToLf == (← getFileMap).source then some text else none)
   catch _ => return .error sourceUnavailable
-  let agrees ← match sourceHash with
-    | some hash => pure (Lake.Hash.ofText text == hash)
-    | none => pure (text == (← getFileMap).source)
-  unless agrees do
-    return .error <| issue "source-selection-unavailable" name
-      "Owning source bytes disagree with the checked declaration's build input"
+  let some text := text?
+    | return .error <| issue "source-selection-unavailable" name
+        "Owning source bytes disagree with the checked declaration's build input"
   return .ok text
 
 /-- Prepare a canonical declaration, including an undocumented theorem or a

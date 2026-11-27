@@ -250,15 +250,27 @@ run_cmd liftTermElabM do
 def expectedFlag : Prop := ∀ flag : RealizationAdapterFixture.Flag,
   RealizationAdapterFixture.toggle (RealizationAdapterFixture.toggle flag) = flag
 
+set_option maxHeartbeats 800000 in
 run_cmd liftTermElabM do
   isolated do
     Realizations.Authoring.expectNative `secondFlagSpec Owner.node
       `VersoBlueprintTests.BlueprintRealizationAuthoring.expectedFlag
     let plan := Capture.plan (Capture.Raw.ofState (Environment.informalExt.getState (← getEnv)))
-    for missing in #[false, true] do
+    let ownerSource := "/BlueprintRealizationAuthoring/Owner.lean"
+    let localSource := "/BlueprintRealizationAuthoring.lean"
+    let original := "RealizationAdapterFixture.toggle (RealizationAdapterFixture.toggle flag) = flag\n"
+    let edited := "RealizationAdapterFixture.toggle (RealizationAdapterFixture.toggle flag) = .off\n"
+    for (changedSource, missing) in #[(none, false), (some ownerSource, true),
+        (some ownerSource, false), (some localSource, false)] do
+      let unavailable := changedSource.isSome
       let observations ← obtain (← Capture.observe plan fun path => do
-        if missing && path.toString.endsWith "/BlueprintRealizationAuthoring/Owner.lean" then
-          throw (IO.userError "upstream specification unavailable")
+        if changedSource.any (fun suffix => path.toString.endsWith suffix) then
+          if missing then throw (IO.userError "upstream specification unavailable")
+          let text ← IO.FS.readFile path
+          let mutated := text.replace original edited
+          unless mutated != text && mutated.utf8ByteSize == text.utf8ByteSize do
+            throw (IO.userError "same-width expectation edit did not reach its fixture")
+          return mutated
         IO.FS.readFile path)
       let snapshot ← obtain (Capture.evaluate plan observations)
       let r := snapshot.registry
@@ -271,11 +283,21 @@ run_cmd liftTermElabM do
         goal.documents.any (·.path.endsWith "/BlueprintRealizationAuthoring.lean") &&
         goal.documents.any (·.path.endsWith "/BlueprintRealizationAuthoring/Owner.lean") &&
         evidence.size == 2 && evidence.all (fun item => match item.observation with
-          | .proof obs => obs.outcome == (if missing then .unavailable else .passed)
+          | .proof obs => obs.outcome == (if unavailable then .unavailable else .passed)
           | _ => false) &&
-        (r.resultForRequirement Owner.expectedProof).complete == !missing &&
+        (r.resultForRequirement Owner.expectedProof).complete == !unavailable &&
+        (r.resultForRequirement Owner.proof).complete &&
+        (r.resultForRequirement unassessedProofKeyRequirement).complete &&
         (snapshot.assessmentFor Owner.node).requiredComplete)
-        "Equivalent independent specifications must retain both owners and gate their shared contract"
+        s!"Equivalent specifications must gate only the shared independent contract: {changedSource} missing={missing}"
+      if let some suffix := changedSource then
+        unless missing do
+          ensure (r.documents.any (fun doc =>
+              doc.key.path.endsWith suffix && doc.text.contains edited) &&
+            snapshot.sourceDiagnostics.nodes.any (fun (label, diagnostic) =>
+              label == Owner.node && diagnostic.code == "source-selection-unavailable" &&
+                diagnostic.origins.any (·.source.endsWith suffix)))
+            "An edited specification must retain its observed bytes and an owning-source diagnostic"
 
 @[blueprint "authoring.dependsOnlyOnNative" (proofUses := ["authoring.nativeDependent"])]
 theorem dependsOnlyOnNative : True := True.intro
