@@ -29,8 +29,8 @@ structure GraphParams where
   previewFacet : Option String := none
   /-- DOT source to render. -/
   dot : String
-  /-- Shared graph legend payload from `VersoBlueprint.Graph`. -/
-  legend : Json := Json.arr #[]
+  /-- Complete legends for the available graph views. -/
+  legends : Json := Json.arr #[]
   /-- Explicit validation state; failed pre-build capture explains that the
   graph is unavailable instead of deriving completion from legacy snapshots. -/
   validationMessage : Option String := none
@@ -44,7 +44,7 @@ def blueprintWidget : Component GraphParams where
     import katex from 'https://cdn.jsdelivr.net/npm/katex@0.16.28/+esm'
     import * as React from 'react';
 
-    export default function ({ title, label, previewHtml, previewFacet, dot, legend, validationMessage }) {
+    export default function ({ title, label, previewHtml, previewFacet, dot, legends, validationMessage }) {
         const graphRef = React.useRef(null);
 
         function loadStyle(url) {
@@ -174,6 +174,11 @@ def blueprintWidget : Component GraphParams where
             React.createElement('div', { key: `${key}-items`, style: legendItemsStyle }, items)
           ]);
         };
+        const renderLegend = ({ kind, note, groups }) =>
+          React.createElement('section', { key: kind, 'data-bp-legend-kind': kind }, [
+            React.createElement('p', { key: 'note', style: legendSummaryStyle }, note),
+            React.createElement('div', { key: 'groups', style: legendStyle }, groups.map(legendGroup))
+          ]);
         const extractText = node => {
           if (typeof node === 'string') return node;
           if (Array.isArray(node)) return node.map(extractText).join('');
@@ -234,9 +239,6 @@ def blueprintWidget : Component GraphParams where
           }
           return React.createElement('code', { key }, JSON.stringify(node));
         };
-        const legendData = Array.isArray(legend) ? legend : [];
-        const legendNodes = legendData.map(legendGroup).filter(Boolean);
-
         return React.createElement('div', { style: rootStyle }, [
           React.createElement('div', {
             key: 'informal',
@@ -264,7 +266,7 @@ def blueprintWidget : Component GraphParams where
                     style: { margin: 0, color: '#475569', fontSize: '0.82rem' }
                   }, validationMessage)
                 : null,
-              React.createElement('div', { key: 'legend', style: legendStyle }, legendNodes),
+              ...legends.map(renderLegend),
               React.createElement('div', {
                 key: 'graph',
                 ref: graphRef,
@@ -287,7 +289,7 @@ open Informal Data Environment
 structure BuildResult where
   dot : String
   previewSelection? : Option Informal.PreviewSource.Selection := none
-  legend : Json
+  legends : Json
   validationMessage? : Option String := none
   snapshot? : Option Informal.Realizations.Capture.Snapshot := none
 
@@ -316,7 +318,7 @@ def buildFromCapture (label : Name)
     pure {
       dot := ""
       previewSelection? := PreviewSource.environmentSelection? env label
-      legend := Json.arr #[]
+      legends := Json.arr #[]
       validationMessage? := some s!"Validation unavailable until a complete source capture succeeds. {reasons}" }
   | .ok snapshot =>
     let labels := snapshot.registry.nodes.map (·.label)
@@ -327,10 +329,10 @@ def buildFromCapture (label : Name)
     let previewSelection? := adoptedPreview? <|> PreviewSource.environmentSelection? env label
     let graphModel := Informal.Graph.buildModel snapshot #[label] (groupTitles := state.groups.toArray)
     let dot := graphModel.toDotWith { direction := .LR } Informal.Graph.GraphDotStyle.compact
-    let legend := toJson graphModel.fullLegend.groups
+    let legends := toJson graphModel.legends
     let assessment := snapshot.assessmentFor label
     pure {
-      dot, previewSelection?, legend
+      dot, previewSelection?, legends
       validationMessage? := some assessment.nativeStatusMessage
       snapshot? := some snapshot }
 
@@ -347,7 +349,7 @@ private def updatePanel (title label : String) (out : BuildResult) (stx : Syntax
     previewHtml
     previewFacet := out.previewSelection?.map (·.facet.suffix)
     dot := out.dot
-    legend := out.legend
+    legends := out.legends
     validationMessage := out.validationMessage? }
   liftM <| Widget.savePanelWidgetInfo blueprintWidget.javascriptHash (rpcEncode props) stx
 

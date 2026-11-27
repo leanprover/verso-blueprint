@@ -683,6 +683,13 @@ private def graphParentChildren (graph : Graph Ref) : Lean.NameMap (Array Name) 
       let children := acc.getD parent #[]
       if children.contains node.label then acc else acc.insert parent (children.push node.label)
 
+private def groupViewParents (graph : Graph Ref) : Array Name :=
+  (graphParentChildren graph).toArray.filterMap fun (parent, children) =>
+    if children.size > 1 then some parent else none
+
+private def GraphModel.legendsFor (model : GraphModel) (hasGroupView : Bool) : Array Legend :=
+  if hasGroupView then #[model.fullLegend, groupLegend] else #[model.fullLegend]
+
 private def graphNodeParents (graph : Graph Ref) : Lean.NameMap Name :=
   graph.foldl (init := ({} : Lean.NameMap Name)) fun acc node =>
     match node.parent? with
@@ -744,6 +751,11 @@ def GraphModel.canonicalize (model : GraphModel) : GraphModel := {
   nodes := canonicalNodes model.nodes
   groupMetadata := (groupMetadataMap model.groupMetadata).toArray.map (·.2)
 }
+
+/-- The legends for the available views, without generating their DOT. -/
+def GraphModel.legends (model : GraphModel) : Array Legend :=
+  let model := model.canonicalize
+  model.legendsFor !(groupViewParents model.toGraph).isEmpty
 
 /--
 Merge two semantic graph models, selecting the preferred model's complete node
@@ -1291,7 +1303,7 @@ Graphs without multi-child groups produce just the full graph variant. Grouped
 graphs additionally produce a synthetic group overview and one focused subgraph
 per parent group.
 -/
-private def mkGraphVariants (graph : Graph String) (options : GraphOptions)
+private def mkGraphVariants (graph : Graph String) (parents : Array Name) (options : GraphOptions)
     (groupTitles : Lean.NameMap String)
     (previewKeyForLabel : Name → Option PreviewKey := fun _ => none) :
     Array GraphRenderVariant :=
@@ -1301,12 +1313,7 @@ private def mkGraphVariants (graph : Graph String) (options : GraphOptions)
         (graphNodeSvgId node.label, toString previewKey)
   let resolveGroupTitle : Name → Option String := fun group =>
     groupTitles.get? group
-  let parentChildren := graphParentChildren graph
-  let parents :=
-    parentChildren.toArray
-      |>.filter (fun (_, children) => children.size > 1)
-      |>.map (·.1)
-      |>.qsort (fun a b => groupTitle groupTitles a < groupTitle groupTitles b)
+  let parents := parents.qsort (fun a b => groupTitle groupTitles a < groupTitle groupTitles b)
   if parents.isEmpty then
     #[{
       key := "full"
@@ -1362,9 +1369,9 @@ def GraphModel.finish (model : GraphModel) (key : String) (options : GraphOption
     match node.previewKey with
     | some key => acc.insert node.label key
     | none => acc
-  let variants := mkGraphVariants graph options groupTitles previewKeys.get?
-  let legends := #[model.fullLegend]
-  let legends := if variants.any (·.key == groupVariantKey) then legends.push groupLegend else legends
+  let parents := groupViewParents graph
+  let variants := mkGraphVariants graph parents options groupTitles previewKeys.get?
+  let legends := model.legendsFor !parents.isEmpty
   {
     schemaVersion := graphDataSchemaVersion
     key

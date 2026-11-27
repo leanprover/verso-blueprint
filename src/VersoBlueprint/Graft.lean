@@ -16,6 +16,7 @@ import VersoBlueprint.Graft.Node
 import VersoBlueprint.Graft.Render
 import VersoBlueprint.PreviewManifest.BlockRender
 import VersoBlueprint.Lib.ExtensionDecode
+import VersoBlueprint.Lib.PreviewResources
 import VersoBlueprint.Slides.Node
 import VersoBlueprint.TeX
 
@@ -102,7 +103,7 @@ private def renderLeanCodeBodies
     match ← renderLeanCodePreviewBody? goB state id resolved.preview.label key with
     | none => pure ()
     | some (body, codeData) =>
-        if body.asString.trimAscii.isEmpty then
+        if PreviewResources.htmlIsBlank body then
           pure ()
         else
           bodies := bodies.push body
@@ -148,9 +149,10 @@ private def renderManualGraftNode
           else
             renderLeanCodeBodies goB state id resolved
         let content : Informal.PreviewManifest.BlockRender.RenderedContent := {
+          assessment := resolved.data.assessment
           body
           codeBodies
-          codeData
+          codeData := withFacetExternalChecks codeData resolved.data.codeData
         }
         pure <| Informal.Graft.renderNodeWithContent
           { manualManifestRenderConfig with

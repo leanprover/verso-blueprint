@@ -18,6 +18,13 @@ open Verso.Output
 open Verso.Output.Html
 open Verso.VersoBlueprintTests.Blueprint.Support
 
+private def graftBlankPanelText : String := String.singleton (Char.ofNat 0x00a0)
+
+block_extension Block.graftBlankPanelFixture where
+  traverse := fun _ _ _ => pure none
+  toTeX := none
+  toHtml := some <| fun _ _ _ _ _ => pure (.text true graftBlankPanelText)
+
 def manualImpls : ExtensionImpls := extension_impls%
 
 def graftManualLeftValue : Nat := 2
@@ -483,24 +490,82 @@ private def exportInBothModes (state : TraverseState) :
     throw <| IO.userError "Verbose instrumentation changed export data or diagnostics"
   return (quiet, ← quietErrors.get)
 
+-- A code preview may carry an older declaration snapshot. Both grafts use
+-- the captured facet's checks for their panel summaries.
+#eval show IO Unit from do
+  let (blocks, initial) ← traverseManualDocBlocksAndState manualImpls manualSideBySideGraftDoc
+  let node := graftNode "def:graft.manual.left"
+  let name := ``graftManualLeftValue
+  let codeKey := TraversalIndex.LeanCodePreviews.lookupKey name
+  let some preview := TraversalIndex.LeanCodePreviews.entry? initial codeKey
+    | throw <| IO.userError "Missing external graft code preview"
+  let .externalDecl decl := preview.source
+    | throw <| IO.userError "Expected an external declaration in the graft code preview"
+  let preview := { preview with source := .externalDecl { decl with provedStatus := none } }
+  let state := TraversalIndex.LeanCodePreviews.saveData initial codeKey (Lean.toJson preview)
+  let expectedChecks := #[(name, some Data.ProvedStatus.proved)]
+  let panelStatus := "bp_external_status_badge_summary bp_external_status_ok"
+  let headingStatus := "Native Lean requirements: complete"
+
+  let rendered ← renderManualBlocksHtmlWithState blocks manualImpls state
+  let collectGrafts := rendered.visitM (m := StateM (Array String)) (tag := fun _ attrs contents => do
+    if (Informal.Graft.BlueprintNode.fromAttrs? attrs).any (·.key == node.key) then
+      modify (·.push contents.asString)
+    pure none)
+  let #[manual] := (collectGrafts.run #[]).2
+    | throw <| IO.userError "Expected exactly one same-document graft for the selected definition"
+  unless hasSubstr manual headingStatus && hasSubstr manual panelStatus do
+    throw <| IO.userError "Same-document graft lost the captured heading or external panel check"
+
+  let files ← PreviewManifest.buildPreviewDataFiles manualImpls
+    (fun message => throw <| IO.userError message) (PreviewManifest.PreparedPreviewState.prepare state)
+  let some entry := files.manifest.findEntry? node.key
+    | throw <| IO.userError "Missing manifest-backed graft fixture"
+  let manifest := { files.manifest with previews := files.manifest.previews.map fun panel =>
+    if panel.key == codeKey then
+      { panel with codeData := panel.codeData.map fun facts =>
+        { facts with externalChecks := #[(name, some .missing)] } }
+    else panel }
+  let ctx := Informal.Graft.RenderContext.ofPreviewData? (some manifest) (some files.htmlCache)
+  let some cached ← ctx.renderedContent? node entry
+    | throw <| IO.userError "Missing manifest-backed graft content"
+  let cachedHtml ← Informal.Graft.renderNodeFromManifestCache {} ctx node
+  unless cached.codeData.externalChecks == expectedChecks && cached.assessment.any (·.requiredComplete) &&
+      hasSubstr cachedHtml.asString headingStatus && hasSubstr cachedHtml.asString panelStatus do
+    throw <| IO.userError "Manifest-backed graft lost the captured heading or external panel check"
+  let blankCache := { files.htmlCache with entries := files.htmlCache.entries.map fun panel =>
+    if panel.key == codeKey then { panel with html := graftBlankPanelText } else panel }
+  let blankCtx := Informal.Graft.RenderContext.ofPreviewData? (some manifest) (some blankCache)
+  let some blank ← blankCtx.renderedContent? node entry
+    | throw <| IO.userError "Expected the graft body even when its code fragment is blank"
+  unless blank.codeBodies.isEmpty && blank.codeData.externalChecks.isEmpty do
+    throw <| IO.userError "A blank cached fragment contributed captured declaration checks"
+
 -- Panel identity, rather than rendered text, determines uniqueness. Distinct
--- panels retain their own facts even when they render identical HTML.
+-- panels retain their own facts even when they render identical HTML. Empty
+-- and Unicode-whitespace-only bodies contribute no facts.
 #eval show IO Unit from do
   let (blocks, initial) ← traverseManualDocBlocksAndState manualImpls manualSideBySideGraftDoc
   let label := Lean.Name.mkSimple "def:graft.manual.left"
   let facetKey := PreviewCache.statementKey label
   let .ok (some facet) := RenderingResolution.facetByKey? initial facetKey
     | throw <| IO.userError "Missing panel-identity fixture facet"
+  let (blankId, initial) := (freshId (m := StateM TraverseState)).run initial
+  let blank : Doc.Block Genre.Manual := .other { Block.graftBlankPanelFixture with id := some blankId } #[]
+  let renderedBlank ← renderManualBlocksHtmlWithState #[blank] manualImpls initial
+  unless renderedBlank.asString == graftBlankPanelText do
+    throw <| IO.userError "The whitespace fixture must emit a literal nonbreaking space"
   let mut state := initial
   let mut keys := #[]
-  for (blockId, decl, body) in #[(`firstPanel, `firstPanelDecl, true),
-      (`secondPanel, `secondPanelDecl, true), (`emptyPanel, `emptyPanelDecl, false)] do
+  let body : Array (Doc.Block Genre.Manual) := #[.para #[.text "identical-code-panel"]]
+  for (blockId, decl, previewBlocks) in #[
+      (`firstPanel, `firstPanelDecl, body), (`secondPanel, `secondPanelDecl, body),
+      (`emptyPanel, `emptyPanelDecl, #[]),
+      (`whitespacePanel, `whitespacePanelDecl, #[blank])] do
     let metadata : InlineCodeData := { blockId, label, definedDefs := #[{ name := decl, provedStatus := .proved }] }
     state := TraversalIndex.InlineCode.saveData state metadata
     let key := TraversalIndex.LeanCodePreviews.lookupInlineKey blockId
     keys := keys.push key
-    let previewBlocks : Array (Doc.Block Genre.Manual) :=
-      if body then #[.para #[.text "identical-code-panel"]] else #[]
     let preview := LeanCodePreview.Entry.ofInlineBlocks blockId label previewBlocks
       (.unavailable "synthetic panel identity test")
     state := TraversalIndex.LeanCodePreviews.saveData state key (Lean.toJson preview)
@@ -516,12 +581,14 @@ private def exportInBothModes (state : TraverseState) :
   unless (rendered.splitOn "identical-code-panel").length == 3 &&
       hasSubstr rendered "firstPanelDecl: complete" &&
       hasSubstr rendered "secondPanelDecl: complete" &&
-      !hasSubstr rendered "emptyPanelDecl: complete" do
+      !hasSubstr rendered "emptyPanelDecl: complete" &&
+      !hasSubstr rendered "whitespacePanelDecl: complete" do
     throw <| IO.userError "Panel rendering conflated identity, equal HTML or empty output"
   let (files, errors) ← exportInBothModes state
   unless errors.isEmpty && (files.manifest.findEntry? keys[0]!).isSome &&
       (files.manifest.findEntry? keys[1]!).isSome &&
-      (files.manifest.findEntry? keys[2]!).isNone do
+      (files.manifest.findEntry? keys[2]!).isNone &&
+      (files.manifest.findEntry? keys[3]!).isNone do
     throw <| IO.userError "Code export dropped a distinct identity or retained blank output"
   let some entry := files.manifest.findEntry? facetKey
     | throw <| IO.userError "Missing exported panel-identity facet"
