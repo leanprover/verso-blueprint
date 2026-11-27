@@ -34,7 +34,7 @@
  * intersections consistently.
  *
  * @typedef {Object} BlueprintLabelResolveOptions
- * @property {string} [facet] Preview facet to resolve. Defaults to `statement`.
+ * @property {string} [facet] Exact block facet. Omit it to prefer the prepared default preview.
  * @property {string} [dataBaseUrl] Base URL used to resolve files under `-verso-data/`.
  * @property {BlueprintFetchJson} [fetchJson] Per-API JSON loader override.
  * @property {RequestInit} [fetchOptions] Options forwarded to `fetch` when no custom loader is supplied.
@@ -329,6 +329,7 @@
  * @property {boolean} foldProofBlock Whether the canonical proof shell is collapsed for proof entries.
  * @property {boolean} foldCodeBlock Whether the associated code panel is collapsed for this canonical traversal entry.
  * @property {boolean} codeOnlyPreview Whether preview readers compose associated Lean fragments instead of the inert block body.
+ * @property {boolean} defaultPreview Whether the generated output selected this entry for default label previews.
  * @property {string[]} leanCodePreviewKeys Associated Lean-code manifest/cache keys, in display order.
  * @property {BlueprintRelatedEntry[]} uses Related nodes used by this entry.
  * @property {BlueprintRelatedEntry[]} usedBy Related nodes that use this entry.
@@ -692,7 +693,7 @@
  *
  * @typedef {Object} BlueprintRenderNodeRequest
  * @property {string} label Blueprint label to render.
- * @property {string} [facet="statement"] Rendered facet to prefer for native previews.
+ * @property {string} [facet] Exact rendered facet. Omit it to use the generated default preview.
  * @property {BlueprintExternalMarkupPreference | BlueprintExternalMarkupPreference[] | BlueprintExternalMarkupPreferences} [externalMarkup] External-markup fallback preferences.
  * @property {BlueprintExternalMarkupPreference} [preferredExternalMarkup] Shorthand for a single external-markup preference.
  */

@@ -18,6 +18,11 @@ abbrev Render := PreviewKey → (Unit → Html) → (Unit → Html) → Html
 def immediate (available : PreviewKey → Bool := fun _ => true) : Render :=
   fun key present absent => if available key then present () else absent ()
 
+/-- Try candidates in order after rendering has established resource availability. -/
+def select (render : Render) (keys : Array PreviewKey)
+    (present : PreviewKey → Html) (absent : Unit → Html) : Html :=
+  (keys.foldr (fun key rest () => render key (fun _ => present key) rest) absent) ()
+
 -- A self-contained choice in the intermediate Html tree, never emitted as HTML.
 -- Unlike an index into a render session, it can be freely composed and copied.
 private def marker := "verso-blueprint-preview-choice"

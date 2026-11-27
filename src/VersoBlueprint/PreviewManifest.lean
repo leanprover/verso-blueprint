@@ -934,6 +934,8 @@ structure Entry extends Informal.BlockMetadata where
   /-- This facet has no prose/witness body; hover readers compose its associated
   Lean cache fragments instead of displaying the inert block-body fragment. -/
   codeOnlyPreview : Bool := false
+  /-- The default standalone preview selected after all resource bodies are rendered. -/
+  defaultPreview : Bool := false
   /-- Canonical Lean code data associated with this informal node, if any. -/
   codeData : Option Informal.BlockCodeData := none
   /--
@@ -1282,14 +1284,29 @@ serialized preview reference can render.
 structure PreviewArtifactIndex where
   manifestKeys : Std.HashSet String := {}
   htmlCacheKeys : Std.HashSet String := {}
+  previewKeys : Std.HashSet String := {}
+  defaultKeys : Lean.NameMap PreviewKey := {}
 
 private def PreviewArtifactIndex.ofKeys
-    (manifest : File) (htmlKeys : Array String) : PreviewArtifactIndex := {
-  manifestKeys :=
-    manifest.previews.foldl (fun keys entry => keys.insert entry.key) {}
-  htmlCacheKeys :=
-    htmlKeys.foldl (fun keys key => keys.insert key) {}
-}
+    (manifest : File) (htmlKeys : Array String) (pruneMissingCodeFragments : Bool := false) :
+    PreviewArtifactIndex := Id.run do
+  let manifestKeys := manifest.previews.foldl
+    (fun (keys : Std.HashSet String) entry => keys.insert entry.key) {}
+  let htmlCacheKeys := htmlKeys.foldl (fun (keys : Std.HashSet String) key => keys.insert key) {}
+  let hasPair (key : String) := manifestKeys.contains key && htmlCacheKeys.contains key
+  let mut previewKeys : Std.HashSet String := {}
+  let mut defaultKeys : Lean.NameMap PreviewKey := {}
+  for entry in manifest.previews do
+    unless hasPair entry.key do continue
+    if entry.codeOnlyPreview then
+      let codeFragments := if pruneMissingCodeFragments then
+        entry.leanCodePreviewKeys.filter hasPair else entry.leanCodePreviewKeys
+      if codeFragments.isEmpty || !codeFragments.all hasPair then continue
+    previewKeys := previewKeys.insert entry.key
+    if entry.defaultPreview then
+      if let some key := PreviewKey.ofString? entry.key then
+        defaultKeys := defaultKeys.insert entry.label key
+  return { manifestKeys, htmlCacheKeys, previewKeys, defaultKeys }
 
 private def PreviewArtifactIndex.ofArtifacts
     (manifest : File) (htmlCache : HtmlCache.File) : PreviewArtifactIndex :=
@@ -1312,7 +1329,32 @@ def PreviewArtifactIndex.hasCacheKey
 
 def PreviewArtifactIndex.resolves (index : PreviewArtifactIndex) (key : String) :
     Bool :=
-  index.hasManifestKey key && index.hasCacheKey key
+  index.previewKeys.contains key
+
+def PreviewArtifactIndex.defaultKey? (index : PreviewArtifactIndex) (label : Name) :
+    Option PreviewKey :=
+  index.defaultKeys.get? label
+
+/-- Exact facet lookup. Only the statement can fall back to external markup. -/
+def PreviewArtifactIndex.facetKey? (index : PreviewArtifactIndex)
+    (label : Name) (facet : PreviewCache.Facet) : Option PreviewKey :=
+  let key := PreviewCache.key label facet
+  if index.resolves key then PreviewKey.ofString? key else
+  if facet == .statement then
+    let markupKey := PreviewSource.externalMarkupKey label
+    if index.resolves markupKey then PreviewKey.ofString? markupKey else none
+  else none
+
+private def PreviewArtifactIndex.selectDefaults (index : PreviewArtifactIndex) (state : TraverseState)
+    (entries : Array Entry) : PreviewArtifactIndex :=
+  let defaultKeys := entries.foldl (init := ({} : Lean.NameMap PreviewKey)) fun keys entry =>
+    if (entry.targetKind == .block || entry.targetKind == .externalMarkup) && !keys.contains entry.label then
+      match (PreviewSource.traversalPreviewCandidateKeys state entry.label).find?
+          (fun candidate => index.resolves candidate.value) with
+      | some key => keys.insert entry.label key
+      | none => keys
+    else keys
+  { index with defaultKeys }
 
 /-- Install the standard page consumers of this output's prepared resources.
 The same availability index feeds relations and authored references; graph pages
@@ -1322,6 +1364,7 @@ def Files.withPageExtensions (files : Files) (impls : ExtensionImpls) : Extensio
   let index := PreviewArtifactIndex.ofFiles files
   let available := fun key : PreviewKey => index.resolves key.value
   Informal.Commands.withPreparedGraphs impls files.manifest.graphs
+    |> (Informal.Commands.withSummaryPreviewRendering · (PreviewResources.immediate available) (some index.defaultKey?))
     |> (Inline.withPreviewAvailability · available)
     |> (Block.withPreviewAvailability · available)
 
@@ -1332,7 +1375,7 @@ private def PreviewArtifactIndex.previewKey?
 
 private def RelatedEntry.finalizePreviewReferences
     (index : PreviewArtifactIndex) (entry : RelatedEntry) : RelatedEntry :=
-  { entry with previewKey := index.previewKey? entry.previewKey }
+  { entry with previewKey := index.defaultKey? entry.label <|> index.previewKey? entry.previewKey }
 
 private def GroupRelation.finalizePreviewReferences
     (index : PreviewArtifactIndex) (group : GroupRelation) : GroupRelation :=
@@ -1342,6 +1385,7 @@ private def Entry.finalizePreviewReferences
     (index : PreviewArtifactIndex) (entry : Entry) : Entry :=
   {
     entry with
+      defaultPreview := (index.defaultKey? entry.label).any (·.value == entry.key)
       leanCodePreviewKeys := entry.leanCodePreviewKeys.filter index.resolves
       uses := entry.uses.map (RelatedEntry.finalizePreviewReferences index)
       usedBy := entry.usedBy.map (RelatedEntry.finalizePreviewReferences index)
@@ -1996,7 +2040,7 @@ private def RelatedEntry.ofPanel (entry : Informal.RelatedPanel.PanelEntry) : Re
   label := entry.label
   title := entry.previewTitle
   href := entry.href
-  previewKey := entry.previewKey
+  previewKey := entry.previewKeys[0]?
   dependencies := entry.dependencies
 }
 
@@ -2412,6 +2456,7 @@ def buildPreviewDataFiles
   let state := preparedState.state
   let impls := Inline.withPreviewRendering impls PreviewResources.deferred
     |> (Block.withPreviewRendering · PreviewResources.deferred)
+    |> (Informal.Commands.withSummaryPreviewRendering · PreviewResources.deferred)
   let inputs ← withTimedBuildProgress verbose "preparing facet export inputs" <|
     prepareFacetInputs state logError
   let hoverState := HtmlCache.initialHoverState
@@ -2432,7 +2477,7 @@ def buildPreviewDataFiles
       buildSourceDocuments logError state
   withTimedBuildProgress verbose "validating source references" <|
     validateSourceRefs logError sourceDocuments inputs
-  let (previews, groups, htmlEntries, graphs) ←
+  let (previews, groups, htmlEntries) ←
     withTimedBuildProgress verbose "assembling Blueprint manifest/cache indexes" <| do
       let previews :=
         (traversalPreviews ++ externalMarkupPreviews ++ leanCodePreviews ++ citationPreviews).qsort
@@ -2441,17 +2486,17 @@ def buildPreviewDataFiles
       let htmlEntries :=
         (traversalHtml ++ externalMarkupHtml ++ leanCodeHtml ++ citationHtml).qsort
           (fun a b => a.key < b.key)
-      let mut graphEntries := #[]
-      for decoded in Informal.GraphApi.cachedEntries state do
-        match decoded with
-        | .error err =>
-            logError s!"Blueprint manifest: malformed graph entry {err.canonicalName}: {err.message}"
-        | .ok stored =>
-            graphEntries := graphEntries.push stored.data
-      let graphs := graphEntries.qsort (fun a b => a.key < b.key)
-      pure (previews, groups, htmlEntries, graphs)
-  let manifest : File := { previews, groups, graphs, sourceDocuments }
-  let index := PreviewArtifactIndex.ofKeys manifest (htmlEntries.map (·.key))
+      pure (previews, groups, htmlEntries)
+  let manifest : File := { previews, groups, sourceDocuments }
+  let index := PreviewArtifactIndex.ofKeys manifest (htmlEntries.map (·.key)) (pruneMissingCodeFragments := true)
+  let index := index.selectDefaults state previews
+  let mut graphEntries := #[]
+  for decoded in Informal.GraphApi.cachedEntries state (some index.defaultKey?) do
+    match decoded with
+    | .error err => logError s!"Blueprint manifest: malformed graph entry {err.canonicalName}: {err.message}"
+    | .ok stored => graphEntries := graphEntries.push stored.data
+  let graphs := graphEntries.qsort (fun a b => a.key < b.key)
+  let manifest := { manifest with graphs }
   let resolve := PreviewResources.finish (fun key => index.resolves key.value)
   let serializeStart ← if verbose then IO.monoMsNow else pure 0
   let resolvedEntries ← htmlEntries.mapM fun entry => do

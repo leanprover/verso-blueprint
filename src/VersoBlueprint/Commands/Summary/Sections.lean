@@ -385,7 +385,10 @@ def SummaryBlockData.resolve (data : SummaryBlockData) (state : TraverseState) :
     | Option.none => Informal.TraversalIndex.RenderOverviews.required state `summary
   return { summary with showDebugDiagnostics := data.showDebugDiagnostics }
 
-private def summaryBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT ExtensionImpls (BuildLogT IO))) :=
+private def summaryBlockToHtml
+    (renderPreview : PreviewResources.Render := PreviewResources.immediate)
+    (previewFor? : Option (Lean.Name → Option Informal.PreviewKey) := none) :
+    BlockToHtml Manual (ReaderT AllRemotes (ReaderT ExtensionImpls (BuildLogT IO))) :=
   fun _goI _goB _id json _blocks => do
     let some data ←
         Informal.ExtensionDecode.decode?
@@ -398,10 +401,9 @@ private def summaryBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT
       | .ok data => pure (some data)
       | .error message => Verso.reportError message; pure none
     let some data := resolved? | pure .empty
-    let previewLookupKeys := (data.previewLabels).foldl (init := ({} : Lean.NameMap String)) fun keys label =>
-      match Informal.PreviewSource.traversalPreviewCandidateKey? s label with
-      | some key => keys.insert label (toString key)
-      | Option.none => keys
+    let previewKeys := match previewFor? with
+      | Option.none => (Informal.PreviewSource.traversalPreviewCandidateKeys s ·)
+      | some previewFor => fun label => (previewFor label).toArray
     let ctx : SummaryHtmlContext := {
       entryHref? := fun label => Informal.TraversalIndex.Nodes.href? s label
       declHref? := fun label decl =>
@@ -409,7 +411,8 @@ private def summaryBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT
       declPreviewLookupKey? := fun label decl => do
         let block ← Informal.TraversalIndex.InlineCode.forDecl? s label decl
         some (Informal.TraversalIndex.LeanCodePreviews.lookupInlineKey block.blockId)
-      previewLookupKey? := fun label => previewLookupKeys.get? label
+      previewKeys
+      renderPreview
     }
     let previewPanel := Informal.HoverRender.summaryPreviewPanel
     let summaryAttrs :=
@@ -445,8 +448,16 @@ block_extension Block.summary (summary : SummaryBlockData) where
     open Verso.Output.TeX in
     some <| fun _goI _goB _id _data _blocks =>
       pure <| .text "The Blueprint summary is available in the HTML output."
-  toHtml := some summaryBlockToHtml
+  toHtml := some (summaryBlockToHtml PreviewResources.immediate none)
   extraCss := summaryAssetBundle.css
   extraJs := summaryAssetBundle.js
+
+/-- Choose summary preview links through the same resource pipeline as inline and relation previews. -/
+def withSummaryPreviewRendering (impls : ExtensionImpls) (renderPreview : PreviewResources.Render)
+    (previewFor? : Option (Lean.Name → Option Informal.PreviewKey) := none) : ExtensionImpls :=
+  match impls.getBlock? ``Block.summary with
+  | Option.none => impls
+  | some descriptor =>
+    impls.insertBlock ``Block.summary { descriptor with toHtml := some (summaryBlockToHtml renderPreview previewFor?) }
 
 end Informal.Commands

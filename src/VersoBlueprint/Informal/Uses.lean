@@ -106,14 +106,11 @@ structure InlineData where
 deriving FromJson, ToJson, Quote
 
 private def RenderingResolution.Reference.withPreview
-    (reference : RenderingResolution.Reference) (node : Verso.Output.Html) :
+    (reference : RenderingResolution.Reference) (key : PreviewKey) (node : Verso.Output.Html) :
     Verso.Output.Html :=
-  match reference.previewKey with
-  | none => node
-  | some key =>
-      let id := s!"bp-uses-{HoverRender.previewKey (toString key)}"
-      let target := HoverRender.InlinePreviewTarget.withLookupKey id reference.title (toString key)
-      HoverRender.inlinePreviewTargetNode node target
+  let id := s!"bp-uses-{HoverRender.previewKey (toString key)}"
+  let target := HoverRender.InlinePreviewTarget.withLookupKey id reference.title (toString key)
+  HoverRender.inlinePreviewTargetNode node target
 
 open Verso.Doc.Html Verso.Output.Html in
 /-- Render authored references with checked semantics and the selected output's
@@ -131,9 +128,8 @@ private def informalReferenceToHtml (renderPreview : PreviewResources.Render := 
       let node := match reference.href with
         | some href => {{<a href={{href}} title={{labelText}}>{{content}}</a>}}
         | none => {{<span title={{labelText}}>{{content}}</span>}}
-      let content := match reference.previewKey with
-        | none => node
-        | some key => renderPreview key (fun _ => reference.withPreview node) (fun _ => node)
+      let content := PreviewResources.select renderPreview reference.previewKeys
+        (fun key => reference.withPreview key node) (fun _ => node)
       return {{<span>{{content}}</span>}}
 
 inline_extension Inline.informal (data : InlineData) where

@@ -65,7 +65,7 @@ def traversalExternalMarkupLookupKey?
     some (externalMarkupKey label)
 
 /--
-Best preview candidate key for a Blueprint label in finished traversal state.
+Preview candidates for a Blueprint label in finished traversal state.
 
 Prefer statement/proof prose, then a code-backed facet, then a source-backed
 external-markup preview. Prose-only lookup helpers retain their body semantics. Final
@@ -76,19 +76,19 @@ An explicit facet never borrows another facet's prose or code. Only statements
 may fall back to source-backed external markup.
 
 -/
+def traversalPreviewCandidateKeys
+    (s : Verso.Genre.Manual.TraverseState) (label : Name)
+    (facet? : Option PreviewCache.Facet := none) : Array PreviewKey :=
+  let facets := match facet? with
+    | none => TraversalIndex.TraversalPreviews.previewFacets s label
+    | some facet => #[facet].filter (TraversalIndex.TraversalPreviews.hasRenderablePreview s label)
+  let markup := if facet? == some .proof then #[] else (traversalExternalMarkupLookupKey? s label).toArray
+  (facets.map (PreviewCache.key label) ++ markup).filterMap PreviewKey.ofString?
+
 def traversalPreviewCandidateKey?
     (s : Verso.Genre.Manual.TraverseState) (label : Name)
-    (facet? : Option PreviewCache.Facet := none) : Option PreviewKey := do
-  let key ← match facet? with
-    | none => (PreviewCache.key label <$>
-        Informal.TraversalIndex.TraversalPreviews.selectedPreviewFacet? s label) <|>
-        traversalExternalMarkupLookupKey? s label
-    | some facet =>
-      if Informal.TraversalIndex.TraversalPreviews.hasRenderablePreview s label facet then
-        some (PreviewCache.key label facet)
-      else if facet == .statement then traversalExternalMarkupLookupKey? s label
-      else none
-  PreviewKey.ofString? key
+    (facet? : Option PreviewCache.Facet := none) : Option PreviewKey :=
+  (traversalPreviewCandidateKeys s label facet?)[0]?
 
 private def nonEmptyOrNone {α} (xs : Array α) : Option (Array α) :=
   if xs.isEmpty then none else some xs

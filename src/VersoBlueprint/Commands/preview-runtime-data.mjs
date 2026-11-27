@@ -114,9 +114,13 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
     );
   }
 
-  function findBlockManifestEntryByLabel(manifestMap, label, options) {
-    if (!(manifestMap instanceof Map)) return null;
+  function findManifestEntryByLabel(file, label, options) {
+    const manifestMap = file.previews;
     const lookup = labelLookupOptions(options);
+    if (!lookup.explicitFacet) {
+      const prepared = file.defaultPreviewsByLabel.get(label);
+      if (prepared) return prepared;
+    }
     const key = previewKey(label, lookup.facet);
     const exact = manifestMap.get(key);
     if (isBlockEntryForLabel(exact, label)) {
@@ -127,7 +131,7 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
     for (const entry of manifestMap.values()) {
       if (!isBlockEntryForLabel(entry, label)) continue;
       if (!first) first = entry;
-      if (entry.facet === lookup.facet) return entry;
+      if (lookup.explicitFacet && entry.facet === lookup.facet) return entry;
       if (entry.facet === "statement" && !statement) statement = entry;
     }
     if (lookup.explicitFacet) return null;
@@ -449,6 +453,7 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
       await loadBlueprintManifestForApi(options);
       return blueprintManifestStoreForApi.decodedFile || {
         previews: new Map(),
+        defaultPreviewsByLabel: new Map(),
         groups: [],
         groupsByLabel: new Map(),
         sourceDocuments: [],
@@ -522,8 +527,8 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
           reason: previewLookupReasons.missingLabel
         }, sourceLocationMessages.labelMissing);
       }
-      const manifestMap = await loadBlueprintManifestForApi(options);
-      const manifestEntry = findBlockManifestEntryByLabel(manifestMap, normalizedLabel, options);
+      const file = await loadBlueprintManifestFileForApi(options);
+      const manifestEntry = findManifestEntryByLabel(file, normalizedLabel, options);
       if (!manifestEntry) {
         return missingPreviewLookupResult({
           label: normalizedLabel,
@@ -832,8 +837,21 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
     const groupData = decodeBlueprintGroups(data);
     validateBlueprintGroupJoins(previewMap, groupData);
     const sourceData = decodeBlueprintSourceDocuments(data);
+    const defaultPreviewsByLabel = new Map();
+    for (const entry of previewMap.values()) {
+      if (entry.defaultPreview !== true) continue;
+      if (typeof entry.label !== "string" || !entry.label ||
+          (entry.targetKind !== "block" && entry.targetKind !== "externalMarkup")) {
+        throw new Error("Blueprint manifest default preview must identify a node");
+      }
+      if (defaultPreviewsByLabel.has(entry.label)) {
+        throw new Error("Blueprint manifest contains duplicate default preview for " + entry.label);
+      }
+      defaultPreviewsByLabel.set(entry.label, entry);
+    }
     return {
       previews: previewMap,
+      defaultPreviewsByLabel,
       groups: groupData.groups,
       groupsByLabel: groupData.groupsByLabel,
       sourceDocuments: sourceData.sourceDocuments,

@@ -33,7 +33,7 @@ def RelatedEntry.panelEntry
     (idPrefix : String) : Informal.RelatedPanel.PanelEntry :=
   {
     previewId := Informal.HoverRender.previewId idPrefix entry.displayLabel
-    previewKey := entry.previewKey
+    previewKeys := entry.previewKey.toArray
     previewTitle := entry.displayTitle
     label := entry.label
     href := entry.href

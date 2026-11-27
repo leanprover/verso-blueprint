@@ -429,7 +429,10 @@ private def checkPreviewReference
     (index : PreviewArtifactIndex) (context key : String) (errors : Array String) :
     Array String :=
   let errors := pushMissingManifestKey index errors context key
-  pushMissingCacheKey index errors context key
+  let errors := pushMissingCacheKey index errors context key
+  if index.hasManifestKey key && index.hasCacheKey key && !index.resolves key then
+    errors.push s!"preview for {context} has no usable Lean fragments: {key}"
+  else errors
 
 private def checkRelatedEntries
     (index : PreviewArtifactIndex) (context : String) (entries : Array RelatedEntry)
@@ -559,6 +562,21 @@ private def duplicateKeyErrors (kind : String) (keys : Array String) : Array Str
       seen := seen.insert key
   return errors
 
+private def checkDefaultPreviews (index : PreviewArtifactIndex) (entries : Array Entry)
+    (errors : Array String) : Array String := Id.run do
+  let mut seen : NameSet := {}
+  let mut errors := errors
+  for entry in entries do
+    if !entry.defaultPreview then continue
+    let label := Informal.PreviewManifest.labelString entry.label
+    if seen.contains entry.label then
+      errors := errors.push s!"duplicate default preview for {label}"
+    else seen := seen.insert entry.label
+    if entry.targetKind != .block && entry.targetKind != .externalMarkup then
+      errors := errors.push s!"default preview for {label} is not a node preview"
+    errors := checkPreviewReference index s!"default preview of {label}" entry.key errors
+  return errors
+
 def checkGeneratedData (data : PersistedGeneratedData) : Array String :=
   let manifest := data.manifest
   let index := Informal.PreviewManifest.PreviewArtifactIndex.ofPersistedFiles data
@@ -593,6 +611,7 @@ def checkGeneratedData (data : PersistedGeneratedData) : Array String :=
         group.entries errors)
     errors
   let errors := checkManifestGroupIntegrity manifest errors
+  let errors := checkDefaultPreviews index manifest.previews errors
   manifest.graphs.foldl (fun errors graph => checkGraphPreviewKeys index graph errors) errors
 
 /-- Current Verso section routes also cover pages with no Blueprint previews. -/

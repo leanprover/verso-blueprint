@@ -195,15 +195,14 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
       return {
         label: request.trim(),
         facet: "statement",
+        explicitFacet: false,
         externalMarkup: null
       };
     }
     const opts = request && typeof request === "object" ? request : {};
     const label = typeof opts.label === "string" ? opts.label.trim() : "";
-    const facet =
-      typeof opts.facet === "string" && opts.facet.trim()
-        ? opts.facet.trim()
-        : "statement";
+    const explicitFacet = typeof opts.facet === "string" && opts.facet.trim().length > 0;
+    const facet = explicitFacet ? opts.facet.trim() : "statement";
     const externalMarkup =
       opts.externalMarkup && typeof opts.externalMarkup === "object"
         ? opts.externalMarkup
@@ -213,6 +212,7 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
     return {
       label,
       facet,
+      explicitFacet,
       externalMarkup
     };
   }
@@ -518,14 +518,31 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
       return result;
     }
 
-    const nativeKey = previewKey(normalized.label, normalized.facet);
+    const preferences = normalizeExternalMarkupPreferences(normalized.externalMarkup);
+    const labelResult = normalized.explicitFacet ? null
+      : await requireBlueprintDataApi(opts).resolveLabel(normalized.label, opts);
+    const selectedDefault = labelResult?.manifestEntry?.defaultPreview === true &&
+      (labelResult.manifestEntry.targetKind === "block" || preferences.length === 0)
+      ? labelResult : null;
+    const nativeKey = selectedDefault?.key || previewKey(normalized.label, normalized.facet);
     const nativeResult = await resolveBlueprintPreview(nativeKey, opts);
     if (nativeResult.ok) {
+      if (selectedDefault?.manifestEntry.targetKind === "externalMarkup") {
+        const result = renderNodePreviewResult(nativeResult, {
+          renderMode: "external-markup",
+          label: normalized.label,
+          facet: selectedDefault.facet,
+          nativePreview: nativeResult,
+          canonicalHtml: nativeResult.html
+        });
+        renderHtmlInto(target, result.html, opts);
+        return result;
+      }
       const canonicalResult = await resolveCanonicalBlueprintPreview(nativeKey, opts);
       const result = renderNodePreviewResult(canonicalResult, {
         renderMode: canonicalResult.ok ? "native" : "diagnostic",
         label: normalized.label,
-        facet: normalized.facet,
+        facet: selectedDefault?.facet || normalized.facet,
         nativePreview: nativeResult
       });
       const html = result.ok
@@ -535,7 +552,6 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
       return result;
     }
 
-    const preferences = normalizeExternalMarkupPreferences(normalized.externalMarkup);
     if (preferences.length === 0) {
       const result = renderNodePreviewResult(nativeResult, {
         renderMode: "diagnostic",

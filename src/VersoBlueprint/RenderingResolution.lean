@@ -112,11 +112,14 @@ finalization establishes that its manifest entry and rendered body both exist. -
 structure Reference where
   title : String
   href : Option String
-  previewKey : Option PreviewKey
+  previewKeys : Array PreviewKey := #[]
+
+def Reference.previewKey (reference : Reference) : Option PreviewKey :=
+  reference.previewKeys[0]?
 
 /-- Deliberate unresolved presentation for an optional relation target. -/
 def Reference.labelOnly (label : Data.Label) : Reference := {
-  title := label.toString (escape := false), href := none, previewKey := none
+  title := label.toString (escape := false), href := none
 }
 
 private def referenceWithTitle (state : TraverseState) (label : Data.Label)
@@ -125,7 +128,7 @@ private def referenceWithTitle (state : TraverseState) (label : Data.Label)
   href := match facet? with
     | some facet => TraversalIndex.TraversalPreviews.hrefFor? state label facet
     | none => TraversalIndex.Nodes.href? state label
-  previewKey := PreviewSource.traversalPreviewCandidateKey? state label facet?
+  previewKeys := PreviewSource.traversalPreviewCandidateKeys state label facet?
 }
 
 /-- Present semantic metadata resolved from the same rendering state, without decoding

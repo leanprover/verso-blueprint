@@ -15,7 +15,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
 
 private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
   previewId := "preview"
-  previewKey := Informal.PreviewKey.ofString? "preview-key"
+  previewKeys := (Informal.PreviewKey.ofString? "preview-key").toArray
   previewTitle := "Target"
   label := Lean.Name.mkSimple "target"
 }

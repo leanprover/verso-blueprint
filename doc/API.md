@@ -1505,10 +1505,11 @@ if (result.ok) {
 }
 ```
 
-Use `resolveLabel` when the client starts from a Blueprint block label rather
-than a manifest key. It resolves only block entries, defaults to the statement
-facet, and returns both the generated-page `href` and the manifest
-`sourceLocation` result:
+Use `resolveLabel` to start from a Blueprint label. With an explicit facet it
+looks up that block entry. With no facet it uses the generated default preview
+when available and falls back to block metadata when there is no renderable
+preview. The result includes the generated-page `href` and the manifest
+`sourceLocation`.
 
 ```javascript
 import { createPreview } from "../-verso-data/api/preview.mjs";
@@ -1550,11 +1551,11 @@ if (result.ok) {
 ```
 
 Use `renderNode` when the client starts from a Blueprint label and wants a
-generated Blueprint node. If native rendered content is available, VBP inserts
-the regular generated node shell. If only external markup is available, VBP
-still owns that shell: heading, relation chips, metadata, anchors, and
-hydration. The call-scoped renderer receives only the node's content slot as
-its target. The renderer is not registered globally.
+generated Blueprint node. Omit the facet to use the site's prepared default
+preview. Specify `facet: "statement"` or `facet: "proof"` to request that
+native facet directly. VBP inserts the generated shell for native content or
+prepared external markup. Call-scoped external-markup renderers receive the
+node's content slot as their target.
 
 The ownership boundary is strict:
 
@@ -1681,13 +1682,13 @@ signature and type reference.
 | `api.previewApiModuleUrl()` | Resolve the generated ESM preview/render API module URL for dynamic imports from custom clients. |
 | `api.graphApiModuleUrl()` | Resolve the generated ESM graph API module URL for dynamic imports from custom clients. Use this instead of hard-coding a relative `-verso-data/api/graph.mjs` path when code may run from `html-multi/`, `html-single/`, slides, or embedded contexts. |
 | `api.previewKey(label, facet)` / `api.statementPreviewKey(label)` | Build normalized preview keys for custom render targets. |
-| `api.resolveLabel(label, options)` | Resolve a Blueprint block label and optional `{ facet }`, returning `{ ok, label, facet, key, reason, manifestEntry, href, sourceLocation }`. |
+| `api.resolveLabel(label, options)` | Resolve a Blueprint label through the prepared default or an explicit `{ facet }`, returning `{ ok, label, facet, key, reason, manifestEntry, href, sourceLocation }`. |
 | `api.resolveDeclaration(declName, options)` | Resolve a declaration-keyed Lean preview entry from a Lean declaration name, returning `{ ok, declaration, key, reason, manifestEntry, href, sourceLocation }`. Inline code previews are keyed by their source code-block identity and should be loaded through the explicit key in `leanCodePreviewKeys`. |
 | `api.resolvePreview(key, options)` | Resolve manifest data and a rendered body fragment together, returning `{ ok, key, reason, manifestEntry, htmlCacheEntry, html, diagnosticHtml }`. |
 | `api.renderPreviewInto(element, key, options)` | Write the rendered body fragment or diagnostic HTML into `element`, then hydrate nested previews and math. Render options may set `hydrators`, `inheritPageHydrators`, `templateBinder`, `hydrate: false`, or `renderMath: false`. |
 | `api.resolveCanonicalPreview(key, options)` | Resolve the same data as `resolvePreview`, then load the generated page named by `manifestEntry.href` and return `canonicalHtml` plus `canonicalSourceHref` for the real Blueprint node wrapper. |
 | `api.renderCanonicalPreviewInto(element, key, options)` | Write the canonical Blueprint node wrapper or diagnostic HTML into `element`, then hydrate nested previews and math. It accepts the same hydration options as `renderPreviewInto`. |
-| `api.renderNode(element, request, options)` | Render by label as a generated Blueprint node: native content uses the canonical generated shell, and external markup uses the same shell with a call-scoped TeX/Markdown body renderer from `request.externalMarkup` or `request.preferredExternalMarkup`. It accepts the same hydration options as `renderPreviewInto`. |
+| `api.renderNode(element, request, options)` | Render a generated Blueprint node by label using the prepared default or an explicit facet. For external markup it can use a prepared fragment or a call-scoped TeX/Markdown renderer from `request.externalMarkup` or `request.preferredExternalMarkup`. It accepts the same hydration options as `renderPreviewInto`. |
 | `api.resolveSourceMetadata(source, options)` | Resolve source provenance for a preview key, manifest entry, or render result. It joins `entry.sources` with declared source documents and returns `{ ok, key, manifestEntry, sources }`. |
 | `api.hydrate(element, options)` | Hydrate custom wrappers that inserted cached rendered fragments themselves. It accepts the same hydration options as `renderPreviewInto`. |
 
