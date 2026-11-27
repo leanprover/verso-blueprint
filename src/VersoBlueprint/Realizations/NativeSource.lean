@@ -378,6 +378,7 @@ positions from this buffer when constructing its parser input. -/
 structure InlineBlock where
   private mk ::
   declaration : Name
+  ownerPath : String
   buffer : String
   range : Syntax.Range
   registeredRange? : Option Lsp.Range
@@ -385,7 +386,8 @@ structure InlineBlock where
   deriving Inhabited
 
 instance : BEq InlineBlock where
-  beq a b := a.declaration == b.declaration && a.range == b.range && a.registeredRange? == b.registeredRange? &&
+  beq a b := a.declaration == b.declaration && a.ownerPath == b.ownerPath &&
+    a.range == b.range && a.registeredRange? == b.registeredRange? &&
     a.contents.raw.getRange? == b.contents.raw.getRange? && a.buffer == b.buffer
 
 def selectInline (name : Name) (code : Data.Code) (registeredRange? : Option Lsp.Range := none) :
@@ -393,6 +395,8 @@ def selectInline (name : Name) (code : Data.Code) (registeredRange? : Option Lsp
   let declared := code.definedDefs.map (·.name) ++ code.definedTheorems.map (·.name)
   unless (declared.filter (· == name)).size == 1 do
     throw <| issue "source-association-unavailable" name "Inline source must select the exact declaration once"
+  let some ownerPath := code.ownerPath?
+    | throw <| issue "source-association-unavailable" name "Inline block has no registered physical owning file"
   let badBlock := issue "source-association-unavailable" name "Inline block has no original source range"
   let .original leading .. := code.stx.getHeadInfo | throw badBlock
   let some block := originalRange? leading.str code.stx | throw badBlock
@@ -403,7 +407,7 @@ def selectInline (name : Name) (code : Data.Code) (registeredRange? : Option Lsp
   let some contents := originalRange? leading.str literal | throw badBlock
   unless block.start <= contents.start && contents.start <= contents.stop && contents.stop <= block.stop do
     throw <| issue "source-association-unavailable" name "Inline contents lie outside their original block"
-  return ⟨name, leading.str, block, registeredRange?, ⟨literal⟩⟩
+  return ⟨name, ownerPath, leading.str, block, registeredRange?, ⟨literal⟩⟩
 
 /-- Reparse the selected bytes with Verso's padding and verify the exact native
 ranges. The current owning file must still match the original source buffer. -/
@@ -416,7 +420,12 @@ def prepareInlineBlock (request : Request) (sourcePath : String) (block : Inline
   let name := request.canonical
   unless block.declaration == name do
     return .error <| issue "source-association-unavailable" name "Inline block was selected for another declaration"
-  let text ← try liftM <| readSource sourcePath catch _ =>
+  let text ← try
+    let physical ← IO.FS.realPath sourcePath
+    unless physical.toString == block.ownerPath do
+      return .error <| issue "source-association-unavailable" name "Inline block selects a different physical file"
+    (·.crlfToLf) <$> readSource physical
+  catch _ =>
     return .error <| issue "source-unavailable" name "Cannot read owning inline source"
   unless block.buffer == text do
     return .error <| issue "source-association-unavailable" name "Inline block is not from the current owning file"

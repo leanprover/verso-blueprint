@@ -676,6 +676,15 @@ run_cmd liftTermElabM do
       ← NativeSource.prepareInline { request with moduleName := `WrongOwner } path code,
       ← NativeSource.prepareInline { request with range? := some { prepared.ranges.range with charUtf16 := prepared.ranges.range.charUtf16 + 1 } } path code] do
     ensure (!result.isOk) "Invalid/synthetic/stale inline association was accepted"
+  IO.FS.withTempFile fun file alternate => do
+    file.putStr text
+    file.flush
+    ensure ((← IO.FS.realPath path) != (← IO.FS.realPath alternate))
+      "Inline impersonation control must select another physical file"
+    let result ← NativeSource.prepareInline request alternate.toString code
+    ensure (match result with
+      | .error issue => issue.code == "source-association-unavailable"
+      | .ok _ => false) "A byte-identical file with a different physical path impersonated the inline owner"
 
 -- Source attribution is per registration. Only the genuine imported block and
 -- its compatible copy may use the shared declaration and native check.

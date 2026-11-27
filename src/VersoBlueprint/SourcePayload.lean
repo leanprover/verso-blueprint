@@ -145,6 +145,8 @@ def ConstantInfo.blueprintKindText : ConstantInfo → String
 
 structure Code where
   stx : Syntax
+  /-- Physical file recorded by the Lean fence producer. -/
+  ownerPath? : Option String := none
   definedDefs : Array LiterateDef := #[]
   definedTheorems : Array LiterateThm := #[]
 deriving Repr, Inhabited

@@ -329,8 +329,16 @@ private def leanImpl : CodeBlockExpanderOf CodeConfig
           let decls := (res.definedDefs.map (·.name)) ++ (res.definedTheorems.map (·.name))
           liftM <| DependencyAnalysis.inferDeclUses cfg.label decls
         else pure #[]
-      let source ← liftM <| Environment.sourceAt cfg.label `lean none `lean
-        (.leanInline { stx := codeRef, definedDefs := res.definedDefs, definedTheorems := res.definedTheorems }) codeRef
+      let fileName ← getFileName
+      let ownerPath? ← try
+        pure (some (← IO.FS.realPath fileName).toString)
+      catch _ => pure none
+      let code : Data.Code := {
+        stx := codeRef
+        ownerPath?
+        definedDefs := res.definedDefs
+        definedTheorems := res.definedTheorems }
+      let source ← liftM <| Environment.sourceAt cfg.label `lean none `lean (.leanInline code) codeRef
       let some _ ← Environment.contribute cfg.label { sources := #[source], uses := inferredUses }
         | return none
       let data : InlineCodeData := {
