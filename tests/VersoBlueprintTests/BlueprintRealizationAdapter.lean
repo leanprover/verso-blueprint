@@ -637,8 +637,13 @@ run_cmd liftTermElabM do
   let semanticDiagnostic : Diagnostic := {
     code := "semantic-context-unavailable", subject := "standalone-check"
     message := "Injected standalone semantic-context failure" }
-  let failingSemantics : NativeLean.SemanticContext := fun _ _ _ => pure (.error semanticDiagnostic)
+  let scopes ← IO.mkRef (#[] : Array ContentScope)
+  let failingSemantics : NativeLean.SemanticContext := fun scope _ _ => do
+    scopes.modify (·.push scope)
+    return .error semanticDiagnostic
   let prepared ← p.prepareValidation expected #[] failingSemantics
+  ensure ((← scopes.get) == #[.implementation])
+    "Independent proof validation must request only the descriptor its binding consumes"
   let .ok (_, checked) := prepared | throwError "Standalone source validation unexpectedly failed"
   ensure (checked.semanticContext.isNone && checked.semanticDiagnostics == #[semanticDiagnostic])
     "Standalone source validation did not retain semantic-context diagnostics"
