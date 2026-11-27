@@ -52,16 +52,32 @@ structure SelectedUse where
   selected : Except Diagnostic (Array RequirementKey)
   deriving Repr
 
+private def useOriginTag : Data.UseOrigin → String
+  | .manual => "manual"
+  | .automatic => "automatic"
+
+private def useIntentTag : Data.UseIntent → String
+  | .regular => "regular"
+  | .auxiliary => "auxiliary"
+  | .technical => "technical"
+
 /-- Identity-bearing fields of the selected use, including the exact target
-contracts. Public display spellings are insufficient for structural bindings. -/
+contracts. Public display spellings and human-readable diagnostic wording are
+excluded from structural bindings. -/
 def SelectedUse.bindingData (edge : SelectedUse) : Json :=
   let selection := match edge.selected with
-    | .ok keys => toJson ("selected", keys.map BindingEncoding.requirementKey)
-    | .error d => toJson ("unresolved", d.code, d.subject, d.message, d.origins.map fun (origin : Origin) =>
-        (Vir.nameKey origin.id, Vir.nameKey origin.moduleName, origin.source))
-  toJson (Vir.nameKey edge.source, edge.context.map BindingEncoding.context,
-    edge.realization.map Vir.nameKey, Vir.nameKey edge.role, Vir.nameKey edge.reference.label,
-    edge.reference.origin, edge.reference.intent, selection)
+    | .ok keys => Json.arr #[Json.str "selected", Json.arr (keys.map BindingEncoding.requirementKey)]
+    | .error d => Json.arr #[Json.str "unresolved", Json.str d.code, Json.arr (d.origins.map fun (origin : Origin) =>
+        Json.arr #[Json.str (Vir.nameKey origin.id), Json.str (Vir.nameKey origin.moduleName), Json.str origin.source])]
+  Json.arr #[
+    Json.str (Vir.nameKey edge.source),
+    match edge.context with | some ctx => BindingEncoding.context ctx | none => .null,
+    match edge.realization with | some r => Json.str (Vir.nameKey r) | none => .null,
+    Json.str (Vir.nameKey edge.role),
+    Json.str (Vir.nameKey edge.reference.label),
+    Json.str (useOriginTag edge.reference.origin),
+    Json.str (useIntentTag edge.reference.intent),
+    selection]
 
 /-- Provider errors retain their request's identity independently of the
 human-readable diagnostic subject, which may name a transitive dependency.

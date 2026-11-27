@@ -1376,5 +1376,18 @@ run_cmd liftTermElabM do
   ensure (toJson flat == toJson nested && flat != nested) "Control requires colliding display names"
   ensure ((withKey flat).bindingData != (withKey nested).bindingData)
     "Selected requirement identities must preserve typed names"
+  let unresolved (code subject message : String) : Capture.SelectedUse :=
+    { edge with selected := .error { code, subject, message } }
+  ensure ((unresolved "missing-target" "target" "first wording").bindingData ==
+      (unresolved "missing-target" "Target Display" "reworded diagnostic").bindingData)
+    "Unresolved use bindings must not depend on display subject or diagnostic wording"
+  ensure ((unresolved "missing-target" "target" "msg").bindingData !=
+      (unresolved "ambiguous-target" "target" "msg").bindingData)
+    "Unresolved use bindings must distinguish diagnostic codes"
+  ensure ({ edge with reference := { edge.reference with origin := .manual } }.bindingData !=
+      { edge with reference := { edge.reference with origin := .automatic } }.bindingData &&
+      { edge with reference := { edge.reference with intent := .regular } }.bindingData !=
+      { edge with reference := { edge.reference with intent := .auxiliary } }.bindingData)
+    "Selected use bindings must distinguish origin and intent"
 
 end RealizationCaptureFixture

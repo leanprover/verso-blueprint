@@ -386,7 +386,7 @@ private def bindingInputPart (input : BindingInput) : String :=
   (BindingEncoding.bindingInput input).compress
 
 private def claimPart (claim : Claim) : String :=
-  (toJson (BindingEncoding.claimKey claim.key, claim.interpretation, claim.assumptions)).compress
+  (BindingEncoding.claim claim.key claim.interpretation claim.assumptions).compress
 
 private def combineAvailability (selections : Array SelectedContent) : ContentAvailability := {
   sourceIssues := selections.flatMap (·.availability.sourceIssues)
@@ -419,7 +419,8 @@ private def Registry.selectContent (r : Registry) (documents : Std.HashMap Docum
       let source := r.selectObject documents object
       let inputs := inputs subject declaration.projection native
       let selection : SelectedContent := {
-        parts := #[(BindingEncoding.subject subject).compress, (toJson declaration.projection).compress] ++
+        parts := #[(BindingEncoding.subject subject).compress,
+            (BindingEncoding.contentScope declaration.projection).compress] ++
           inputs.map bindingInputPart ++ source.parts
         availability := {
           sourceIssues := declaration.sourceIssues ++ source.availability.sourceIssues

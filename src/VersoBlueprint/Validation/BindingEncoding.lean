@@ -74,6 +74,13 @@ def requirement (value : Requirement) : Json :=
   tagged "requirement" #[requirementKey value.key, expectation value.expected,
     coverage value.coverage, Json.arr ((canonical value.prerequisites).map requirementKey)]
 
+def contentScope : ContentScope → Json
+  | .statement => tagged "content-scope" #[Json.str "statement"]
+  | .implementation => tagged "content-scope" #[Json.str "implementation"]
+
+def claim (key : ClaimKey) (interpretation : String) (assumptions : Array String) : Json :=
+  tagged "claim" #[claimKey key, Json.str interpretation, Json.arr (assumptions.map Json.str)]
+
 def bindingInput (value : BindingInput) : Json :=
   tagged "binding-input" #[subject value.subject, name value.name, Json.str value.content]
 
