@@ -680,7 +680,7 @@ This is a VBP stale-artifact diagnostic marker, not a public interchange
 version. It may change whenever the generated-data reader needs a clean
 validation boundary.
 -/
-def manifestInternalSchemaVersion : Nat := 15
+def manifestInternalSchemaVersion : Nat := 16
 
 def manifestInternalSchemaVersionField : String := "vbpInternalSchemaVersion"
 
@@ -1339,14 +1339,21 @@ private def PreviewArtifactIndex.ofKeys
     PreviewArtifactIndex := Id.run do
   let manifestKeys := manifest.previews.foldl
     (fun (keys : Std.HashSet String) entry => keys.insert entry.key) {}
+  let codePreviewKeys := manifest.previews.foldl
+    (fun (keys : Std.HashSet String) entry =>
+      if entry.targetKind == .leanDecl || entry.targetKind == .inlineLeanCode then
+        keys.insert entry.key
+      else keys) {}
   let htmlCacheKeys := htmlKeys.foldl (fun (keys : Std.HashSet String) key => keys.insert key) {}
   let hasPair (key : String) := manifestKeys.contains key && htmlCacheKeys.contains key
+  let hasCodePair (key : String) := codePreviewKeys.contains key && htmlCacheKeys.contains key
   let mut previewKeys : Std.HashSet String := {}
   let mut defaultKeys : Lean.NameMap PreviewKey := {}
   for entry in manifest.previews do
     unless hasPair entry.key do continue
     if entry.codeOnlyPreview then
-      if entry.leanCodePreviewKeys.isEmpty || !entry.leanCodePreviewKeys.all hasPair then continue
+      if entry.leanCodePreviewKeys.isEmpty ||
+          !entry.leanCodePreviewKeys.all (fun k => k != entry.key && hasCodePair k) then continue
     previewKeys := previewKeys.insert entry.key
     if entry.defaultPreview then
       if let some key := PreviewKey.ofString? entry.key then
@@ -1879,7 +1886,16 @@ private partial def schemaForType (ty : Expr) : StateT SchemaState MetaM Json :=
             | throwError "Invalid JSON key for schema field {name}.{field}"
           let ty ← Meta.whnf (← fieldType projection)
           let ty := if isOptional && ty.isAppOf ``Option then ty.appArg! else ty
-          let schema ← schemaForType ty
+          let schema ←
+            if name == ``Realizations.NodeAssessment && field == `details then
+              pure <| Json.mkObj [
+                ("anyOf", Json.arr #[
+                  Json.mkObj [("type", Json.str "object")],
+                  Json.mkObj [("type", Json.str "null")]
+                ])
+              ]
+            else
+              schemaForType ty
           let docs? ← findDocString? env projection
           let schema :=
             match docs? with
@@ -2094,7 +2110,9 @@ private def prepareSiteInputs (state : TraverseState) (logError : String → IO 
     | .error error =>
       logError s!"Blueprint manifest: malformed external-markup entry {error.canonicalName}: {error.message}"
     | .ok stored =>
-      unless stored.data.markup.isEmpty do
+      if stored.canonicalName != stored.data.label.toString then
+        logError s!"Blueprint manifest: external-markup key {stored.canonicalName} disagrees with its label {stored.data.label}"
+      else unless stored.data.markup.isEmpty do
         requested := requested.insert stored.data.label
         markupByLabel := markupByLabel.insert stored.data.label stored.data.markup.toArray
   let mut inputs := #[]
@@ -2250,12 +2268,11 @@ private def SiteNode.row (state : TraverseState) (node : SiteNode) : NodeRow := 
       uses := buildUsesRelations state data, usedBy := buildUsedByRelations state data }
   return { label := data.label, assessment := data.assessment, primaryKey := primary.map (·.1.key), bodyless }
 
-/-- Prefer real prose on either facet, then a placed statement (witness or code)
-or proof with a body, then a standalone external witness. -/
+/-- Prefer real prose on either facet, then a code-only facet, then a witness/markup body. -/
 private def SiteNode.defaultKey? (node : SiteNode) : Option PreviewKey := do
   let entries := node.entries
   let selected ← entries.find? (fun (_, body) => body.any (·.hasProse)) <|>
-    entries.find? (fun (entry, body) => entry.isBlock && body.isSome) <|>
+    entries.find? (fun (entry, body) => entry.codeOnlyPreview && body.isSome) <|>
     entries.find? (fun (_, body) => body.isSome)
   PreviewKey.ofString? selected.1.key
 

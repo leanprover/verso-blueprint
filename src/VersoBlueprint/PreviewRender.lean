@@ -136,8 +136,24 @@ private unsafe def renderPreviewBlocksHtmlUsingCaptureUnsafe
     Lean.Elab.Term.TermElabM Verso.Output.Html := do
   let impls ← getExtensionImpls
   let state := Informal.Environment.informalExt.getState (← Lean.getEnv)
-  let nodes := TraversalIndex.Nodes.capture state snapshot?
-  let impls := TraversalIndex.withInitializer impls (fun state => TraversalIndex.Nodes.install state nodes)
+  let assessments? := snapshot?.map fun snapshot =>
+    snapshot.registry.nodes.foldl (init := ({} : Lean.NameMap Realizations.NodeAssessment)) fun acc node =>
+      acc.insert node.label (snapshot.assessmentFor node.label)
+  let assessmentFor? (label : Lean.Name) : Option Realizations.NodeAssessment := do
+    let snapshot ← snapshot?
+    let assessments ← assessments?
+    pure (assessments.getD label (snapshot.assessmentFor label))
+  let nodes := TraversalIndex.Nodes.capture state snapshot? assessmentFor?
+  let graph? := snapshot?.map fun snapshot =>
+    let assessments := assessments?.getD {}
+    Graph.buildModel snapshot (snapshot.registry.nodes.map (·.label))
+      (groupTitles := state.groups.toArray)
+      (assessmentFor := fun label => assessments.getD label (snapshot.assessmentFor label))
+  let impls := TraversalIndex.withInitializer impls fun traverseState =>
+    let traverseState := TraversalIndex.Nodes.install traverseState nodes
+    match graph? with
+    | some graph => TraversalIndex.RenderOverviews.saveData traverseState `graph graph
+    | none => traverseState
   monadLift <| renderManualBlocksHtml blocks impls
 
 @[implemented_by renderPreviewBlocksHtmlUsingCaptureUnsafe]

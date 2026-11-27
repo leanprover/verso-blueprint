@@ -94,10 +94,17 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
     if (html && manifestEntry.codeOnlyPreview === true) {
       const keys = Array.isArray(manifestEntry.leanCodePreviewKeys)
         ? manifestEntry.leanCodePreviewKeys : [];
-      const fragments = await Promise.all(keys.map(key => loadHtmlCacheEntry(key, options)));
-      const bodies = fragments.map(readHtml);
-      html = bodies.length > 0 && bodies.every(body => body.length > 0)
-        ? bodies.join("\n") : "";
+      const fragments = await Promise.all(keys.map(async (codeKey) => {
+        if (codeKey === key) return "";
+        const codeEntry = await loadManifestEntry(codeKey, options);
+        if (!codeEntry ||
+            (codeEntry.targetKind !== "leanDecl" && codeEntry.targetKind !== "inlineLeanCode")) {
+          return "";
+        }
+        return readHtml(await loadHtmlCacheEntry(codeKey, options));
+      }));
+      html = fragments.length > 0 && fragments.every(body => body.length > 0)
+        ? fragments.join("\n") : "";
     }
     if (!html) {
       if (semanticOnlyPreviewBodyMissing(manifestEntry, options)) {
@@ -519,13 +526,19 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
     }
 
     const preferences = normalizeExternalMarkupPreferences(normalized.externalMarkup);
-    const labelResult = normalized.explicitFacet ? null
-      : await requireBlueprintDataApi(opts).resolveLabel(normalized.label, opts);
-    const selectedDefault = labelResult?.manifestEntry?.defaultPreview === true &&
-      ((labelResult.manifestEntry.targetKind === "block" &&
-        labelResult.manifestEntry.sourceBackedPreview !== true) || preferences.length === 0)
+    const labelResult = await requireBlueprintDataApi(opts).resolveLabel(
+      normalized.label,
+      normalized.explicitFacet ? Object.assign({}, opts, { facet: normalized.facet }) : opts
+    );
+    const resolvedEntry = labelResult && labelResult.ok ? labelResult.manifestEntry : null;
+    const selectedDefault = !normalized.explicitFacet &&
+      resolvedEntry?.defaultPreview === true &&
+      ((resolvedEntry.targetKind === "block" &&
+        resolvedEntry.sourceBackedPreview !== true) || preferences.length === 0)
       ? labelResult : null;
-    const nativeKey = selectedDefault?.key || previewKey(normalized.label, normalized.facet);
+    const nativeKey = selectedDefault?.key ||
+      (normalized.explicitFacet && resolvedEntry ? labelResult.key : null) ||
+      previewKey(normalized.label, normalized.facet);
     const nativeResult = await resolveBlueprintPreview(nativeKey, opts);
     const isExternalFallback = !!(
       nativeResult.manifestEntry &&
@@ -533,11 +546,11 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
         nativeResult.manifestEntry.sourceBackedPreview === true)
     );
     if (nativeResult.ok && !(isExternalFallback && preferences.length > 0)) {
-      if (selectedDefault?.manifestEntry.targetKind === "externalMarkup") {
+      if (nativeResult.manifestEntry?.targetKind === "externalMarkup") {
         const result = renderNodePreviewResult(nativeResult, {
           renderMode: "external-markup",
           label: normalized.label,
-          facet: selectedDefault.facet,
+          facet: selectedDefault?.facet || normalized.facet,
           nativePreview: nativeResult,
           canonicalHtml: nativeResult.html
         });
@@ -571,7 +584,12 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
     }
 
     const manifestEntry =
-      nativeResult.manifestEntry || (await loadExternalMarkupNodeEntry(normalized.label, opts));
+      nativeResult.manifestEntry ||
+      (normalized.facet === "statement"
+        ? (resolvedEntry?.targetKind === "externalMarkup"
+            ? resolvedEntry
+            : await loadExternalMarkupNodeEntry(normalized.label, opts))
+        : null);
     if (!manifestEntry) {
       const result = renderNodePreviewResult({
         ok: false,

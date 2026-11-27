@@ -249,8 +249,8 @@ private def checkObjectSchema (name : String) (fields : Array (String Ã— (Json â
 #eval checkObjectSchema "Informal.Realizations.NodeAssessment" #[
   ("proofRoleComplete", schemaHasValueNull fun schema =>
     (schema.getObjValAs? String "type").toOption == some "boolean"),
-  ("details", fun schema => schema.getObj?.toOption.any fun fields =>
-    fields.toList.all (fun (key, _) => key == "description"))
+  ("details", schemaHasValueNull fun schema =>
+    (schema.getObjValAs? String "type").toOption == some "object")
 ]
 
 #guard_msgs in

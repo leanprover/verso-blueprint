@@ -737,7 +737,7 @@ carries the captured validation. When the label has a display resource,
 `primaryKey` identifies it. For a bodyless occurrence, `primaryKey` is null
 and `bodyless` supplies the occurrence metadata and canonical link. The node
 still participates in status, counts and the work queue.
-The internal manifest schema is version 15. Rebuild generated sites to migrate.
+The internal manifest schema is version 16. Rebuild generated sites to migrate.
 The `metadata` query selects nodes with owner, tag, priority, or effort metadata.
 `workQueueItems` reports the next actionable statement or proof step from each
 node's assessment. A graph-free chapter has the same work queue as one that
@@ -802,10 +802,9 @@ Group membership is normalized: an informal block or source-backed
 external-markup entry's optional `parent` names one record in the manifest's
 top-level `groups` array. Each group stores its traversal-ordered statement
 members once. Group labels are unique, each member label belongs to at most one
-group, and participating manifest entries must agree with the catalog on group
-ownership and `parentTitle`. A member with a preview key must join to a matching
-block or external-markup entry. A member without a preview key may stand on its
-group metadata alone, for example when rendering its body produced no content.
+group, and participating manifest entries and bodyless node rows must agree with the catalog on group
+ownership and `parentTitle`. Every group member joins either a matching
+block/external-markup preview entry or a `nodes[*].bodyless` row.
 Both `vbp check` and the browser manifest loader enforce these joins and reject
 conflicting ownership, duplicate membership, and broken preview references. Browser clients can join these records
 with `loadGroup(entry.parent)` or enumerate them with `loadGroups()`; Lean

@@ -274,11 +274,11 @@ private def buildGroupMembersCache (blocks : Array BlockData) :
     Data.LabelMap (Array Data.Label) :=
   blocks.foldl
       (init := (Std.TreeMap.empty : Data.LabelMap (Array Data.Label))) fun cache block =>
-    match block.isProof, block.parent with
-    | false, some parent =>
+    match block.parent with
+    | some parent =>
         let members := cache.find? parent |>.getD #[]
-        cache.insert parent (members.push block.label)
-    | _, _ => cache
+        if members.contains block.label then cache else cache.insert parent (members.push block.label)
+    | none => cache
 
 /--
 Cache relation-panel indexes in traversal domains before HTML emission.

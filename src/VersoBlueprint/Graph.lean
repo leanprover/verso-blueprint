@@ -1415,6 +1415,11 @@ deriving FromJson
 /-- Decode only finalized graph records whose materialized projections agree. -/
 instance : FromJson GraphData where
   fromJson? json := do
+    if let .ok rawNodes := json.getObjValAs? (Array Json) "nodes" then
+      for rawNode in rawNodes do
+        if (rawNode.getObjVal? "assessment").toOption.isNone ||
+            (rawNode.getObjVal? "actionableStage").toOption.isNone then
+          throw "finalized graph node must explicitly include assessment and actionableStage"
     let decoded ← fromJson? (α := GraphDataJson) json
     if decoded.schemaVersion != graphDataSchemaVersion then
       throw s!"unsupported graph schema version {decoded.schemaVersion}; expected {graphDataSchemaVersion}"

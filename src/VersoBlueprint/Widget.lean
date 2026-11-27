@@ -330,7 +330,8 @@ def buildFromCapture (label : Name)
     let graphModel := Informal.Graph.buildModel snapshot #[label] (groupTitles := state.groups.toArray)
     let dot := graphModel.toDotWith { direction := .LR } Informal.Graph.GraphDotStyle.compact
     let legends := toJson graphModel.legends
-    let assessment := snapshot.assessmentFor label
+    let assessment := (graphModel.nodes.find? (·.label == label)).bind (·.assessment)
+      |>.getD (snapshot.assessmentFor label)
     pure {
       dot, previewSelection?, legends
       validationMessage? := some assessment.nativeStatusMessage

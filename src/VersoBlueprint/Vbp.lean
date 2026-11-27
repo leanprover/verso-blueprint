@@ -610,6 +610,7 @@ def checkGeneratedData (data : PersistedGeneratedData) : Array String :=
     duplicateKeyErrors "HTML cache" (data.htmlCache.entries.map (·.key))
   let cacheErrors := data.htmlCache.entries.foldl (init := keyErrors) fun errors entry =>
     if entry.hasBody then errors else errors.push s!"empty HTML cache body for key {entry.key}"
+  let manifestIndex := manifest.index
   let errors := manifest.previews.foldl
     (fun errors entry =>
       let errors :=
@@ -623,10 +624,14 @@ def checkGeneratedData (data : PersistedGeneratedData) : Array String :=
             errors.push s!"self-referential Lean preview key on {entry.key}"
           else
             let errors :=
-              if index.hasManifestKey key then
-                errors
-              else
+              match manifestIndex.findEntry? key with
+              | none =>
                 errors.push s!"missing manifest entry for Lean preview key {key}"
+              | some target =>
+                if target.targetKind == .leanDecl || target.targetKind == .inlineLeanCode then
+                  errors
+                else
+                  errors.push s!"Lean preview key on {entry.key} does not target a Lean code preview: {key}"
             pushMissingCacheKey index errors s!"Lean preview key on {entry.key}" key)
         errors
       let errors := checkRelatedEntries index s!"uses of {entry.key}" entry.uses errors

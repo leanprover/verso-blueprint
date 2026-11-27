@@ -2528,6 +2528,13 @@ class TestPreviewRuntimeRegressions:
                 const byAuthoredStatement = await preview.resolveLabel("E8-Lattice", { facet: "statement" });
                 const externalStatement = await preview.resolveLabel("semantic_only_external", { facet: "statement" });
                 const externalProof = await preview.resolveLabel("semantic_only_external", { facet: "proof" });
+                const proofRenderHost = document.createElement("div");
+                document.body.appendChild(proofRenderHost);
+                const proofExternalFallback = await preview.renderNode(proofRenderHost, {
+                    label: "semantic_only_external",
+                    facet: "proof",
+                    externalMarkup: { prefer: [{ display: "source" }] }
+                });
                 return {
                     resolvedOk: resolved.ok,
                     resolvedReason: resolved.reason,
@@ -2539,6 +2546,8 @@ class TestPreviewRuntimeRegressions:
                     byAuthoredStatementKey: byAuthoredStatement.ok ? byAuthoredStatement.key : null,
                     externalStatementKey: externalStatement.ok ? externalStatement.key : null,
                     externalProofOk: externalProof.ok,
+                    proofExternalFallbackOk: proofExternalFallback.ok,
+                    proofExternalFallbackReason: proofExternalFallback.reason,
                     manifestStatus: preview.readManifestStatus(),
                     htmlCacheStatus: preview.readHtmlCacheStatus(),
                     html: host.innerHTML
@@ -2557,6 +2566,8 @@ class TestPreviewRuntimeRegressions:
         assert result["byAuthoredStatementKey"] == "«E8-Lattice»--statement"
         assert result["externalStatementKey"] == "externalMarkup:semantic_only_external"
         assert result["externalProofOk"] is False
+        assert result["proofExternalFallbackOk"] is False
+        assert result["proofExternalFallbackReason"] == "external-markup-entry-missing"
         assert result["manifestStatus"]["state"] == "ready"
         assert result["htmlCacheStatus"]["state"] == "ready"
         assert "Preview body unavailable" in result["html"]
