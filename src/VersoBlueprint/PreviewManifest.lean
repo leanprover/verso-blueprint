@@ -1830,6 +1830,8 @@ private partial def schemaForType (ty : Expr) : StateT SchemaState MetaM Json :=
       pure <| Json.mkObj [("type", Json.str "integer")]
   | .const ``Float _ =>
       pure <| Json.mkObj [("type", Json.str "number")]
+  | .const ``Lean.Json _ =>
+      pure <| Json.mkObj []
   | .const ``Array _ =>
       let itemSchema ← schemaForType args[0]!
       pure <| Json.mkObj [("type", Json.str "array"), ("items", itemSchema)]

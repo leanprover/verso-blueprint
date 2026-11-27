@@ -39,7 +39,27 @@ structure NodeAssessment where
   proofDependenciesComplete : Bool := false
   /-- Safe output only: no source bodies, raw contributions or content bindings. -/
   details : Lean.Json := .null
-  deriving Inhabited, BEq, Lean.ToJson, Lean.FromJson
+  deriving Inhabited, BEq, Lean.ToJson
+
+/-- The persisted assessment always supplies every field, including nullable
+proof-role coverage and the public inspection details. -/
+instance : Lean.FromJson NodeAssessment where
+  fromJson? json := do
+    let details ← json.getObjVal? "details"
+    unless details == .null || details.getObj?.isOk do
+      throw "assessment details must be a JSON object or null"
+    return {
+      hasNativeDeclarations := ← json.getObjValAs? Bool "hasNativeDeclarations"
+      hasAxiomLike := ← json.getObjValAs? Bool "hasAxiomLike"
+      nativeStatementComplete := ← json.getObjValAs? Bool "nativeStatementComplete"
+      hasNativeBodyRequirement := ← json.getObjValAs? Bool "hasNativeBodyRequirement"
+      nativeBodyComplete := ← json.getObjValAs? Bool "nativeBodyComplete"
+      proofRoleComplete := ← json.getObjVal? "proofRoleComplete" >>= Lean.fromJson?
+      requiredComplete := ← json.getObjValAs? Bool "requiredComplete"
+      selectedLeanUseCount := ← json.getObjValAs? Nat "selectedLeanUseCount"
+      statementDependenciesComplete := ← json.getObjValAs? Bool "statementDependenciesComplete"
+      proofDependenciesComplete := ← json.getObjValAs? Bool "proofDependenciesComplete"
+      details }
 
 instance : Repr NodeAssessment where
   reprPrec value _ := Std.Format.text (Lean.toJson value).compress

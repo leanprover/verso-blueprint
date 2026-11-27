@@ -517,48 +517,57 @@ private def checkManifestGroupIntegrity
                 Informal.PreviewManifest.labelString group.label
       | none =>
           memberGroups := memberGroups.insert member.label group.label
-  let mut matchedMembers : NameSet := {}
-  for entry in manifest.previews do
-    if entry.targetKind != .block && entry.targetKind != .externalMarkup then
-      continue
-    if entry.label == .anonymous then
-      errors := errors.push s!"entry {entry.key} is missing label"
-      continue
-    match entry.parent with
+  let checkJoin (state : Array String × NameSet) (context : String)
+      (label : Name) (parent : Option Name) (parentTitle : Option String) := Id.run do
+    let mut errors := state.1
+    let matchedMembers := state.2
+    if label == .anonymous then
+      return (errors.push s!"{context} is missing label", matchedMembers)
+    match parent with
     | none =>
-        if entry.parentTitle.isSome then
-          errors := errors.push s!"entry {entry.key} has parentTitle without parent"
-        if let some group := memberGroups.get? entry.label then
+        if parentTitle.isSome then
+          errors := errors.push s!"{context} has parentTitle without parent"
+        if let some group := memberGroups.get? label then
           errors := errors.push <|
-            s!"entry {entry.key} has no parent but is listed in manifest group: " ++
+            s!"{context} has no parent but is listed in manifest group: " ++
               Informal.PreviewManifest.labelString group
     | some parent =>
         if parent == .anonymous then
-          errors := errors.push s!"entry {entry.key} has invalid parent"
-          continue
+          return (errors.push s!"{context} has invalid parent", matchedMembers)
         match groupsByLabel.get? parent with
         | none =>
           errors := errors.push <|
-            s!"entry {entry.key} references missing manifest group: " ++
+            s!"{context} references missing manifest group: " ++
               Informal.PreviewManifest.labelString parent
         | some group =>
-            if entry.parentTitle != some group.title then
+            if parentTitle != some group.title then
               errors := errors.push <|
-                s!"entry {entry.key} has inconsistent parentTitle for manifest group: " ++
+                s!"{context} has inconsistent parentTitle for manifest group: " ++
                   Informal.PreviewManifest.labelString parent
-        match memberGroups.get? entry.label with
+        match memberGroups.get? label with
         | none =>
             errors := errors.push <|
-              s!"entry {entry.key} is missing from manifest group: " ++
+              s!"{context} is missing from manifest group: " ++
                 Informal.PreviewManifest.labelString parent
         | some memberGroup =>
             if memberGroup == parent then
-              matchedMembers := matchedMembers.insert entry.label
+              return (errors, matchedMembers.insert label)
             else
               errors := errors.push <|
-                s!"entry {entry.key} belongs to manifest group " ++
+                s!"{context} belongs to manifest group " ++
                   s!"{Informal.PreviewManifest.labelString memberGroup} but references " ++
                   Informal.PreviewManifest.labelString parent
+    return (errors, matchedMembers)
+  let mut joins : Array String × NameSet := (errors, {})
+  for entry in manifest.previews do
+    if entry.targetKind == .block || entry.targetKind == .externalMarkup then
+      joins := checkJoin joins s!"entry {entry.key}" entry.label entry.parent entry.parentTitle
+  for row in manifest.nodes do
+    if let some node := row.bodyless then
+      let label := Informal.PreviewManifest.labelString row.label
+      joins := checkJoin joins s!"bodyless node {label}" row.label node.parent node.parentTitle
+  errors := joins.1
+  let matchedMembers := joins.2
   -- Semantic group members survive blank resource omission. A member only
   -- requires a preview entry when it advertises a preview key.
   for group in manifest.groups do
@@ -611,12 +620,15 @@ def checkGeneratedData (data : PersistedGeneratedData) : Array String :=
           errors
       let errors := entry.leanCodePreviewKeys.foldl
         (fun errors key =>
-          let errors :=
-            if index.hasManifestKey key then
-              errors
-            else
-              errors.push s!"missing manifest entry for Lean preview key {key}"
-          pushMissingCacheKey index errors s!"Lean preview key on {entry.key}" key)
+          if key == entry.key then
+            errors.push s!"self-referential Lean preview key on {entry.key}"
+          else
+            let errors :=
+              if index.hasManifestKey key then
+                errors
+              else
+                errors.push s!"missing manifest entry for Lean preview key {key}"
+            pushMissingCacheKey index errors s!"Lean preview key on {entry.key}" key)
         errors
       let errors := checkRelatedEntries index s!"uses of {entry.key}" entry.uses errors
       checkRelatedEntries index s!"used-by of {entry.key}" entry.usedBy errors)

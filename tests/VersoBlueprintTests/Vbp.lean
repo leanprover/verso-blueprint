@@ -1324,6 +1324,47 @@ private def queryExamples : List (String × List String) := [
       emptyEntryLabelErrors.any (· == "entry informal:group_member:statement is missing label") &&
       invalidParentErrors.any (· == "entry informal:group_member:statement has invalid parent")
 
+/- Bodyless rows have the same parent and group membership checks as facets. -/
+/-- info: true -/
+#guard_msgs in
+#eval show Bool from Id.run do
+  let some peer := sampleGroupManifest.previews.find? (·.label == label "group_peer") | return false
+  let some group := sampleGroupManifest.groups[0]? | return false
+  let bodyless := peer.nodeMetadata
+  let manifest := { sampleGroupManifest with
+    previews := sampleGroupManifest.previews.filter (·.key != peer.key) }
+  let cache := { sampleGroupCache with entries := sampleGroupCache.entries.filter (·.key != peer.key) }
+  let check (manifest : ManifestFile) (node : Informal.PreviewManifest.NodeOccurrenceMetadata) :=
+    let manifest := { manifest with nodes := manifest.nodes.map fun row =>
+      if row.label == node.label then { row with primaryKey := none, bodyless := some node } else row }
+    VersoBlueprint.Vbp.checkGeneratedData (persistedFiles manifest cache)
+  let missingMember := { manifest with
+    groups := #[{ group with entries := group.entries.filter (·.label != peer.label) }] }
+  return (check manifest bodyless).isEmpty &&
+    (check manifest { bodyless with parent := none }).contains
+      "bodyless node group_peer has parentTitle without parent" &&
+    (check manifest { bodyless with parent := none }).contains
+      "bodyless node group_peer has no parent but is listed in manifest group: sample_group" &&
+    (check manifest { bodyless with parentTitle := some "Stale group" }).contains
+      "bodyless node group_peer has inconsistent parentTitle for manifest group: sample_group" &&
+    (check { manifest with groups := #[] } bodyless).contains
+      "bodyless node group_peer references missing manifest group: sample_group" &&
+    (check missingMember bodyless).contains "bodyless node group_peer is missing from manifest group: sample_group"
+
+/- An unadvertised inert code-only shell is valid with no code keys. -/
+/-- info: true -/
+#guard_msgs in
+#eval
+  let key := "informal:code_shell:statement"
+  let entry : Informal.PreviewManifest.Entry := {
+    key, targetKind := .block, label := label "code_shell", facet := .statement
+    title := "Code shell", codeOnlyPreview := true }
+  let cache : HtmlCacheFile := { entries := #[{ key, html := "<span></span>" }] }
+  let check (keys : Array String) := VersoBlueprint.Vbp.checkGeneratedData <|
+    persistedFiles (withNodeRows { previews := #[{ entry with leanCodePreviewKeys := keys }] }) cache
+  (check #[]).isEmpty &&
+    check #[key] == #[s!"self-referential Lean preview key on {key}"]
+
 /-- info: true -/
 #guard_msgs in
 #eval

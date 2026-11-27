@@ -246,6 +246,14 @@ private def checkObjectSchema (name : String) (fields : Array (String × (Json �
 ]
 
 #guard_msgs in
+#eval checkObjectSchema "Informal.Realizations.NodeAssessment" #[
+  ("proofRoleComplete", schemaHasValueNull fun schema =>
+    (schema.getObjValAs? String "type").toOption == some "boolean"),
+  ("details", fun schema => schema.getObj?.toOption.any fun fields =>
+    fields.toList.all (fun (key, _) => key == "description"))
+]
+
+#guard_msgs in
 #eval checkObjectSchema "Informal.Graph.GraphData" #[
   ("legends", arrayOfRef "#/$defs/Informal.Graph.Legend")
 ]
@@ -271,8 +279,11 @@ private def checkObjectSchema (name : String) (fields : Array (String × (Json �
   let mentionsMathlib (legend : Informal.Graph.Legend) :=
     legend.groups.any (·.items.any (·.label == "In Mathlib"))
   let graph := model.finish "legend" {}
+  let uncaptured := ({ nodes := #[{ node with statementStatus := .unassessed }] } :
+    Informal.Graph.GraphModel).finish "legend" {}
   graph.legends.any mentionsMathlib && !mentionsMathlib ordinary.fullLegend &&
-    match (toJson graph).getObj? with
+    (fromJson? (α := Informal.Graph.GraphData) (toJson uncaptured)).isOk &&
+    match (toJson uncaptured).getObj? with
     | .error _ => false
     | .ok fields =>
       let forged := Json.obj (fields.insert "legends" (.arr #[]))

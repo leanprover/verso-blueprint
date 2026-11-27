@@ -242,8 +242,8 @@ structure NodeData where
   assessment : Option Realizations.NodeAssessment := none
   /-- Canonical next step, omitted when a selected prerequisite blocks the relevant work. -/
   actionableStage : Option String := none
-  statementStatus : StatementStatus := .blocked
-  proofStatus : ProofStatus := .none
+  statementStatus : StatementStatus := .unassessed
+  proofStatus : ProofStatus := .unassessed
   warnings : WarningFlags := {}
   visual : NodeVisual
 deriving Inhabited, Repr, ToJson, FromJson, Quote
@@ -1440,6 +1440,9 @@ instance : FromJson GraphData where
         if (node.statementStatus, node.proofStatus) != statusesForAssessment assessment ||
             node.actionableStage != actionableStageForAssessment? assessment then
           throw s!"graph node {node.label}: statuses or actionable stage disagree with the captured assessment"
+      else unless node.actionableStage.isNone && node.statementStatus == .unassessed &&
+          node.proofStatus == .unassessed do
+        throw s!"graph node {node.label}: statuses or actionable stage require a captured assessment"
     let some firstVariant := decoded.variants[0]?
       | throw "finalized graph contains no render variants"
     let expected := model.finish decoded.key firstVariant.options

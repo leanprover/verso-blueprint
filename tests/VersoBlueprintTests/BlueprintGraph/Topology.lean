@@ -51,6 +51,41 @@ private def topologyNode
     !(decode { node with actionableStage := some "statement" }).isOk &&
     !(decode { node with assessment := none, actionableStage := some "spurious" }).isOk
 
+/- A finalized graph cannot publish assessment statuses or work without a capture. -/
+/-- info: true -/
+#guard_msgs in
+#eval
+  let node := topologyNode `uncaptured
+  let decode (node : NodeData) := fromJson? (α := GraphData) <|
+    toJson (({ nodes := #[node] } : GraphModel).finish "uncaptured" {})
+  let rejected (node : NodeData) := match decode node with
+    | .error message => message.contains "require a captured assessment"
+    | .ok _ => false
+  (decode node).isOk &&
+    node.statementStatus == .unassessed && node.proofStatus == .unassessed &&
+    (#[{ node with actionableStage := some "statement" },
+       { node with actionableStage := some "proof" },
+       { node with statementStatus := .ready },
+       { node with statementStatus := .mathlib },
+       { node with proofStatus := .none }]).all rejected
+
+/- Every assessment field is present in the wire shape, including nullable fields. -/
+/-- info: true -/
+#guard_msgs in
+#eval show Bool from Id.run do
+  let assessment : Realizations.NodeAssessment := {}
+  let decode := fromJson? (α := Realizations.NodeAssessment)
+  let .ok fields := (toJson assessment).getObj? | return false
+  let details := Json.mkObj [("assessment", Json.mkObj []), ("uses", Json.arr #[])]
+  let checkRoundTrip (assessment : Realizations.NodeAssessment) :=
+    (decode (toJson assessment)).toOption == some assessment
+  return (#[assessment, { assessment with proofRoleComplete := some true, details },
+      { assessment with proofRoleComplete := some false, details }]).all checkRoundTrip &&
+    fields.toList.all (fun (key, _) => !(decode (.obj (fields.erase key))).isOk) &&
+    (#[Json.str "null", Json.arr #[], Json.bool true, toJson 1]).all (fun invalid =>
+      !(decode (.obj (fields.insert "details" invalid))).isOk) &&
+    !(decode (.obj (fields.insert "proofRoleComplete" (.str "true")))).isOk
+
 /- A wire edge cannot introduce a dependency absent from its target node. -/
 /-- info: true -/
 #guard_msgs in
