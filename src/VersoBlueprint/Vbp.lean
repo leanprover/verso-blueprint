@@ -568,11 +568,10 @@ private def checkManifestGroupIntegrity
       joins := checkJoin joins s!"bodyless node {label}" row.label node.parent node.parentTitle
   errors := joins.1
   let matchedMembers := joins.2
-  -- Semantic group members survive blank resource omission. A member only
-  -- requires a preview entry when it advertises a preview key.
+  -- Every member joins to a facet or to the metadata of its bodyless node.
   for group in manifest.groups do
     for member in group.entries do
-      if member.previewKey.isSome && !matchedMembers.contains member.label then
+      unless matchedMembers.contains member.label do
         errors := errors.push <|
           s!"manifest group {Informal.PreviewManifest.labelString group.label} member " ++
             s!"{Informal.PreviewManifest.labelString member.label} has no matching manifest entry"
