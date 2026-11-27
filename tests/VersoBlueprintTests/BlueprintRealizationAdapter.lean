@@ -1050,6 +1050,10 @@ run_cmd liftTermElabM do
   ensure (openedScoped.format == `markdown &&
       openedScoped.rawDocstring == " A preceding open participates in resolving a subsequent open scoped. ")
     "Preceding open should participate in resolving a subsequent open scoped"
+  let openedScopedIn ← obtain (← select ``openedThenScopedIn text)
+  ensure (openedScopedIn.format == `markdown &&
+      openedScopedIn.rawDocstring == " A preceding open participates in resolving a subsequent open scoped in. ")
+    "Preceding open should participate in resolving a subsequent open scoped in"
   for inheritedName in #[
       ``RealizationParserFixture.standaloneInherited,
       ``RealizationParserFixture.renamedInherited,

@@ -126,3 +126,11 @@ open scoped Tokens
 /-- A preceding open participates in resolving a subsequent open scoped. -/
 theorem openedThenScoped : ⦉ True ⦊ := True.intro
 end
+
+section
+open RealizationParserFixture
+
+open scoped Tokens in
+/-- A preceding open participates in resolving a subsequent open scoped in. -/
+theorem openedThenScopedIn : ⦉ True ⦊ := True.intro
+end
