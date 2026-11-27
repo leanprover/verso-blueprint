@@ -75,6 +75,7 @@ only its own selection contract, never the declaration it is attached to. -/
 def dependencySelectionValidator : Name := `blueprint.dependencySelection
 def selectedUses : Name := `blueprint.selectedUses
 def selectedUsesFor (key : RequirementKey) : Name := selectedUses ++ key.name
+def mathematicalProofCriterion : Name := `mathematicalProof
 
 def Expectation.isNativeDeclarationCheck : Expectation → Bool
   | .check validator => validator == NativeLean.statementValidator || validator == NativeLean.bodyValidator

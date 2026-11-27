@@ -736,7 +736,7 @@ def Registry.resultFor (r : Registry) (subject : Subject) : Result := Id.run do
       let supported := keys.any fun key =>
         (r.requirement? key).any fun req => match req.expected with
           | .proves witness => req.key.subject == subject && r.ownTypeEndpoints relation witness
-          | .review criterion _ => criterion == `mathematicalProof &&
+          | .review criterion _ => criterion == mathematicalProofCriterion &&
               (req.key.subject == subject || req.key.subject.translation? == some relation.key)
           | _ => false
       unless supported do

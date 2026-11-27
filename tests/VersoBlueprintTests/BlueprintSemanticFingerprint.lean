@@ -76,6 +76,16 @@ run_cmd liftCoreM do
   for (label, lhs, rhs) in cases do
     ensure (Semantic.fingerprint lhs != Semantic.fingerprint rhs)
       s!"Fingerprint omitted an expression field: {label}"
+  -- Golden stability vectors: catch unintended serializer drift across toolchain upgrades.
+  let goldenExpr := Expr.forallE `n (.const `Nat []) (.app (.const `Nat.succ []) (.bvar 0)) .default
+  ensure (Semantic.fingerprint goldenExpr ==
+      "809c5ec7fda6176bee7ec9ed0753890defe64d2851adca7f1f028daecedce328")
+    "Semantic expression fingerprint golden vector changed unexpectedly"
+  ensure ((Informal.Validation.BindingEncoding.contentScope .statement).compress ==
+      "[\"content-scope\",\"statement\"]" &&
+      (Informal.Validation.BindingEncoding.claim ⟨⟨`proj, `tr⟩, `c⟩ "interp" #["a1", "a2"]).compress ==
+      "[\"claim\",[\"claim-key\",[\"translation-key\",\"s70726f6a/\",\"s7472/\"],\"s63/\"],\"interp\",[\"a1\",\"a2\"]]")
+    "BindingEncoding golden vector changed unexpectedly"
 
   -- Display and Repr both collide for these distinct structured names.
   let nameA := Name.mkSimple "foo.bar»"
