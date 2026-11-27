@@ -5,6 +5,7 @@ Author: Emilio J. Gallego Arias
 -/
 
 import VersoBlueprint.Commands.Summary.Collect
+import VersoBlueprint.RenderModel
 import VersoBlueprintTests.BlueprintRealizationCapture
 
 open Lean Elab Command Term
@@ -39,6 +40,18 @@ run_cmd liftTermElabM do
     "Summary text must identify the selected Blueprint prerequisites tracked by this count"
   let snapshot ← obtain (← Capture.capture)
   let summary ← liftM (m := CoreM) (Commands.buildSummary snapshot)
+  let assessments := snapshot.assessmentMap
+  let assessmentFor (label : Name) := assessments.getD label default
+  let state := Environment.informalExt.getState (← getEnv)
+  let labels := snapshot.registry.nodes.map (·.label)
+  let preparedNodes := TraversalIndex.Nodes.capture state (some snapshot) (fun label => assessments.get? label)
+  let preparedGraph := Graph.buildModel snapshot labels (assessmentFor := assessmentFor)
+  let preparedSummary ← liftM (m := CoreM) (Commands.buildSummary snapshot (assessmentFor := assessmentFor))
+  ensure (assessments.toArray.size == labels.size &&
+      toJson preparedNodes == toJson (TraversalIndex.Nodes.capture state (some snapshot)) &&
+      toJson preparedGraph == toJson (Graph.buildModel snapshot labels) &&
+      toJson preparedSummary == toJson summary)
+    "Precomputed assessments must produce the same render nodes, graph, and summary as standalone capture"
   ensure (summary.totalEntries == snapshot.registry.nodes.size)
     "Summary inventory must come from admitted realization nodes"
   ensure (summary.pendingInformalEntries.any (·.label == Name.mkSimple "capture.complete"))

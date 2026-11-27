@@ -304,14 +304,16 @@ def adoptedStatementVerified (snapshot : Informal.Realizations.Capture.Snapshot)
 /-- Project an optional completed capture into the node records used by rendering.
 Without a capture, checks are absent and adopted statement bodies stay hidden. -/
 def capture (state : Informal.Environment.State)
-    (snapshot? : Option Informal.Realizations.Capture.Snapshot := none) :
+    (snapshot? : Option Informal.Realizations.Capture.Snapshot := none)
+    (assessmentFor? : Name → Option Informal.Realizations.NodeAssessment :=
+      fun label => snapshot?.map (·.assessmentFor label)) :
     Array Informal.RenderNode :=
   let nativeChecks := snapshot?.map fun snapshot =>
     snapshot.nativeChecks.foldl (init := ({} : Std.HashMap Informal.Realizations.ObjectKey Informal.Data.ProvedStatus))
       fun checks checked => checks.insert checked.declaration checked.status
   state.inventory.toArray.map fun (label, node) =>
     let rendered := Informal.RenderNode.ofNode label node (node.owner.bind state.authors.get?)
-      (snapshot?.map (·.assessmentFor label)) nativeChecks
+      (assessmentFor? label) nativeChecks
     if let some snapshot := snapshot? then
       if let some source := node.sources.find? (·.adoption.isSome) then
         { rendered with adoptedStatementAvailable := some (adoptedStatementVerified snapshot source) }

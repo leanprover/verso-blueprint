@@ -800,12 +800,13 @@ private def nodeTitle (resolveTitle? : Name → Option String) (label : Name) (f
 
 private def capturedNodeData
     (snapshot : Realizations.Capture.Snapshot)
+    (assessmentFor : Name → Realizations.NodeAssessment)
     (resolveHref? : Name → Option String)
     (resolveTitle? : Name → Option String)
     (label : Name) : NodeData :=
   match snapshot.registry.nodes.find? (·.label == label) with
   | some node =>
-    let assessment := snapshot.assessmentFor label
+    let assessment := assessmentFor label
     let (statement, proof) := statusesForAssessment assessment
     let title := nodeTitle resolveTitle? label node.title
     {
@@ -849,9 +850,10 @@ def buildModel
     (roots : Array Name)
     (resolveHref? : Name → Option String := fun _ => none)
     (resolveTitle? : Name → Option String := fun _ => none)
-    (groupTitles : Array (Name × String) := #[]) : GraphModel :=
+    (groupTitles : Array (Name × String) := #[])
+    (assessmentFor : Name → Realizations.NodeAssessment := snapshot.assessmentFor) : GraphModel :=
   {
-    nodes := (expandLabels snapshot roots).map (capturedNodeData snapshot resolveHref? resolveTitle?)
+    nodes := (expandLabels snapshot roots).map (capturedNodeData snapshot assessmentFor resolveHref? resolveTitle?)
     groupMetadata := groupMetadataFromTitles groupTitles
   }
 

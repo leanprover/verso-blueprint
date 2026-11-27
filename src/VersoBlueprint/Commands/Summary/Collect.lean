@@ -267,11 +267,12 @@ private structure SummaryBuildContext where
   usageMap : NameMap UsageCounts
   reverseMap : NameMap (Array Name)
 
-private def mkSummaryBuildContext (state : Environment.State) (snapshot : Realizations.Capture.Snapshot) : SummaryBuildContext :=
+private def mkSummaryBuildContext (state : Environment.State) (snapshot : Realizations.Capture.Snapshot)
+    (assessmentFor : Name → Realizations.NodeAssessment) : SummaryBuildContext :=
   let entries := snapshot.registry.nodes.map fun node => (node.label, node)
   let nodeDetails := entries.foldl (init := ({} : Std.HashMap Name SummaryNodeDetails)) fun acc (label, node) =>
     acc.insert label {
-      assessment := snapshot.assessmentFor label
+      assessment := assessmentFor label
       leanSummary := nodeLeanSummary snapshot label node }
   let parentChildren := entries.foldl (init := ({} : NameMap (Array Name))) fun acc (child, node) =>
     match node.parent with
@@ -677,7 +678,8 @@ private def collectTagRollups (ctx : SummaryBuildContext) : List TagRollupItem :
       }
   (sortTagRollupItems (rollups.toArray.map fun pair => pair.2)).toList
 
-def buildSummary (snapshot : Realizations.Capture.Snapshot) : CoreM Summary := do
+def buildSummary (snapshot : Realizations.Capture.Snapshot)
+    (assessmentFor : Name → Realizations.NodeAssessment := snapshot.assessmentFor) : CoreM Summary := do
   reportImportedConflicts
   let showDebugDiagnostics :=
     (← getOptions).get
@@ -685,7 +687,7 @@ def buildSummary (snapshot : Realizations.Capture.Snapshot) : CoreM Summary := d
       verso.blueprint.summary.debugDiagnostics.defValue
   let env ← getEnv
   let state := informalExt.getState env
-  let ctx := mkSummaryBuildContext state snapshot
+  let ctx := mkSummaryBuildContext state snapshot assessmentFor
   let summary := collectSummaryOverview ctx
   let actionableItems := collectActionableItems ctx
   let actionablePriorities := actionableItems.filter (·.downstreamUses > 0)
