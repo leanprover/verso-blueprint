@@ -178,6 +178,35 @@ run_cmd liftTermElabM do
   let groupedView := snapshot.assessmentFor (Name.mkSimple "capture.grouped")
   ensure (groupedView.nativeStatementComplete && !groupedView.nativeBodyComplete &&
     !groupedView.requiredComplete) "Public assessment borrowed the complete sibling's proof"
+  -- Statement-only is a legal theorem-shaped classification in isolation.
+  -- It cannot override the same declaration's independently prepared proof role.
+  let some admittedAnswer := observations.checks.find? (·.request.witness.native == (toString ``groupedAdmitted))
+    | throwError "Missing the genuinely admitted sibling's check"
+  let .ok admittedCheck := admittedAnswer.result | throwError "Missing classified admitted sibling"
+  let some admittedClassification := admittedCheck.classification
+    | throwError "The admitted sibling must have a known classification"
+  let weakenedCheck := { admittedCheck with
+    classification := some { admittedClassification with roles := #[`statement] } }
+  ensure (admittedCheck.roles == #[`statement, `proof] && admittedCheck.body.outcome == .failed &&
+      weakenedCheck.rolesAgree)
+    "Disagreement control must retain genuinely failed proof evidence and a legal replay shape"
+  let disagreement ← obtain (Capture.evaluate plan { observations with checks := observations.checks.map fun answer =>
+    if answer.request == admittedAnswer.request then { answer with result := .ok weakenedCheck } else answer })
+  let groupedLabel := Name.mkSimple "capture.grouped"
+  let disagreed := disagreement.assessmentFor groupedLabel
+  let admittedProof := key "capture.grouped" ``groupedAdmitted
+  let cleanProof := key "capture.grouped" ``groupedComplete
+  ensure (!disagreed.nativeStatementComplete && !disagreed.nativeBodyComplete &&
+    disagreed.proofRoleComplete == some false && !disagreed.requiredComplete &&
+    (disagreement.registry.requirement? admittedProof).isSome &&
+    !(disagreement.registry.localResult admittedProof).complete &&
+    !(disagreement.registry.resultForRequirement admittedProof).complete &&
+    (disagreement.registry.resultForRequirement cleanProof).complete)
+    "Disagreement erased a failed proof obligation or discredited the checked sibling"
+  ensure (disagreement.sourceDiagnostics.nodes.any fun (label, diagnostic) =>
+    label == groupedLabel && diagnostic.code == "native-role-disagreement" &&
+      diagnostic.subject == admittedCheck.declaration.native)
+    "Replay disagreement lost its precise declaration and node diagnostic"
   ensure (completeView.details.getObjVal? "assessment" |>.isOk)
     "Public assessment omitted exact subjects and contracts"
   ensure (NodeAssessment.fromJsonString! (toJson completeView).compress == completeView)
@@ -924,20 +953,53 @@ run_cmd liftTermElabM do
 -- whose recorded owning path cannot be read neither reports an unavailable
 -- source nor blocks the declaration's real passed native check.
 run_cmd liftTermElabM do
-  let env ← getEnv
-  try
-    Environment.modify fun state => Id.run do
-      let target := Name.mkSimple "capture.complete"
-      let some node := state.inventory.get? target | return state
-      let associations := node.nativeAssociations.map fun association => { association with
-        reference := { association.reference with provenance := .inWorkspace `VersoBlueprintTests.BlueprintRealizationCapture "/definitely/missing/blueprint-source.lean" } }
-      return { state with inventory := state.inventory.insert target { node with nativeAssociations := node.nativeAssociations ++ associations } }
-    let snapshot ← obtain (← Capture.capture)
-    ensure (!(snapshot.diagnostics.any (·.code == "source-unavailable")))
-      "An unreadable recorded owning path made a plain native declaration unavailable"
-    ensure ((snapshot.registry.resultForRequirement (key "capture.complete" `RealizationCaptureFixture.complete)).complete)
-      "An unreadable recorded owning path blocked a passed native check"
-  finally setEnv env
+  let raw := Capture.Raw.ofState (Environment.informalExt.getState (← getEnv))
+  let target := Name.mkSimple "capture.complete"
+  let some (_, node) := raw.nodes.find? (·.1 == target) | throwError "Missing native source control"
+  let #[association] := node.nativeAssociations | throwError "Expected one registered native source"
+  let alternatePath := "/definitely/missing/blueprint-source.lean"
+  let alternate := { association with reference := { association.reference with
+    provenance := .inWorkspace `VersoBlueprintTests.BlueprintRealizationCapture alternatePath } }
+  let planFor (associations : Array SourceData.NativeAssociation) :=
+    Capture.plan { raw with nodes := #[(target, { node with nativeAssociations := associations })], authored := #[] }
+  let plan := planFor #[association, alternate]
+  let reversed := planFor #[alternate, association]
+  let observed ← obtain (← Capture.observe plan)
+  ensure (observed.native.size == 2 && observed.native.all (·.result.isOk) &&
+    observed.native.any (·.request.sourcePath? == some alternatePath))
+    "Sibling control must exercise distinct successful source requests for one declaration"
+  let proofKey := key "capture.complete" ``complete
+  let snapshot ← obtain (Capture.evaluate plan observed)
+  ensure (!snapshot.diagnostics.any (·.code == "source-unavailable") &&
+    (snapshot.registry.resultForRequirement proofKey).complete)
+    "An unreadable recorded owning path blocked a passed native check"
+  let reverseControl ← obtain (Capture.evaluate reversed observed)
+  ensure (snapshot.registry.bindingFor proofKey == reverseControl.registry.bindingFor proofKey &&
+    (reverseControl.registry.resultForRequirement proofKey).complete)
+    "Agreeing source requests changed the proof when reordered"
+  for change in #[
+      (fun (source : NativeSource.Prepared) => { source with roles := #[`statement] }),
+      (fun source => { source with statementContext := some "changed statement descriptor" }),
+      (fun source => { source with semanticContext := some "changed body descriptor" })] do
+    let changed := { observed with native := observed.native.map fun answer =>
+      if answer.request.sourcePath? == some alternatePath then
+        { answer with result := answer.result.map change }
+      else answer }
+    let first ← obtain (Capture.evaluate plan changed)
+    let second ← obtain (Capture.evaluate reversed { changed with native := changed.native.reverse })
+    for disputed in #[first, second] do
+      let view := disputed.assessmentFor target
+      ensure (!view.nativeStatementComplete && !view.nativeBodyComplete && view.proofRoleComplete == some false &&
+        !view.requiredComplete && (disputed.registry.requirement? proofKey).isSome &&
+        !(disputed.registry.localResult proofKey).complete &&
+        !(disputed.registry.resultForRequirement proofKey).complete)
+        "Conflicting sibling answers removed or completed a native requirement"
+      ensure (disputed.sourceDiagnostics.nodes.any fun (label, diagnostic) =>
+        label == target && diagnostic.code == "ambiguous-source" && diagnostic.subject == (toString ``complete))
+        "Conflicting sibling answers lost their scoped owning-source diagnostic"
+    ensure (first.sourceDiagnostics == second.sourceDiagnostics &&
+      first.registry.bindingFor proofKey == second.registry.bindingFor proofKey)
+      "Reordering conflicting siblings selected a different native source"
 
 -- A proposition definition genuinely has one statement contract.
 @[blueprint "capture.propositionOnly"]
@@ -1103,6 +1165,99 @@ run_cmd liftTermElabM do
     "Resource failure leaked info-state mutation"
   ensure ((← getTraceState).traces.size > tracesBefore.traces.size)
     "Resource failure restoration discarded diagnostic traces"
+
+-- Mix a genuinely statement-only proposition definition with a missing
+-- proof attachment. There is no successfully classified body to mask the gap.
+/--
+warning: Label «capture.statementWithMissingProof»: external Lean name 'RealizationCaptureFixture.absentProof' could not be resolved in current namespace/open declarations; keeping parsed name
+-/
+#guard_msgs in
+#docs (Verso.Genre.Manual) missingBodyDoc "Missing native proof" :=
+:::::::
+:::definition "capture.statementWithMissingProof" (lean := "RealizationCaptureFixture.propositionOnly")
+A native proposition has a separate proof attachment.
+:::
+
+:::proof "capture.statementWithMissingProof" (lean := "RealizationCaptureFixture.absentProof")
+The proof attachment has not been declared.
+:::
+:::::::
+
+@[blueprint "capture.implementationWithProofUse" (proofUses := ["capture.admitted"])]
+def implementationWithProofUse : Nat := by sorry
+
+-- A parsed name retained by a directive is not a resolved registration.
+/--
+warning: Label «capture.forwardNative»: external Lean name 'RealizationCaptureFixture.declaredLater' could not be resolved in current namespace/open declarations; keeping parsed name
+-/
+#guard_msgs in
+#docs (Verso.Genre.Manual) forwardDoc "Forward native name" :=
+:::::::
+:::theorem "capture.forwardNative" (lean := "RealizationCaptureFixture.declaredLater")
+The native theorem is declared later in this module.
+:::
+:::::::
+
+theorem declaredLater : True := True.intro
+
+run_cmd liftTermElabM do
+  let env ← getEnv
+  let state := Environment.informalExt.getState env
+  let plan := Capture.plan (Capture.Raw.ofState state)
+  let observations ← obtain (← Capture.observe plan)
+  let snapshot ← obtain (Capture.evaluate plan observations)
+
+  let mixedLabel := Name.mkSimple "capture.statementWithMissingProof"
+  let context : Realizations.Context := ⟨`lean, `blueprintFixtures⟩
+  let statement := (⟨mixedLabel, `lean⟩ : RealizationKey).forRole `statement
+  let propositionKey : RequirementKey := ⟨.declaration statement ⟨context, toString ``propositionOnly⟩, `statement⟩
+  let absentProof := key "capture.statementWithMissingProof" `RealizationCaptureFixture.absentProof
+  let missingProof := snapshot.registry.resultFor absentProof.subject
+  let mixed := snapshot.assessmentFor mixedLabel
+  ensure ((snapshot.registry.localResult propositionKey).complete &&
+    missingProof.status == .blocked && missingProof.diagnostics.any (·.code == "missing-declaration"))
+    "Control must contain a passed native proposition and an unavailable proof attachment"
+  ensure (mixed.hasNativeBodyRequirement && mixed.proofRoleComplete == some false &&
+    !mixed.nativeBodyComplete && !mixed.requiredComplete)
+    "An unresolved proof placement must keep a body requirement beside a proposition-only declaration"
+
+  let implementationLabel := Name.mkSimple "capture.implementationWithProofUse"
+  let implementation := implementationKey "capture.implementationWithProofUse" ``implementationWithProofUse
+  let prerequisite := key "capture.admitted" ``admitted
+  let implementationView := snapshot.assessmentFor implementationLabel
+  ensure ((snapshot.registry.requirement? implementation).any (·.prerequisites.contains prerequisite) &&
+    !(snapshot.registry.resultForRequirement prerequisite).complete &&
+    !(snapshot.registry.localResult implementation).complete)
+    "The missing implementation must select the unfinished proof-axis prerequisite"
+  ensure (implementationView.selectedLeanUseCount == 1 &&
+    !implementationView.statementDependenciesComplete && !implementationView.proofDependenciesComplete &&
+    (Graph.statusesForAssessment implementationView).1 == .blocked &&
+    (Graph.actionableStageForAssessment? implementationView).isNone)
+    "The graph must keep an implementation with an unfinished proof-axis prerequisite blocked"
+
+  let forwardLabel := Name.mkSimple "capture.forwardNative"
+  let forwardObject : ObjectKey := ⟨context, toString ``declaredLater⟩
+  let forwardStatement := (⟨forwardLabel, `lean⟩ : RealizationKey).forRole `statement
+  let forwardView := snapshot.assessmentFor forwardLabel
+  ensure ((env.checked.get.find? ``declaredLater).isSome &&
+    (← Environment.labelsForLeanDecl ``declaredLater).isEmpty)
+    "Control must have a current declaration and an unresolved registration"
+  let forwardResult := snapshot.registry.resultFor (.declaration forwardStatement forwardObject)
+  ensure (!observations.checks.any (·.request.witness == forwardObject) &&
+    !snapshot.nativeChecks.any (·.declaration == forwardObject) &&
+    forwardResult.status == .blocked && forwardResult.diagnostics.any (·.code == "missing-declaration") &&
+    !forwardView.nativeStatementComplete && !forwardView.nativeBodyComplete && !forwardView.requiredComplete)
+    "A forward-only registration cannot acquire fresh native evidence from its parsed name"
+  let some rendered := (TraversalIndex.Nodes.capture state (some snapshot)).find? (·.label == forwardLabel)
+    | throwError "Missing captured forward-reference panel"
+  let some code := rendered.toBlockData.codeData | throwError "Missing forward-reference code panel"
+  let #[reference] := code.displayExternalDecls | throwError "Expected one forward-reference panel entry"
+  ensure (reference.canonical == ``declaredLater && !reference.present && reference.observedStatus == some .missing &&
+    rendered.statementExternalChecks.all (·.2.isNone))
+    "The forward-reference panel must agree with the declaration index and capture"
+  let html ← renderPreviewBlocksHtmlWithSnapshot forwardDoc.toPart.content snapshot
+  ensure (html.asString.contains "bp_external_status_missing" && html.asString.contains "declaration not found")
+    "The rendered forward-reference panel must display the missing declaration"
 
 run_cmd liftTermElabM do
   let flat := Name.mkSimple "foo.bar»"
