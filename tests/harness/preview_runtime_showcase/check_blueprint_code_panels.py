@@ -121,17 +121,17 @@ def main() -> int:
     require_contains(code_panels, "<code>panel_docstring_target</code>", "empty docstring reference fallback")
     require_contains(code_panels, 'data-bp-preview-key="panel_docstring_target--statement"', "docstring reference preview")
 
-    if "bp_external_status_badge_summary bp_external_status_ok" not in code_panels:
-        fail("missing external summary badge for complete external declarations")
-    if "bp_external_status_badge_summary bp_external_status_sorry" not in code_panels:
-        fail("missing external warning summary badge for sorry-backed declarations")
-    if "bp_external_status_badge_summary bp_external_status_missing" not in code_panels:
-        fail("missing external summary badge for missing external declarations")
+    if "bp_code_panel_status bp_code_link_status_proved" not in code_panels:
+        fail("missing code panel status for complete declarations")
+    if "bp_code_panel_status bp_code_link_status_warning" not in code_panels:
+        fail("missing code panel warning status for sorry-backed declarations")
+    if "bp_code_panel_status bp_code_link_status_missing" not in code_panels:
+        fail("missing code panel status for missing declarations")
     if "External Lean for " in code_panels:
         fail("stale external panel caption still present")
-    if "Lean code for Definition" not in code_panels:
+    if 'Lean<span class="bp_code_for"> code for Definition' not in code_panels:
         fail("definition code panel caption missing")
-    if "Lean code for Theorem" not in code_panels:
+    if 'Lean<span class="bp_code_for"> code for Theorem' not in code_panels:
         fail("theorem code panel caption missing")
     if "bp_code_link_status_proved" not in code_panels:
         fail("missing proved code-status chip")
@@ -143,18 +143,18 @@ def main() -> int:
         fail("missing missing-declaration code-status chip")
     if "bp_code_link_status_absent" not in code_panels:
         fail("missing absent-code code-status chip")
-    if 'bp_external_status_badge_text">1 theorem<' not in code_panels:
-        fail("missing theorem-specific external summary text")
-    if 'bp_external_status_badge_text">2 theorems<' not in code_panels:
-        fail("missing multi-theorem external summary text")
-    if 'bp_external_status_badge_text">2 theorems, 1 incomplete<' not in code_panels:
-        fail("missing mixed multi-theorem external summary text")
-    if 'bp_external_status_badge_text">2 declarations, 1 missing<' not in code_panels:
-        fail("missing mixed missing external summary text")
-    if 'bp_external_status_badge_text">1 definition<' not in code_panels:
-        fail("missing definition-specific external summary text")
-    if 'bp_external_status_badge_text">2 definitions<' not in code_panels:
-        fail("missing multi-definition external summary text")
+    # Each code panel summary names its declarations and states one status.
+    status_texts = {
+        re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", text)).strip()
+        for text in re.findall(
+            r'<span class="bp_code_panel_status[^"]*">(.*?)</span>\s*</span>', code_panels, re.S
+        )
+    }
+    for expected in ("complete", "1 of 2 unfinished", "1 of 2 missing", "missing declaration"):
+        if not any(text.endswith(expected) for text in status_texts):
+            fail(f"missing code panel status text {expected!r}; found {sorted(status_texts)}")
+    if not re.search(r'<span class="bp_code_panel_decls"><code>[^<]+</code>, <code>[^<]+</code>', code_panels):
+        fail("missing code panel summary that names two declarations")
     if "bp-renderer-select" in code_panels:
         fail("stale external renderer switcher still present")
     if "bp_code_expand_hint" in code_panels:
@@ -207,11 +207,15 @@ def main() -> int:
         "background: var(--bp-box-header-background, var(--bp-color-surface-muted))" not in code_panels
     ):
         fail("missing reusable rendered declaration header band styling")
+    flat_rows = re.search(
+        r"\.bp_code_panel \.bp_external_decl_rendered \.declaration \{([^}]*)\}", code_panels
+    )
     if (
-        ".bp_code_panel .bp_external_decl_rendered .declaration" not in code_panels
-        or "--bp-box-shadow: var(--bp-shadow-sm)" not in code_panels
+        flat_rows is None
+        or "--bp-box-border-width: 0" not in flat_rows.group(1)
+        or "--bp-box-shadow: none" not in flat_rows.group(1)
     ):
-        fail("missing code-panel-specific single-box treatment for external declarations")
+        fail("code panels should render external declarations as flat rows, not nested boxes")
     if ".bp_code_panel_wrapper .bp_code_block > summary::before" not in code_panels:
         fail("missing code-panel collapse indicator")
     if ".bp_code_panel_wrapper .bp_code_block[open] > summary::before" not in code_panels:
@@ -256,7 +260,7 @@ def main() -> int:
         fail("external declaration subsection labels should not render as h1")
 
     panel_re = re.compile(r'<details class="bp_code_block bp_code_panel"[^>]*>.*?</details>', re.S)
-    external_panels = [p for p in panel_re.findall(code_panels) if "bp_external_status_badge_summary" in p]
+    external_panels = [p for p in panel_re.findall(code_panels) if "bp_external_decl" in p]
     if len(external_panels) < 19:
         fail("expected at least nineteen external code panels in local showcase")
 
