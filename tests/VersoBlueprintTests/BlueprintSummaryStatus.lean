@@ -195,4 +195,27 @@ run_cmd liftTermElabM do
   ensure (!(snapshot.assessmentFor forward).hasAxiomLike)
     "The forward attachment borrowed the resolved attachment's axiom status"
 
+  -- Role disagreement rejects a label's local check while retaining its
+  -- required key. An agreeing sibling on the same real Lean axiom must not
+  -- lend its accepted check's axiom status to the disagreeing label.
+  let siblingAssociation := { association with
+    realization := ⟨forward, `lean⟩
+    reference := { association.reference with selectionRange? := none } }
+  let siblingPlan := Capture.plan { raw with nodes := raw.nodes.map fun (label, accepted) =>
+    (label, if label == forward then { accepted with nativeAssociations := #[siblingAssociation] } else accepted) }
+  let siblingObs ← obtain (← Capture.observe siblingPlan)
+  let disagreeingObs := { siblingObs with
+    native := siblingObs.native.map fun entry =>
+      if entry.request.name == declaration && entry.request.selectionRange?.isNone then
+        { entry with result := entry.result.map fun prepared => { prepared with roles := #[`statement, `proof] } }
+      else entry }
+  let siblingSnapshot ← obtain (Capture.evaluate siblingPlan disagreeingObs)
+  ensure (siblingSnapshot.sourceDiagnostics.nodes.any fun (label, issue) =>
+      label == forward && issue.code == "native-role-disagreement")
+    "Mutated sibling roles must trigger native-role-disagreement on the disagreeing label"
+  ensure (siblingSnapshot.assessmentFor resolved).hasAxiomLike
+    "Agreeing sibling must keep its accepted axiom status"
+  ensure (!(siblingSnapshot.assessmentFor forward).hasAxiomLike)
+    "Disagreeing attachment borrowed its agreeing sibling's axiom status"
+
 end Verso.VersoBlueprintTests.BlueprintSummaryStatus

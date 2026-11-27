@@ -187,20 +187,30 @@ def SourceSelection.selectedText (source : SourceSelection) : Except Diagnostic 
     throw (source.selectionIssue "Stored UTF-16 source range disagrees with the owning FileMap")
   return extract buffer range
 
-/-- Check the exact owning fence at its recorded UTF-16 location. An unrelated
-edit can preserve that location; moving or changing the fence requires a rebuild. -/
+/-- Check the exact owning fence at its recorded UTF-16 location and return its
+original body bytes from `document.text`. Line endings are normalized only when
+matching against Lean's LF-normalized parser coordinates; the returned body
+preserves the owning file's exact bytes so line-ending edits inside the body
+remain visible to content bindings. -/
 def SourceSelection.selectedFenceText (source : SourceSelection) (document : Document) : Except Diagnostic String := do
   let some selection := source.fence
     | throw (source.selectionIssue "Source has no recorded code block selection")
   let fence ← selection.mapError source.selectionIssue
   let location ← source.locationForSelection
   let normalized := document.text.crlfToLf
-  let map := FileMap.ofString normalized
-  let range := map.lspRangeToUtf8Range location.range
+  let normMap := FileMap.ofString normalized
+  let range := normMap.lspRangeToUtf8Range location.range
   unless source.document == document.key && range.start.byteIdx <= range.stop.byteIdx &&
-      map.utf8RangeToLspRange range == location.range && extract normalized range == fence.original do
+      normMap.utf8RangeToLspRange range == location.range && extract normalized range == fence.original do
     throw (source.selectionIssue "Current source disagrees with the original code block at its owning location")
-  return fence.text
+  let bodyStart : String.Pos.Raw := ⟨range.start.byteIdx + fence.body.start.byteIdx⟩
+  let bodyStop : String.Pos.Raw := ⟨range.start.byteIdx + fence.body.stop.byteIdx⟩
+  if document.text == normalized then
+    return extract normalized ⟨bodyStart, bodyStop⟩
+  let rawMap := FileMap.ofString document.text
+  let rawStart := rawMap.ofPosition (normMap.toPosition bodyStart)
+  let rawStop := rawMap.ofPosition (normMap.toPosition bodyStop)
+  return extract document.text ⟨rawStart, rawStop⟩
 
 /-- Absent realization means an authored concept-level constraint. Automatic or
 manual origin is metadata, not a substitute for this explicit scope. -/

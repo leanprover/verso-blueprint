@@ -50,8 +50,10 @@ Confirmed against Lean `v4.35.0`:
 - `src/VersoBlueprint/Realizations/NativeSource.lean` (`openParserNamespaces`,
   `setParserOption`, `enterParserScopes`, `advanceParserContext`,
   `parseSourceWith`, `isDeclarationScope`, `declarations`,
-  `docCommentSyntaxAtRanges`) exists solely to recover that comment span from
-  source text without re-elaboration.
+  `docCommentSyntaxAtRanges`) recovers doc-comment spans from source text
+  without re-elaboration. Note that `prepareInlineBlock` also shares
+  `parseSource` to verify declarations inside Verso Lean fences, so retiring the
+  shared parser path depends on `UPC-0024` as well.
 
 ## Preliminary Analysis
 

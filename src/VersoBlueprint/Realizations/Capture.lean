@@ -181,11 +181,17 @@ def Snapshot.assessmentFor (snapshot : Snapshot) (label : Name) : NodeAssessment
   return {
     hasNativeDeclarations := !objects.isEmpty
     -- Native checks share object identities across labels. Only an attachment
-    -- that selected its native check at this label reports the checked status;
-    -- a failed source association does not withdraw a check that ran.
+    -- whose own required native check accepted this checked observation reports
+    -- its axiom-like status; a failed source range does not withdraw an
+    -- accepted check, while a rejected role-disagreement check cannot borrow a
+    -- sibling's accepted check.
     hasAxiomLike := snapshot.nativeChecks.any fun checked =>
       checked.status.isAxiomLike && nativeModels.any fun model => model.declarations.any fun declaration =>
-        declaration.object == checked.declaration && declaration.required.contains (nativeKey model declaration)
+        let key := nativeKey model declaration
+        let accepted := if model.role == `statement then checked.statement else checked.body
+        declaration.object == checked.declaration && declaration.required.contains key &&
+          registry.evidence.any fun evidence =>
+            evidence.requirement == key && evidence.observation == .check accepted
     nativeStatementComplete := statementComplete
     hasNativeBodyRequirement := !bodyChecks.isEmpty
     nativeBodyComplete := bodyComplete

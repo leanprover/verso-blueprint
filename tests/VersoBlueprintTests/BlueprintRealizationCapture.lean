@@ -394,9 +394,22 @@ run_cmd liftTermElabM do
         | some _, _ =>
           let key := sourceStep.source.document
           let rawText ← IO.FS.readFile key.path
+          let lfText := rawText.crlfToLf
           let expected ← obtain (sourceStep.source.selectedFenceText { key, text := rawText })
-          let crlf ← obtain (sourceStep.source.selectedFenceText { key, text := rawText.replace "\n" "\r\n" })
-          ensure (crlf == expected) "CRLF owning source broke fenced selection freshness check"
+          let lfExpected ← obtain (sourceStep.source.selectedFenceText { key, text := lfText })
+          -- Line-ending edits outside the selected fence body keep its exact bytes.
+          let outsideCrlf := match lfText.splitOn "\n" with
+            | first :: rest => first ++ "\r\n" ++ "\n".intercalate rest
+            | [] => lfText
+          let outsideText ← obtain (sourceStep.source.selectedFenceText { key, text := outsideCrlf })
+          ensure (outsideText == lfExpected)
+            "Line-ending edit outside the selected fence body altered selected bytes"
+          -- Line-ending edits inside the selected fence body preserve raw bytes for bindings.
+          let crlfText ← obtain (sourceStep.source.selectedFenceText
+            { key, text := lfText.replace "\n" "\r\n" })
+          ensure (crlfText == lfExpected.replace "\n" "\r\n" &&
+              (!lfExpected.contains '\n' || crlfText != lfExpected))
+            "CRLF owning source lost raw fence body line endings"
           pure expected
         | none, some (.ok request) =>
           let some provider := observations.documented.find? (·.request == request)
