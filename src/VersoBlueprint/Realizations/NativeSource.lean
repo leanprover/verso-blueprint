@@ -198,7 +198,7 @@ def declarationAtRanges (label : Name) (text : String) (range selection : Declar
   return candidates[0]!
 
 private def docCommentSyntaxAtRanges (label : Name) (text : String) (range selection : DeclarationRange)
-    (commands : Array Syntax) : Except Diagnostic (TSyntax ``Parser.Command.docComment) := do
+    (commands : Array Syntax) : Except Diagnostic (Syntax × TSyntax ``Parser.Command.docComment) := do
   if commands.any hasStandaloneInheritance then
     throw <| issue "inherited-docstring" label
       "Standalone inherit_doc applications prevent an unambiguous own-source association"
@@ -209,7 +209,15 @@ private def docCommentSyntaxAtRanges (label : Name) (text : String) (range selec
   let comment := modifiers[0][0]
   unless comment.isOfKind ``Parser.Command.docComment do
     throw <| issue "missing-own-comment" label "Selected declaration has no direct modifier doc comment"
-  return ⟨comment⟩
+  return (declaration, ⟨comment⟩)
+
+private def matchesDeclarationName (canonical : Name) (decl : Syntax) : Bool :=
+  let spelling := (Elab.getDeclarationSelectionRef decl[1]).getId
+  let canonical := privateToUserName canonical
+  if (`_root_ : Name).isPrefixOf spelling then
+    spelling.replacePrefix `_root_ .anonymous == canonical
+  else
+    !spelling.isAnonymous && spelling.isSuffixOf canonical
 
 private def rawDocComment (label : Name) (text : String) (comment : TSyntax ``Parser.Command.docComment) :
     Except Diagnostic String := do
@@ -226,7 +234,7 @@ private def rawDocComment (label : Name) (text : String) (comment : TSyntax ``Pa
 `ofStringPositions` checks UTF-16 columns using the owning FileMap. -/
 def docCommentAtRanges (label : Name) (text : String) (range selection : DeclarationRange)
     (commands : Array Syntax) : Except Diagnostic String := do
-  rawDocComment label text (← docCommentSyntaxAtRanges label text range selection commands)
+  rawDocComment label text (← docCommentSyntaxAtRanges label text range selection commands).2
 
 /-- Compare optional accepted snapshot ranges with the environment's current
 native ranges for that same canonical declaration. This pure check does not fill
@@ -316,6 +324,34 @@ private def checkSourcePath (request : Request) (sourcePath : String) : Except D
   if blank sourcePath then
     .error <| issue "invalid-source-request" request.canonical "Expected an explicit owning source path"
   else .ok ()
+
+/-- Confirm the path resolves to the current file or to the loaded module's
+verified source input before using any source text for native metadata. -/
+private def owningSource (request : Request) (sourcePath : String)
+    (readSource : System.FilePath → IO String) : CoreM (Except Diagnostic String) := do
+  let env ← getEnv
+  let name := request.canonical
+  let wrongOwner := issue "source-association-unavailable" name
+    "Source path does not resolve to the checked declaration's owning file"
+  let sourceUnavailable := issue "source-unavailable" name "Cannot read the declaration's owning source"
+  let owner ← match env.getModuleIdxFor? name with
+    | some idx =>
+      let some owner ← ExternalModuleSource.find? env idx | return .error wrongOwner
+      pure (owner.path, some owner.textHash)
+    | none => pure (System.FilePath.mk (← getFileName), none)
+  let (ownerPath, sourceHash) := owner
+  let text ← try
+    let physical ← IO.FS.realPath sourcePath
+    unless physical == (← IO.FS.realPath ownerPath) do return .error wrongOwner
+    readSource physical
+  catch _ => return .error sourceUnavailable
+  let agrees ← match sourceHash with
+    | some hash => pure (Lake.Hash.ofText text == hash)
+    | none => pure (text == (← getFileMap).source)
+  unless agrees do
+    return .error <| issue "source-selection-unavailable" name
+      "Owning source bytes disagree with the checked declaration's build input"
+  return .ok text
 
 /-- Prepare a canonical declaration, including an undocumented theorem or a
 body-bearing definition, from the compiled environment alone. No file is read:
@@ -416,19 +452,16 @@ def prepareInline (request : Request) (sourcePath : String) (code : Data.Code)
   | .error diagnostic => return .error diagnostic
   | .ok block => prepareInlineBlock request sourcePath block readSource semantics
 
-/-- Verified own docstring selection, independently of native semantics. -/
+/-- Own docstring selection without computed native semantics. -/
 structure DocumentSelection where
   document : Document
   format : Name
   rawDocstring : String
   ranges : DeclarationRanges
 
-/-- Select the original own modifier comment at both checked native ranges.
-For Markdown, also compare Lean's normalized value to the direct compiled
-metadata. The result keeps the unnormalized bytes from the supplied source. -/
-def selectDocumented (request : Request) (sourcePath : String)
-    (readSource : System.FilePath → IO String := IO.FS.readFile)
-    (parse : SourceParser := parseOwningSource) : CoreM (Except Diagnostic DocumentSelection) := do
+private def selectDocumentedWith (request : Request) (sourcePath : String)
+    (source : CoreM (Except Diagnostic String)) (parse : SourceParser) :
+    CoreM (Except Diagnostic DocumentSelection) := do
   if let .error diagnostic ← checkOwner request then return .error diagnostic
   if let .error diagnostic := checkSourcePath request sourcePath then return .error diagnostic
   let name := request.canonical
@@ -438,17 +471,21 @@ def selectDocumented (request : Request) (sourcePath : String)
   let ranges ← match ← environmentRanges request with
     | .ok ranges => pure ranges
     | .error diagnostic => return .error diagnostic
-  let text ← try liftM <| readSource sourcePath catch _ =>
-    return .error <| issue "source-unavailable" name "Cannot read canonical source at owning association path"
+  let text ← match ← source with
+    | .ok text => pure text
+    | .error diagnostic => return .error diagnostic
   if blank text then return .error <| issue "source-unavailable" name "Canonical source is empty"
   let parsed ← parse sourcePath text
-  let comment ← match docCommentSyntaxAtRanges name text ranges.range ranges.selectionRange parsed.commands with
-    | .ok comment => pure comment
+  let (declaration, comment) ← match docCommentSyntaxAtRanges name text ranges.range ranges.selectionRange parsed.commands with
+    | .ok selected => pure selected
     | .error diagnostic =>
       if let some failure := parsed.failure? then
         if diagnostic.code == "source-association-unavailable" then
           return .error <| issue "source-parse-failed" name failure
       return .error diagnostic
+  unless matchesDeclarationName name declaration do
+    return .error <| issue "source-association-unavailable" name
+      "Selected source identifier disagrees with the checked declaration name"
   if let some failure := parsed.failure? then
     -- A skipped command can hide a standalone inheritance application. Its
     -- attribute name must occur literally, including when guillemet-escaped.
@@ -470,12 +507,22 @@ def selectDocumented (request : Request) (sourcePath : String)
     format := if markdown.isSome then `markdown else `verso
     rawDocstring, ranges }
 
+/-- Select an own modifier comment in caller-supplied bytes at both checked
+native ranges. For Markdown, compare Lean's normalized value to the direct
+compiled metadata. Use `prepareDocumented` to verify the owning source input. -/
+def selectDocumented (request : Request) (sourcePath : String)
+    (readSource : System.FilePath → IO String := IO.FS.readFile)
+    (parse : SourceParser := parseOwningSource) : CoreM (Except Diagnostic DocumentSelection) :=
+  selectDocumentedWith request sourcePath (do
+    try return .ok (← readSource sourcePath) catch _ =>
+      return .error <| issue "source-unavailable" request.canonical "Cannot read canonical source at owning association path") parse
+
 /-- Prepare a checked declaration together with its selected own source comment. -/
 def prepareDocumented (request : Request) (sourcePath : String)
     (readSource : System.FilePath → IO String := IO.FS.readFile)
     (semantics : NativeLean.SemanticContext := NativeLean.semanticContext)
     (parse : SourceParser := parseOwningSource) : CoreM (Except Diagnostic Documented) := do
-  let selection ← match ← selectDocumented request sourcePath readSource parse with
+  let selection ← match ← selectDocumentedWith request sourcePath (owningSource request sourcePath readSource) parse with
     | .ok selection => pure selection
     | .error diagnostic => return .error diagnostic
   let ranges := selection.ranges
@@ -608,13 +655,15 @@ def PreparedModel.validate (p : PreparedModel) (expected : Syntax) : Elab.Term.T
   let prepared ← p.prepareValidation expected
   let .ok (input, checked) := prepared | return prepared.map (·.1)
   let key : RequirementKey := ⟨.declaration (p.leanKey.forRole `proof) p.witness, `expectedProof⟩
-  let .ok registry := admit input
-    | return .error <| issue "invalid-projection" p.leanKey.node "Projected input failed pure structural admission"
-  let some binding := registry.bindingFor key
-    | return .error <| issue "missing-binding" p.leanKey.node "No binding for native proof requirement"
-  return .ok { input with evidence := input.evidence.push (p.contribution `proofEvidence {
-    id := p.leanKey.node ++ `nativeProof, requirement := key, binding
-    observation := .proof checked.observation }) }
+  let result := admitWithEvidence input fun bindingFor => do
+    let some binding := bindingFor key
+      | throw #[issue "missing-binding" p.leanKey.node "No binding for native proof requirement"]
+    let slot := `proofEvidence ++ Name.mkSimple ((BindingEncoding.requirementKey key).compress)
+    let origin := (p.contribution slot ()).origin
+    return #[{ origin, value := {
+      id := origin.id, requirement := key, binding, observation := .proof checked.observation } }]
+  return result.map Registry.contributions |>.mapError fun diagnostics =>
+    diagnostics[0]?.getD (issue "invalid-projection" p.leanKey.node "Projected input failed admission")
 
 
 end Informal.Realizations.NativeSource

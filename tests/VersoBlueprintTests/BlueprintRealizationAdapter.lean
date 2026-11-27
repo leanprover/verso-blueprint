@@ -70,16 +70,16 @@ run_cmd liftTermElabM do
   ensure (!(← NativeSource.parseSource request.canonical sourcePath tailInput).isOk)
     "Control tail must require unsupported parser context"
   let documentedRequest := { request with canonical := `RealizationAdapterFixture.number }
-  let documentedTail ← NativeSource.prepareDocumented documentedRequest sourcePath (fun _ => pure tailInput)
+  let documentedTail ← NativeSource.selectDocumented documentedRequest sourcePath (fun _ => pure tailInput)
   match documentedTail with
   | .error diagnostic =>
     ensure (diagnostic.code == "source-parse-failed")
       "Docstring association must still inspect the whole source for later inheritance"
   | .ok _ => throwError "Docstring association skipped part of its owning source"
   for (result, code) in #[
-      (← NativeSource.prepareDocumented documentedRequest sourcePath (fun _ => pure ("\n" ++ text)),
+      (← NativeSource.selectDocumented documentedRequest sourcePath (fun _ => pure ("\n" ++ text)),
         "source-association-unavailable"),
-      (← NativeSource.prepareDocumented documentedRequest sourcePath
+      (← NativeSource.selectDocumented documentedRequest sourcePath
         (fun _ => pure "import Lean\n#broken_before_declaration\n"), "source-parse-failed")] do
     match result with
     | .error diagnostic => ensure (diagnostic.code == code) s!"Wrong docstring source rejection: {diagnostic.code}"
@@ -150,6 +150,27 @@ run_cmd liftTermElabM do
     { request with canonical := `RealizationAdapterFixture.neighboringComment } sourcePath)
   ensure (neighbor.format == `verso && neighbor.rawDocstring == " Même *texte* 😀 λ with {name}`Nat`. ")
     "Own unregistered Verso comment preserves exact supplementary Unicode bytes"
+  let versoRequest := { request with canonical := `RealizationAdapterFixture.versoDocstring }
+  let original ← obtain (← NativeSource.prepareDocumented versoRequest sourcePath)
+  let forged := (text.replace "An own *Verso*" "An odd *Verso*").replace
+    "theorem versoDocstring :" "theorem otherDocstring :"
+  ensure (original.format == `verso && forged != text && forged.utf8ByteSize == text.utf8ByteSize)
+    "Expected an equal-width control for the compiled Verso declaration"
+  IO.FS.withTempDir fun root => do
+    let wrong := root / "Provider.lean"
+    IO.FS.writeFile wrong forged
+    match ← NativeSource.prepareDocumented versoRequest wrong.toString with
+    | .error diagnostic =>
+      ensure (diagnostic.code == "source-association-unavailable") "Wrong source file must fail ownership"
+    | .ok _ => throwError "Standalone preparation used source from another file and declaration"
+  match ← NativeSource.prepareDocumented versoRequest sourcePath (fun _ => pure forged) with
+  | .error diagnostic =>
+    ensure (diagnostic.code == "source-selection-unavailable") "Edited bytes must fail the owning input hash"
+  | .ok _ => throwError "Standalone preparation accepted a same-width edit at the owning path"
+  match ← NativeSource.selectDocumented versoRequest sourcePath (fun _ => pure forged) with
+  | .error diagnostic =>
+    ensure (diagnostic.message.contains "identifier disagrees") "The selected identifier must match the compiled declaration"
+  | .ok _ => throwError "Parser selection accepted a different declaration at the same ranges"
   for (bad, code) in #[
       ({ request with project := .anonymous }, "invalid-source-request"),
       ({ request with canonical := `RealizationAdapterFixture.notPresent }, "missing-declaration"),
@@ -490,7 +511,10 @@ run_cmd liftTermElabM do
   | .error diagnostic => ensure (diagnostic.code == "missing-own-comment") "No adjacent-comment fallback"
   | .ok _ => throwError "Native text cannot create an original doc comment"
   -- Explicit source/parser failure injection, not replacement canonical content.
-  let malformed ← RealizationAdapterFixture.prepareModel `adapterFixture (Name.mkSimple "adapter.verso") `RealizationAdapterFixture.versoDocstring
+  let malformed ← NativeSource.selectDocumented {
+      project := `adapterFixture, canonical := `RealizationAdapterFixture.versoDocstring
+      moduleName := `VersoBlueprintTests.BlueprintRealizationAdapter.Provider }
+    p.sourcePath
     (fun _ => pure "import Lean\n/-- unterminated source")
   match malformed with
   | .error diagnostic => ensure (diagnostic.code == "source-parse-failed") "Malformed source is explicit"
@@ -500,6 +524,44 @@ run_cmd liftTermElabM do
   match docCommentAtRanges `standalone standalone default default commands with
   | .error diagnostic => ensure (diagnostic.code == "inherited-docstring") "Standalone inheritance is diagnosed"
   | .ok _ => throwError "Standalone inheritance cannot silently override own-source provenance"
+
+-- Checked alternatives can coexist under one node. Validate must admit new
+-- evidence against the complete caller batch before returning that batch.
+run_cmd liftTermElabM do
+  let path := "tests/VersoBlueprintTests/BlueprintRealizationAdapter/Provider.lean"
+  let request : NativeSource.Request := {
+    project := `adapterFixture, canonical := `RealizationAdapterFixture.reflexivity
+    moduleName := `VersoBlueprintTests.BlueprintRealizationAdapter.Provider }
+  let source ← obtain (← NativeSource.prepareDocumented request path)
+  let node : Informal.Realizations.Node := { label := `alternativeSource, title := "Checked alternatives" }
+  let origin : Informal.Realizations.Origin := {
+    id := `firstSource, moduleName := request.moduleName, source := path }
+  let first ← obtain (source.realize origin node `first `firstDoc)
+  let second ← obtain (source.realize { origin with id := `secondSource } node `second `secondDoc)
+  let goal ← `(term| ∀ n : Nat, n = n)
+  let a ← obtain (← first.validate goal)
+  let b ← obtain (← second.validate goal)
+  let #[evidence] := a.evidence | throwError "First alternative lost its proof evidence"
+  let #[secondEvidence] := b.evidence | throwError "Second alternative lost its proof evidence"
+  ensure (evidence.value.id != secondEvidence.value.id)
+    "Separate requirements and producer origins need independent proof evidence identities"
+  let registry ← obtain <| admit {
+    nodes := a.nodes ++ b.nodes
+    documents := a.documents ++ b.documents
+    objects := a.objects ++ b.objects
+    realizations := a.realizations ++ b.realizations
+    requirements := a.requirements ++ b.requirements
+    evidence := a.evidence ++ b.evidence
+    bindingInputs := a.bindingInputs ++ b.bindingInputs }
+  ensure ((registry.resultForRequirement (proofKey first)).complete &&
+    (registry.resultForRequirement (proofKey second)).complete)
+    "Each standalone proof alternative must retain independently bound evidence"
+  let conflicting := first.contribution `alreadySuppliedEvidence { evidence.value with binding := "other-binding" }
+  let input := { first.input with evidence := #[conflicting] }
+  match ← ({ first with input }).validate goal with
+  | .error diagnostic =>
+    ensure (diagnostic.code == "semantic-conflict") "Validation must reject an existing conflicting evidence ID"
+  | .ok _ => throwError "Standalone validation returned conflicting evidence for later readmission"
 
 -- Exercise the pilot's actual involution and package-specific statements, beyond
 -- reflexivity/True. These are native current-build controls, not foreign proof
