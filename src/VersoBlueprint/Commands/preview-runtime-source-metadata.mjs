@@ -27,8 +27,8 @@ function manifestEntryLike(source) {
 
 function sourceMetadataEntryFromInput(input) {
   if (!input || typeof input !== "object" || Array.isArray(input)) return null;
-  if (manifestEntryLike(input.manifestEntry)) {
-    return input.manifestEntry;
+  if (Object.prototype.hasOwnProperty.call(input, "manifestEntry")) {
+    return manifestEntryLike(input.manifestEntry) ? input.manifestEntry : null;
   }
   if (manifestEntryLike(input)) return input;
   return null;

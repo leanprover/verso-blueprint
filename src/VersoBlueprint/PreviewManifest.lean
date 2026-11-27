@@ -931,6 +931,8 @@ structure Entry extends Informal.BlockMetadata where
   /-- This facet has no prose/witness body; hover readers compose its associated
   Lean cache fragments instead of displaying the inert block-body fragment. -/
   codeOnlyPreview : Bool := false
+  /-- This preview body was rendered from external source markup rather than native Verso prose. -/
+  sourceBackedPreview : Bool := false
   /-- The default standalone preview selected after all resource bodies are rendered. -/
   defaultPreview : Bool := false
   /-- Canonical Lean code data associated with this informal node, if any. -/
@@ -2291,11 +2293,14 @@ private def renderSiteFacet (impls : ExtensionImpls) (logError : String → IO U
       guard (preview.facet == .statement)
       (ExternalMarkupRender.previewBody? markupConfig markup).filter (!PreviewResources.htmlIsBlank ·))
     if let some html := body? then
-      return (some (entry, some { key := entry.key, html, hasProse := prose?.isSome }), hovers)
+      return (some ({ entry with sourceBackedPreview := prose?.isNone },
+        some { key := entry.key, html, hasProse := prose?.isSome }), hovers)
     unless code.isEmpty do
       return (some ({ entry with codeOnlyPreview := true }, some { key := entry.key, html := codeOnlyBlockPreviewHtml }), hovers)
   if preview.facet == .proof || markup.isEmpty then return (none, hovers)
-  let entry := { entry with key := externalMarkupEntryKey preview.label, targetKind := .externalMarkup }
+  let entry := { entry with
+    key := externalMarkupEntryKey preview.label, targetKind := .externalMarkup,
+    sourceBackedPreview := true }
   let resource := do
     let selected ← ExternalMarkupRender.selected? markupConfig markup
     let heading := entry.heading

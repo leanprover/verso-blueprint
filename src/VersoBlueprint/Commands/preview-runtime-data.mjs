@@ -104,13 +104,24 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
     };
   }
 
-  function isBlockEntryForLabel(entry, label) {
+  function entryMatchesLabel(entry, label) {
     return !!(
       entry &&
       typeof entry === "object" &&
       !Array.isArray(entry) &&
-      entry.targetKind === "block" &&
-      entry.label === label
+      (entry.label === label || entry.authoredLabel === label)
+    );
+  }
+
+  function isBlockEntryForLabel(entry, label) {
+    return entryMatchesLabel(entry, label) && entry.targetKind === "block";
+  }
+
+  function isExternalMarkupEntryForLabel(entry, label) {
+    return (
+      entryMatchesLabel(entry, label) &&
+      entry.targetKind === "externalMarkup" &&
+      entry.facet === "statement"
     );
   }
 
@@ -127,15 +138,22 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
       return exact;
     }
     let first = null;
-    let statement = null;
+    let blockStatement = null;
+    let externalStatement = null;
     for (const entry of manifestMap.values()) {
-      if (!isBlockEntryForLabel(entry, label)) continue;
-      if (!first) first = entry;
-      if (lookup.explicitFacet && entry.facet === lookup.facet) return entry;
-      if (entry.facet === "statement" && !statement) statement = entry;
+      if (isBlockEntryForLabel(entry, label)) {
+        if (!first) first = entry;
+        if (lookup.explicitFacet && entry.facet === lookup.facet) return entry;
+        if (entry.facet === "statement" && !blockStatement) blockStatement = entry;
+      } else if (isExternalMarkupEntryForLabel(entry, label)) {
+        if (!first) first = entry;
+        if (!externalStatement) externalStatement = entry;
+      }
     }
-    if (lookup.explicitFacet) return null;
-    return statement || first;
+    if (lookup.explicitFacet) {
+      return lookup.facet === "statement" ? externalStatement : null;
+    }
+    return blockStatement || externalStatement || first;
   }
 
   function isLeanDeclEntry(entry) {
@@ -732,30 +750,27 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
     };
   }
 
-  function validateBlueprintGroupJoins(previews, groupData) {
+  function validateBlueprintGroupJoins(previews, groupData, nodes) {
     const matchedMembers = new Set();
-    previews.forEach(function (entry) {
-      if (!entry || (entry.targetKind !== "block" && entry.targetKind !== "externalMarkup")) {
-        return;
-      }
-      const label = typeof entry.label === "string" ? entry.label.trim() : "";
+    function checkJoin(context, rawLabel, rawParent, rawParentTitle) {
+      const label = typeof rawLabel === "string" ? rawLabel.trim() : "";
       if (!label) {
-        throw new Error("Blueprint manifest entry " + entry.key + " is missing label");
+        throw new Error("Blueprint manifest " + context + " is missing label");
       }
-      const hasParent = entry.parent !== null && typeof entry.parent !== "undefined";
-      const parent = typeof entry.parent === "string" ? entry.parent.trim() : "";
+      const hasParent = rawParent !== null && typeof rawParent !== "undefined";
+      const parent = typeof rawParent === "string" ? rawParent.trim() : "";
       if (hasParent && !parent) {
-        throw new Error("Blueprint manifest entry " + entry.key + " has invalid parent");
+        throw new Error("Blueprint manifest " + context + " has invalid parent");
       }
       if (!hasParent) {
-        if (entry.parentTitle !== null && typeof entry.parentTitle !== "undefined") {
+        if (rawParentTitle !== null && typeof rawParentTitle !== "undefined") {
           throw new Error(
-            "Blueprint manifest entry " + entry.key + " has parentTitle without parent"
+            "Blueprint manifest " + context + " has parentTitle without parent"
           );
         }
         if (groupData.memberGroupsByLabel.has(label)) {
           throw new Error(
-            "Blueprint manifest entry " + entry.key +
+            "Blueprint manifest " + context +
               " has no parent but is listed in group " + groupData.memberGroupsByLabel.get(label)
           );
         }
@@ -764,34 +779,48 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
       const group = groupData.groupsByLabel.get(parent);
       if (!group) {
         throw new Error(
-          "Blueprint manifest entry " + entry.key + " references missing group " + parent
+          "Blueprint manifest " + context + " references missing group " + parent
         );
       }
-      if (entry.parentTitle !== group.title) {
+      if (rawParentTitle !== group.title) {
         throw new Error(
-          "Blueprint manifest entry " + entry.key +
+          "Blueprint manifest " + context +
             " has inconsistent parentTitle for group " + parent
         );
       }
       const memberGroup = groupData.memberGroupsByLabel.get(label);
       if (!memberGroup) {
         throw new Error(
-          "Blueprint manifest entry " + entry.key + " is missing from group " + parent
+          "Blueprint manifest " + context + " is missing from group " + parent
         );
       }
       if (memberGroup !== parent) {
         throw new Error(
-          "Blueprint manifest entry " + entry.key + " belongs to group " + memberGroup +
+          "Blueprint manifest " + context + " belongs to group " + memberGroup +
             " but references " + parent
         );
       }
       matchedMembers.add(label);
+    }
+    previews.forEach(function (entry) {
+      if (!entry || (entry.targetKind !== "block" && entry.targetKind !== "externalMarkup")) {
+        return;
+      }
+      checkJoin("entry " + entry.key, entry.label, entry.parent, entry.parentTitle);
     });
-    // Group membership is semantic data. A blank resource can leave a member
-    // without a preview entry; only members advertising a key require that join.
+    if (Array.isArray(nodes)) {
+      nodes.forEach(function (row) {
+        if (!row || typeof row !== "object" || !row.bodyless || typeof row.bodyless !== "object") {
+          return;
+        }
+        const label = typeof row.label === "string" ? row.label.trim() : "";
+        checkJoin("bodyless node " + label, row.label, row.bodyless.parent, row.bodyless.parentTitle);
+      });
+    }
+    // Every group member joins to a preview facet or to the metadata of its bodyless node.
     groupData.groups.forEach(function (group) {
       group.entries.forEach(function (member) {
-        if (member.previewKey != null && !matchedMembers.has(member.label.trim())) {
+        if (!matchedMembers.has(member.label.trim())) {
           throw new Error(
             "Blueprint manifest group " + group.label.trim() + " member " + member.label.trim() +
               " has no matching manifest entry"
@@ -835,19 +864,25 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
   export function decodeBlueprintManifestFile(data, previews) {
     const previewMap = previews instanceof Map ? previews : decodeBlueprintManifest(data);
     const groupData = decodeBlueprintGroups(data);
-    validateBlueprintGroupJoins(previewMap, groupData);
+    validateBlueprintGroupJoins(previewMap, groupData, data.nodes);
     const sourceData = decodeBlueprintSourceDocuments(data);
     const defaultPreviewsByLabel = new Map();
+    const canonicalDefaults = new Set();
     for (const entry of previewMap.values()) {
       if (entry.defaultPreview !== true) continue;
       if (typeof entry.label !== "string" || !entry.label ||
           (entry.targetKind !== "block" && entry.targetKind !== "externalMarkup")) {
         throw new Error("Blueprint manifest default preview must identify a node");
       }
-      if (defaultPreviewsByLabel.has(entry.label)) {
+      if (canonicalDefaults.has(entry.label)) {
         throw new Error("Blueprint manifest contains duplicate default preview for " + entry.label);
       }
+      canonicalDefaults.add(entry.label);
       defaultPreviewsByLabel.set(entry.label, entry);
+      if (typeof entry.authoredLabel === "string" && entry.authoredLabel &&
+          entry.authoredLabel !== entry.label && !defaultPreviewsByLabel.has(entry.authoredLabel)) {
+        defaultPreviewsByLabel.set(entry.authoredLabel, entry);
+      }
     }
     return {
       previews: previewMap,

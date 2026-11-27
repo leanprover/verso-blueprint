@@ -36,11 +36,11 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
   }
 
   function semanticOnlyPreviewBodyMissing(entry, options) {
-    return !!(
-      entry &&
-      typeof entry === "object" &&
-      entry.targetKind === "externalMarkup" &&
-      htmlCacheReady(options)
+    if (!entry || typeof entry !== "object" || !htmlCacheReady(options)) return false;
+    if (entry.targetKind === "externalMarkup") return true;
+    return (
+      entry.codeOnlyPreview === true &&
+      (!Array.isArray(entry.leanCodePreviewKeys) || entry.leanCodePreviewKeys.length === 0)
     );
   }
 
@@ -522,11 +522,17 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
     const labelResult = normalized.explicitFacet ? null
       : await requireBlueprintDataApi(opts).resolveLabel(normalized.label, opts);
     const selectedDefault = labelResult?.manifestEntry?.defaultPreview === true &&
-      (labelResult.manifestEntry.targetKind === "block" || preferences.length === 0)
+      ((labelResult.manifestEntry.targetKind === "block" &&
+        labelResult.manifestEntry.sourceBackedPreview !== true) || preferences.length === 0)
       ? labelResult : null;
     const nativeKey = selectedDefault?.key || previewKey(normalized.label, normalized.facet);
     const nativeResult = await resolveBlueprintPreview(nativeKey, opts);
-    if (nativeResult.ok) {
+    const isExternalFallback = !!(
+      nativeResult.manifestEntry &&
+      (nativeResult.manifestEntry.targetKind === "externalMarkup" ||
+        nativeResult.manifestEntry.sourceBackedPreview === true)
+    );
+    if (nativeResult.ok && !(isExternalFallback && preferences.length > 0)) {
       if (selectedDefault?.manifestEntry.targetKind === "externalMarkup") {
         const result = renderNodePreviewResult(nativeResult, {
           renderMode: "external-markup",

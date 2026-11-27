@@ -427,6 +427,44 @@ class TestGraphLayoutRuntime:
                                     nodes: [node]
                                 },
                                 {
+                                    ...completeRecord("graph:unassessed-null", [fullVariant]),
+                                    nodes: [{
+                                        ...node,
+                                        assessment: null,
+                                        actionableStage: null,
+                                        statementStatus: "unassessed",
+                                        proofStatus: "unassessed"
+                                    }]
+                                },
+                                {
+                                    ...completeRecord("graph:null-assessment-actionable", [fullVariant]),
+                                    nodes: [{
+                                        ...node,
+                                        assessment: null,
+                                        actionableStage: "statement",
+                                        statementStatus: "unassessed",
+                                        proofStatus: "unassessed"
+                                    }]
+                                },
+                                {
+                                    ...completeRecord("graph:null-assessment-formalized", [fullVariant]),
+                                    nodes: [{
+                                        ...node,
+                                        assessment: null,
+                                        actionableStage: null,
+                                        statementStatus: "formalized",
+                                        proofStatus: "unassessed"
+                                    }]
+                                },
+                                {
+                                    ...completeRecord("graph:mismatched-status", [fullVariant]),
+                                    nodes: [{ ...node, proofStatus: "formalized" }]
+                                },
+                                {
+                                    ...completeRecord("graph:mismatched-stage", [fullVariant]),
+                                    nodes: [{ ...node, actionableStage: null }]
+                                },
+                                {
                                     ...completeRecord("graph:missing-assessment", [fullVariant]),
                                     nodes: [{ ...node, assessment: undefined }]
                                 },
@@ -528,7 +566,7 @@ class TestGraphLayoutRuntime:
             )
         )
 
-        assert keys["keys"] == ["graph:current", "graph:new-assessment"]
+        assert keys["keys"] == ["graph:current", "graph:new-assessment", "graph:unassessed-null"]
         assert keys["actionableStage"] == "proof"
 
     def test_public_graph_api_can_render_copied_graph_block(self, server: str, page: Page):

@@ -41,6 +41,7 @@
     "BlueprintNodeAssessment",
     "BlueprintNodeOccurrenceMetadata",
     "BlueprintManifestNode",
+    "BlueprintManifestFile",
     "BlueprintGraphNodeVisual",
     "BlueprintGraphEdge",
     "BlueprintGraphGroup",

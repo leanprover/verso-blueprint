@@ -329,6 +329,7 @@
  * @property {boolean} foldProofBlock Whether the canonical proof shell is collapsed for proof entries.
  * @property {boolean} foldCodeBlock Whether the associated code panel is collapsed for this canonical traversal entry.
  * @property {boolean} codeOnlyPreview Whether preview readers compose associated Lean fragments instead of the inert block body.
+ * @property {boolean} sourceBackedPreview Whether the preview body was rendered from external source markup rather than native Verso prose.
  * @property {boolean} defaultPreview Whether the generated output selected this entry for default label previews.
  * @property {string[]} leanCodePreviewKeys Associated Lean-code manifest/cache keys, in display order.
  * @property {BlueprintRelatedEntry[]} uses Related nodes used by this entry.
@@ -406,6 +407,17 @@
  * @property {string | null} primaryKey Manifest resource supplying the node's display metadata.
  * @property {BlueprintNodeOccurrenceMetadata | null} bodyless Display metadata when no primary resource exists.
  * @property {BlueprintNodeAssessment | null} assessment Captured assessment, independent of graph and preview occurrences.
+ */
+
+/**
+ * Top-level generated `blueprint-manifest.json` payload.
+ *
+ * @typedef {Object} BlueprintManifestFile
+ * @property {BlueprintManifestNode[]} nodes Included Blueprint node rows, one per label.
+ * @property {BlueprintManifestEntry[]} previews Keyed semantic preview entries.
+ * @property {BlueprintGroupRelation[]} groups Normalized group catalog referenced by node `parent` fields.
+ * @property {BlueprintGraphData[]} graphs Finalized dependency graph payloads.
+ * @property {BlueprintSourceDocument[]} sourceDocuments Declared original source documents.
  */
 
 /**

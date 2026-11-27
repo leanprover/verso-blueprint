@@ -381,10 +381,11 @@ See {bpref "site_node_inline"}[the inline proof] and {bpref "site_node_witness_o
   let some standalone := index.findEntry? standaloneKey
     | throw <| IO.userError "Standalone witness lost its external markup resource"
   unless attached.targetKind == .block && !attached.defaultPreview && !attached.codeOnlyPreview &&
+      attached.sourceBackedPreview &&
       (index.findEntry? priorityKey).any (·.defaultPreview) &&
       (index.findEntry? (PreviewSource.externalMarkupKey `site_node_prose_priority)).isNone &&
       (files.htmlCache.findHtml? attachedKey).any (hasSubstr · "Attached statement witness.") &&
-      standalone.targetKind == .externalMarkup && standalone.defaultPreview &&
+      standalone.targetKind == .externalMarkup && standalone.defaultPreview && standalone.sourceBackedPreview &&
       (index.findEntry? (PreviewCache.statementKey `site_node_standalone)).isNone &&
       (files.htmlCache.findHtml? standaloneKey).any (hasSubstr · "Standalone statement witness.") &&
       resources.facetKey? `site_node_standalone .statement == PreviewKey.ofString? standaloneKey do

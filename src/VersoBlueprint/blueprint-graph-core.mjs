@@ -230,6 +230,46 @@ function isNodeVisual(value) {
     (value.tooltip === undefined || isNullableString(value.tooltip));
 }
 
+/**
+ * Mirror `Informal.Graph.statusesForAssessment` for wire-level validation.
+ * @param {Record<string, unknown>} assessment
+ * @returns {{ statementStatus: string, proofStatus: string }}
+ */
+function expectedStatusesForAssessment(assessment) {
+  if (!assessment.hasNativeDeclarations) {
+    return { statementStatus: "unassessed", proofStatus: "unassessed" };
+  }
+  const statementStatus = assessment.nativeStatementComplete
+    ? "formalized"
+    : assessment.statementDependenciesComplete
+      ? "ready"
+      : "blocked";
+  const proofStatus = assessment.proofRoleComplete === false
+    ? "incomplete"
+    : assessment.nativeBodyComplete
+      ? (assessment.statementDependenciesComplete && assessment.proofDependenciesComplete
+        ? "formalizedWithAncestors"
+        : "formalized")
+      : "none";
+  return { statementStatus, proofStatus };
+}
+
+/**
+ * Mirror `Informal.Graph.actionableStageForAssessment?` for wire-level validation.
+ * @param {Record<string, unknown>} assessment
+ * @returns {"statement" | "proof" | null}
+ */
+function expectedActionableStageForAssessment(assessment) {
+  if (!assessment.hasNativeDeclarations) return null;
+  if (!assessment.nativeStatementComplete) {
+    return assessment.statementDependenciesComplete ? "statement" : null;
+  }
+  if (assessment.hasNativeBodyRequirement && !assessment.nativeBodyComplete) {
+    return assessment.proofDependenciesComplete ? "proof" : null;
+  }
+  return null;
+}
+
 /** @param {unknown} value @returns {boolean} */
 function isGraphNode(value) {
   if (!isRecord(value) || !Object.hasOwn(value, "assessment") || !Object.hasOwn(value, "actionableStage")) {
@@ -244,9 +284,25 @@ function isGraphNode(value) {
       !Array.isArray(value.proofUses) || !value.proofUses.every(isUseRef) || !isNodeVisual(value.visual)) return false;
   if (!isChoice(value.statementStatus, ["unassessed", "blocked", "ready", "formalized", "mathlib"]) ||
       !isChoice(value.proofStatus, ["unassessed", "none", "ready", "incomplete", "formalized", "formalizedWithAncestors"])) return false;
-  if (value.assessment !== null && !isNodeAssessment(value.assessment)) return false;
   if (value.actionableStage !== null &&
       value.actionableStage !== "statement" && value.actionableStage !== "proof") return false;
+  if (value.assessment === null) {
+    if (value.actionableStage !== null ||
+        value.statementStatus !== "unassessed" ||
+        value.proofStatus !== "unassessed") {
+      return false;
+    }
+  } else {
+    if (!isNodeAssessment(value.assessment)) return false;
+    const assessment = /** @type {Record<string, unknown>} */ (value.assessment);
+    const expectedStatuses = expectedStatusesForAssessment(assessment);
+    const expectedStage = expectedActionableStageForAssessment(assessment);
+    if (value.statementStatus !== expectedStatuses.statementStatus ||
+        value.proofStatus !== expectedStatuses.proofStatus ||
+        value.actionableStage !== expectedStage) {
+      return false;
+    }
+  }
   return isRecord(value.warnings) && typeof value.warnings.unknownRef === "boolean" &&
     !Object.prototype.hasOwnProperty.call(value.warnings, "leanOnlyNoStatement") &&
     !Object.prototype.hasOwnProperty.call(value.warnings, "missingExternalDecl");
