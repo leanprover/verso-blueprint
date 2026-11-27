@@ -254,7 +254,6 @@ source document: its content is the checked declaration, not the owning file. -/
 structure Prepared where
   canonical : Name
   declaration : ObjectKey
-  kind : Data.NodeKind
   roles : Array Name := #[]
   moduleName : Name
   ranges : DeclarationRanges
@@ -303,12 +302,11 @@ private def preparedAt (request : Request) (ranges : DeclarationRanges)
     | return .error <| issue "missing-declaration" request.canonical "Declaration is not in the current checked environment"
   let context : Context := ⟨`lean, request.project⟩
   let roles ← NativeLean.declarationRoles info
-  let kind : Data.NodeKind := if roles.contains `proof then .theorem else .definition
   let statement ← semantics .statement request.project #[request.canonical]
   let semantics ← semantics .implementation request.project #[request.canonical]
   return .ok {
     canonical := request.canonical, declaration := ⟨context, request.canonical.toString⟩
-    kind, roles, moduleName := request.moduleName, ranges
+    roles, moduleName := request.moduleName, ranges
     semanticContext := semantics.toOption, statementContext := statement.toOption
     semanticDiagnostics := canonical ((match semantics with | .ok _ => #[] | .error issue => #[issue]) ++
       (match statement with | .ok _ => #[] | .error issue => #[issue])) }
@@ -582,23 +580,22 @@ def PreparedModel.prepareValidation (p : PreparedModel) (expected : Syntax)
     (goalDocuments : Array DocumentKey := #[])
     (semantics : NativeLean.SemanticContext := NativeLean.semanticContext) :
     Elab.Term.TermElabM (Except Diagnostic (Input × NativeLean.Checked)) := do
-  unless p.input.realizations.any (·.value.key == p.leanKey.forRole `proof) do
-    return .error <| issue "wrong-proof-witness" p.leanKey.node
-      "Expected a proof-valued native declaration before adding a proof requirement"
+  let proofRealization := p.leanKey.forRole `proof
+  let key : RequirementKey := ⟨.declaration proofRealization p.witness, `expectedProof⟩
+  let wrongWitness := issue "wrong-proof-witness" p.leanKey.node
+    "Expected the exact native proof realization and selected witness before adding a proof requirement"
+  let models := canonical ((p.input.realizations.filter (·.value.key == proofRealization)).map (·.value))
+  let #[model] := models | return .error wrongWitness
+  let some declaration := model.declaration? p.witness | return .error wrongWitness
+  unless model.role == `proof && declaration.projection == .implementation do
+    return .error wrongWitness
+  let some updated := model.attachDeclarationRequirement? key | return .error wrongWitness
   let docs := goalDocuments.foldl (fun docs key => if docs.contains key then docs else docs.push key) #[]
   let checked ← NativeLean.check p.witness.context.project p.witness expected docs semantics
   let .ok checked := checked | return checked.map (fun checked => (p.input, checked))
-  let proofRealization := p.leanKey.forRole `proof
-  let key : RequirementKey := ⟨.declaration proofRealization p.witness, `expectedProof⟩
-  let updateRealization (record : Contribution Realization) : Contribution Realization := Id.run do
-    if record.value.key != proofRealization then return record
-    let declaration : Declaration := {
-      object := p.witness,
-      projection := .implementation,
-      required := canonical (record.value.declarations[0]!.required.push key) }
-    return { record with value := { record.value with role := `proof, declarations := #[declaration] } }
   let input := { p.input with
-    realizations := p.input.realizations.map updateRealization
+    realizations := p.input.realizations.map fun record =>
+      if record.value.key == proofRealization then { record with value := updated } else record
     requirements := p.input.requirements ++ #[p.contribution `expectedProofRequirement {
       key, expected := .proof checked.goal p.witness
       coverage := .dependencyClosure }]
@@ -618,9 +615,9 @@ def PreparedModel.validate (p : PreparedModel) (expected : Syntax) : Elab.Term.T
     | return .error <| issue "invalid-projection" p.leanKey.node "Projected input failed pure structural admission"
   let some binding := registry.bindingFor key
     | return .error <| issue "missing-binding" p.leanKey.node "No binding for native proof requirement"
-  return .ok { input with evidence := #[p.contribution `proofEvidence {
+  return .ok { input with evidence := input.evidence.push (p.contribution `proofEvidence {
     id := p.leanKey.node ++ `nativeProof, requirement := key, binding
-    observation := .proof checked.observation }] }
+    observation := .proof checked.observation }) }
 
 
 end Informal.Realizations.NativeSource

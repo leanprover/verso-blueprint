@@ -105,12 +105,12 @@ def declarationRoles (info : ConstantInfo) : CoreM (Array Name) := do
 
 /-- Check the role inventory before a native answer can supply contracts to the evaluator. -/
 def CheckedDeclaration.rolesAgree (value : CheckedDeclaration) : Bool :=
-  let hasProof := value.roles.contains `proof
-  value.roles.all (fun role => #[`statement, `proof, `implementation].contains role) &&
-    value.body.proposition == hasProof && (!hasProof || value.roles.contains `statement) &&
-    match value.kind with
-    | none => value.roles.isEmpty && value.statement.outcome != .passed && value.body.outcome != .passed
-    | some _ => !value.roles.isEmpty
+  match value.kind, value.roles with
+  | none, #[] => !value.body.proposition && value.statement.outcome != .passed && value.body.outcome != .passed
+  | some .theorem, #[`statement, `proof] => value.body.proposition
+  | some .theorem, #[`statement] | some .definition, #[`statement]
+  | some .definition, #[`implementation] => !value.body.proposition
+  | _, _ => false
 
 /-- Prepare shared closure coverage for trusted native candidates. Request
 identity, kernel checks, roles and assumptions are still checked separately

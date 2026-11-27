@@ -611,6 +611,51 @@ run_cmd liftTermElabM do
     labels == (← Informal.Environment.labelsForLeanDecl `RealizationAdapterFixture.reflexivity))
     "Read/check must preserve accepted node/declaration membership"
 
+-- Validate the selected declaration even when it follows a sibling in a
+-- composed model. Keep the sibling's real evidence and the selected owner's
+-- association failure, which must still block the newly attached proof.
+run_cmd liftTermElabM do
+  let p ← obtain (← RealizationAdapterFixture.prepareModel `adapterFixture
+    (Name.mkSimple "adapter.composed") `RealizationAdapterFixture.reflexivity)
+  let owner := p.leanKey.forRole `proof
+  let sibling := witness `RealizationAdapterFixture.groupedOne
+  let siblingKey : RequirementKey := ⟨.declaration owner sibling, `proof⟩
+  let siblingCheck ← obtain (← NativeLean.checkDeclaration `adapterFixture sibling)
+  let sourceIssue : Diagnostic := {
+    code := "source-association-unavailable", subject := p.witness.native
+    message := "Selected owner's source association is unavailable" }
+  let siblingDeclaration : Informal.Realizations.Declaration := { object := sibling, required := #[siblingKey] }
+  let selected : Informal.Realizations.Declaration := { object := p.witness, sourceIssues := #[sourceIssue] }
+  let input := { p.input with
+    objects := p.input.objects.push (p.contribution `composedSibling { key := sibling, resolution := .resolved })
+    realizations := p.input.realizations.map fun record =>
+      if record.value.key == owner then
+        { record with value := { record.value with declarations := #[siblingDeclaration, selected] } }
+      else record
+    requirements := p.input.requirements.push (p.contribution `composedSiblingRequirement {
+      key := siblingKey, expected := .check NativeLean.bodyValidator, coverage := .dependencyClosure }) }
+  let before ← obtain (admit input)
+  let some binding := before.bindingFor siblingKey | throwError "Missing sibling check binding"
+  let prior := p.contribution `composedSiblingEvidence {
+    id := `composedSiblingEvidence, requirement := siblingKey, binding
+    observation := .check siblingCheck.body }
+  let composed := { p with input := { input with evidence := #[prior] } }
+  let goal ← `(term| ∀ n : Nat, n = n)
+  let validated ← obtain (← composed.validate goal)
+  let registry ← obtain (admit validated)
+  let some proof := registry.realization? owner | throwError "Missing composed proof realization"
+  let expected := proofKey p
+  ensure (proof.declarations == #[siblingDeclaration, { selected with required := #[expected] }] &&
+    validated.evidence.size == 2 && validated.evidence[0]? == some prior &&
+    (registry.resultForRequirement siblingKey).complete &&
+    (registry.resultForRequirement expected).status == .blocked &&
+    (registry.resultForRequirement expected).diagnostics.contains sourceIssue)
+    "Expected-proof validation must preserve the exact declarations, owner issues and prior evidence"
+  let wrong := { composed with witness := witness `RealizationAdapterFixture.polymorphic }
+  match ← wrong.prepareValidation goal with
+  | .error diagnostic => ensure (diagnostic.code == "wrong-proof-witness") "Wrong exact-owner rejection"
+  | .ok _ => throwError "A proof-shaped key was accepted without its exact witness"
+
 run_cmd liftTermElabM do
   let trueGoal ← `(term| True)
   let admitted ← obtain (← NativeLean.check `adapterFixture (witness `RealizationAdapterFixture.admitted) trueGoal)

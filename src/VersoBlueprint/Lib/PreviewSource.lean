@@ -128,12 +128,6 @@ def environmentSelection? (env : Environment) (label : Name) : Option Selection 
       else nodeFacetPreview? node facet
   pure <| Selection.ofPreview label facet preview
 
-/-- Capture only populates the exact selected document after checking its owner and bytes. -/
-def adoptedStatementVerified (snapshot : Realizations.Capture.Snapshot)
-    (source : SourceData.SourceSelection) : Bool :=
-  source.adoption.isSome &&
-    (snapshot.registry.document? source.selectedDocumentKey).any (! ·.text.trimAscii.isEmpty)
-
 def renderWidgetHtml (preview? : Option Preview)
     (snapshot? : Option Realizations.Capture.Snapshot := none) :
     Lean.Elab.Term.TermElabM Verso.Output.Html := do

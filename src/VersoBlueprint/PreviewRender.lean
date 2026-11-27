@@ -146,36 +146,32 @@ private unsafe def getExtensionImpls : Lean.Elab.Term.TermElabM Verso.Genre.Manu
   let implExpr ← Lean.Elab.Term.elabTermAndSynthesize (← `(extension_impls%)) (some tyExpr)
   Lean.Meta.evalExpr Verso.Genre.Manual.ExtensionImpls tyExpr implExpr
 
-private unsafe def renderPreviewBlocksHtmlWithAssessmentUnsafe
+private unsafe def renderPreviewBlocksHtmlUsingCaptureUnsafe
     (blocks : Array (Verso.Doc.Block Verso.Genre.Manual))
-    (assessmentFor : Lean.Name → Option Informal.Realizations.NodeAssessment) :
+    (snapshot? : Option Realizations.Capture.Snapshot) :
     Lean.Elab.Term.TermElabM Verso.Output.Html := do
   let impls ← getExtensionImpls
   let state := Informal.Environment.informalExt.getState (← Lean.getEnv)
-  -- Producer-time/source-only previews must not perform a whole-project native
-  -- capture. Their caller may supply assessments from an already completed
-  -- snapshot; the default wrapper below supplies none, so status is explicit.
-  let nodes := TraversalIndex.Nodes.capture state assessmentFor
+  let nodes := TraversalIndex.Nodes.capture state snapshot?
   let impls := TraversalIndex.withInitializer impls (fun state => TraversalIndex.Nodes.install state nodes)
   monadLift <| renderManualBlocksHtml blocks impls
 
-/- Render preview blocks with an explicitly supplied assessment source. -/
-@[implemented_by renderPreviewBlocksHtmlWithAssessmentUnsafe]
-opaque renderPreviewBlocksHtmlWithAssessment
+@[implemented_by renderPreviewBlocksHtmlUsingCaptureUnsafe]
+private opaque renderPreviewBlocksHtmlUsingCapture
     (blocks : Array (Verso.Doc.Block Verso.Genre.Manual))
-    (assessmentFor : Lean.Name → Option Informal.Realizations.NodeAssessment) :
+    (snapshot? : Option Realizations.Capture.Snapshot) :
     Lean.Elab.Term.TermElabM Verso.Output.Html
 
 /-- Source-only producer previews do not capture or infer validation. -/
 def renderPreviewBlocksHtml
     (blocks : Array (Verso.Doc.Block Verso.Genre.Manual)) : Lean.Elab.Term.TermElabM Verso.Output.Html :=
-  renderPreviewBlocksHtmlWithAssessment blocks (fun _ => none)
+  renderPreviewBlocksHtmlUsingCapture blocks none
 
-/-- Render preview blocks using assessment from an already completed capture. -/
+/-- Render preview blocks with the node data from an already completed capture. -/
 def renderPreviewBlocksHtmlWithSnapshot
     (blocks : Array (Verso.Doc.Block Verso.Genre.Manual))
     (snapshot : Informal.Realizations.Capture.Snapshot) : Lean.Elab.Term.TermElabM Verso.Output.Html :=
-  renderPreviewBlocksHtmlWithAssessment blocks fun label => some (snapshot.assessmentFor label)
+  renderPreviewBlocksHtmlUsingCapture blocks (some snapshot)
 
 /-- Render cached elaborated statement blocks to HTML using the manual renderer. -/
 private unsafe def renderStatementElabHtmlUnsafe (stxs : Array Lean.Syntax) : Lean.Elab.Term.TermElabM Verso.Output.Html := do

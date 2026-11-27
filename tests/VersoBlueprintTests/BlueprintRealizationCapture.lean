@@ -149,6 +149,7 @@ run_cmd liftTermElabM do
     proofValue.statement.outcome == .passed && proofValue.body.outcome == .passed)
     "The role controls must start from a genuinely checked proof"
   rejectCheck { proofValue with roles := proofValue.roles.push `unexpected }
+  rejectCheck { proofValue with roles := proofValue.roles.push `implementation }
   rejectCheck { proofValue with roles := #[`statement] }
   rejectCheck { proofValue with roles := #[`proof] }
   rejectCheck { proofValue with body := { proofValue.body with proposition := false } }
@@ -920,6 +921,26 @@ run_cmd liftTermElabM do
 @[blueprint "capture.propositionOnly"]
 def propositionOnly : Prop := True
 
+-- A proof-shaped key can be authored with either role, but cannot supply an
+-- ordinary proof owner for a node whose native declaration is a proposition.
+run_cmd liftTermElabM do
+  let env ← getEnv
+  try
+    let node := Name.mkSimple "capture.propositionOnly"
+    let realization := (⟨node, `lean⟩ : RealizationKey).forRole `proof
+    let context : Realizations.Context := ⟨`lean, `blueprintFixtures⟩
+    let witness : ObjectKey := ⟨context, "RealizationCaptureFixture.complete"⟩
+    for role in #[`account, `proof] do
+      setEnv env
+      Authoring.stage `borrowedProofOwner {
+        realizations := #[{ key := realization, context, role, declarations := #[{ object := witness }] }] }
+      Authoring.expectNative `borrowedExpectedProof node `RealizationCaptureFixture.expectedTrue
+      match ← Capture.capture with
+      | .ok _ => throwError "An authored realization supplied another node's native expected proof"
+      | .error issues =>
+        ensure (issues.any (·.code == "ambiguous-native-expectation")) s!"Wrong owner rejection: {repr issues}"
+  finally setEnv env
+
 -- A checked sibling cannot certify an absent member on either placement or
 -- supply its contract to a dependent label.
 run_cmd liftTermElabM do
@@ -1060,5 +1081,17 @@ run_cmd liftTermElabM do
     "Resource failure leaked info-state mutation"
   ensure ((← getTraceState).traces.size > tracesBefore.traces.size)
     "Resource failure restoration discarded diagnostic traces"
+
+run_cmd liftTermElabM do
+  let flat := Name.mkSimple "foo.bar»"
+  let nested := Name.str (Name.mkSimple "foo") "bar»"
+  let edge : Capture.SelectedUse := {
+    source := `using, context := none, realization := none, role := `proof
+    reference := { label := `target }, selected := .ok #[] }
+  let withKey (name : Name) : Capture.SelectedUse :=
+    { edge with selected := .ok #[⟨.realization ⟨`target, `lean⟩, name⟩] }
+  ensure (toJson flat == toJson nested && flat != nested) "Control requires colliding display names"
+  ensure ((withKey flat).bindingData != (withKey nested).bindingData)
+    "Selected requirement identities must preserve typed names"
 
 end RealizationCaptureFixture

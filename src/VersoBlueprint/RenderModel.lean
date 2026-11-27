@@ -6,8 +6,8 @@ Author: Emilio J. Gallego Arias
 
 import VersoBlueprint.Commands.Graph
 import VersoBlueprint.Commands.Summary
-import VersoBlueprint.Lib.PreviewSource
 import VersoBlueprint.Realizations.Capture
+import VersoBlueprint.TraversalIndex
 
 open Lean Verso Doc
 open Verso.Genre (Manual)
@@ -38,15 +38,7 @@ elab "blueprint_render_model%" : term => do
   let snapshot ← match snapshot with
     | .ok snapshot => pure snapshot
     | .error issues => throwError m!"Cannot capture Blueprint realization state: {repr issues}"
-  let nativeChecks := snapshot.nativeChecks.foldl
-    (fun (checks : Std.HashMap Realizations.ObjectKey Data.ProvedStatus) checked =>
-      checks.insert checked.declaration checked.status) {}
-  let nodes := TraversalIndex.Nodes.capture state (fun label => some (snapshot.assessmentFor label)) (some nativeChecks)
-  let nodes := nodes.map fun node => Id.run do
-    let some inventory := state.inventory.get? node.label | return node
-    let some source := inventory.sources.find? (·.adoption.isSome) | return node
-    let verified := PreviewSource.adoptedStatementVerified snapshot source
-    return { node with adoptedStatementAvailable := some verified }
+  let nodes := TraversalIndex.Nodes.capture state (some snapshot)
   let graph := Graph.buildModel snapshot (snapshot.registry.nodes.map (·.label))
     (groupTitles := state.groups.toArray)
   let summary ← Commands.buildSummary snapshot

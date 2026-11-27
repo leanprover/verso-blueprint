@@ -25,6 +25,8 @@ private def upstreamBody : String := " The **upstream statement marker** retains
 private def markdownMarker : String := "<strong>upstream statement marker</strong>"
 private def versoMarker : String := "<strong>upstream Verso marker</strong>"
 private def proofMarker : String := "<strong>consumer proof marker</strong>"
+private def checkedMarker : String := "bp_external_status_ok"
+private def awaitingMarker : String := "bp_external_status_awaiting"
 
 private def ensure (condition : Bool) (failure : String) : TermElabM Unit :=
   unless condition do throwError failure
@@ -70,6 +72,29 @@ private def ensureWidgetPreview (label : Name) (capture : Except (Array Realizat
       ensure (!hasSubstr html marker) s!"Widget preview for {label} rendered a different body: {html}"
   ensure (!hasSubstr html "A different source marker") s!"Widget preview for {label} rendered another declaration: {html}"
 
+private def ensureNestedWidgetPreview (capture : Except (Array Realizations.Diagnostic) Capture.Snapshot)
+    (adopted checked : Bool) : TermElabM Unit := do
+  let widget ← buildFromCapture one capture
+  -- Render the original statement and proof occurrences inside a selected
+  -- preview, so each must resolve its own presentation facts in traversal.
+  let blocks := #[Verso.Doc.Block.blockquote ExternalDocstringFixture.chapter.toPart.content]
+  let nested := { widget with previewSelection? := some (.ofPreview one .statement { blocks }) }
+  let rendered ← nested.renderPreviewHtml
+  -- Native declaration panels can independently display compiled docstrings.
+  -- Check the adopted statement and authored proof in their prose bodies.
+  let collectProse := rendered.visitM (m := StateM (Array String)) (tag := fun _ attrs contents => do
+    if attrs.any (fun (name, value) => name == "class" && (value.splitOn " ").contains "bp_content") then
+      modify (·.push contents.asString)
+    pure none)
+  let prose := (collectProse.run #[]).2
+  let containsProse (marker : String) := prose.any (fun body => hasSubstr body marker)
+  ensure (containsProse markdownMarker == adopted && containsProse versoMarker == adopted &&
+    containsProse proofMarker)
+    s!"Nested widget did not preserve the captured statement and authored proof visibility (adopted={adopted})"
+  let html := rendered.asString
+  ensure (hasSubstr html checkedMarker == checked && hasSubstr html awaitingMarker == !checked)
+    s!"Nested widget did not preserve the captured external declaration status (checked={checked})"
+
 run_cmd liftTermElabM do
   let env ← getEnv
   let state := Environment.informalExt.getState env
@@ -84,6 +109,8 @@ run_cmd liftTermElabM do
     ensureWidgetPreview label (.ok valid) (some (.statement, marker))
   ensureWidgetPreview one (.error #[]) (some (.proof, proofMarker))
   ensureWidgetPreview verso (.error #[]) none
+  ensureNestedWidgetPreview (.ok valid) (adopted := true) (checked := true)
+  ensureNestedWidgetPreview (.error #[]) (adopted := false) (checked := false)
   let canonical := ``ExternalDocstringFixture.selected
   let ownerModule := `VersoBlueprintTests.BlueprintExternalDocstring.Owner
   let consumerModule := `VersoBlueprintTests.BlueprintExternalDocstring.Consumer
@@ -117,7 +144,7 @@ run_cmd liftTermElabM do
       ("external.docstring.inherited", ``ExternalDocstringFixture.inherited, "unsupported-docstring")] do
     let label := Name.mkSimple label
     let scopedIssues := valid.sourceDiagnostics.nodes.filter (·.1 == label)
-    ensure (hasNoMarkdown valid label && hasNativeProof valid label name && scopedIssues.any (·.2.code == code))
+    ensure (hasNoMarkdown valid label && hasNativeProof valid label name && scopedIssues.countP (·.2.code == code) == 1)
       s!"Unavailable own Markdown for {label} must retain native completion and issue {code}; got {repr scopedIssues}"
     ensureWidgetPreview label (.ok valid) none
   ensure (!(valid.sourceDiagnostics.nodes.any (fun (label, _) => label == one || label == two)))
@@ -135,6 +162,7 @@ run_cmd liftTermElabM do
     let stale ← capture plan fun path => do
       let bytes ← IO.FS.readFile path
       if isOwnerFile path then pure (edit bytes) else pure bytes
+    ensureNestedWidgetPreview (.ok stale) (adopted := false) (checked := true)
     ensureWidgetPreview one (.ok stale) (some (.proof, proofMarker))
     ensureWidgetPreview verso (.ok stale) none
     for label in #[one, two] do
@@ -144,6 +172,7 @@ run_cmd liftTermElabM do
         s!"Edited owner bytes for {label} must fail with one of {allowed} while keeping native proof coverage; got {repr scopedIssues}"
   let unreadable ← capture plan fun path =>
     if isOwnerFile path then throw (IO.userError "Injected unreadable owner") else IO.FS.readFile path
+  ensureNestedWidgetPreview (.ok unreadable) (adopted := false) (checked := true)
   ensureWidgetPreview two (.ok unreadable) none
   ensureWidgetPreview versoWithProof (.ok unreadable) (some (.proof, proofMarker))
   ensure (hasNoMarkdown unreadable one && hasNativeProof unreadable one canonical &&
@@ -181,6 +210,7 @@ private def model : RenderModel := blueprint_render_model%
   let selectedPreview (html : String) := hasSubstr html markdownMarker &&
     !hasSubstr html "A different source marker for the other attached declaration"
   pure <| hasSubstr html markdownMarker && hasSubstr html proofMarker && hasSubstr html versoMarker &&
+    hasSubstr html checkedMarker && !hasSubstr html awaitingMarker &&
     (preview one).any selectedPreview && (preview two).any selectedPreview &&
     (preview verso).any (fun html => hasSubstr html versoMarker)
 

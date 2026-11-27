@@ -162,6 +162,23 @@ def canonical [BEq α] [Ord α] (values : Array α) : Array α := Id.run do
     if result.back? != some value then result := result.push value
   return result
 
+/-- Resolve an existing declaration by its exact object in this realization. -/
+def Realization.declaration? (model : Realization) (object : ObjectKey) : Option Declaration := do
+  guard (object.context == model.context)
+  let #[declaration] := model.declarations.filter (·.object == object) | none
+  return declaration
+
+/-- Attach a requirement to its uniquely owned declaration, preserving the rest
+of the realization, including any source issues on the selected declaration. -/
+def Realization.attachDeclarationRequirement? (model : Realization) (key : RequirementKey) :
+    Option Realization := do
+  let .declaration owner object := key.subject | none
+  guard (owner == model.key)
+  let declaration ← model.declaration? object
+  let updated := { declaration with required := canonical (declaration.required.push key) }
+  return { model with declarations := model.declarations.map fun entry =>
+    if entry.object == object then updated else entry }
+
 def blank (s : String) : Bool := s.trimAscii.isEmpty
 
 def Context.valid (context : Context) : Bool :=

@@ -52,6 +52,17 @@ structure SelectedUse where
   selected : Except Diagnostic (Array RequirementKey)
   deriving Repr
 
+/-- Identity-bearing fields of the selected use, including the exact target
+contracts. Public display spellings are insufficient for structural bindings. -/
+def SelectedUse.bindingData (edge : SelectedUse) : Json :=
+  let selection := match edge.selected with
+    | .ok keys => toJson ("selected", keys.map BindingEncoding.requirementKey)
+    | .error d => toJson ("unresolved", d.code, d.subject, d.message, d.origins.map fun (origin : Origin) =>
+        (Vir.nameKey origin.id, Vir.nameKey origin.moduleName, origin.source))
+  toJson (Vir.nameKey edge.source, edge.context.map BindingEncoding.context,
+    edge.realization.map Vir.nameKey, Vir.nameKey edge.role, Vir.nameKey edge.reference.label,
+    edge.reference.origin, edge.reference.intent, selection)
+
 /-- Provider errors retain their request's identity independently of the
 human-readable diagnostic subject, which may name a transitive dependency.
 Shared authored documents are associated after complete model collection. -/
@@ -84,10 +95,29 @@ def Snapshot.diagnostics (snapshot : Snapshot) : Array Diagnostic :=
 
 /-- Ordinary native models retain their generated origin; authored alternatives
 do not silently join the default native summary or dependency contract. -/
+private def isOrdinaryRealization (record : Contribution Realization) : Bool :=
+  record.origin == (contribution `realization (BindingEncoding.realizationKey record.value.key) ()).origin
+
 private def ordinaryNativeRealizations (input : Input) (label : Name) : Array Realization :=
   canonical ((input.realizations.filter fun record =>
     record.value.key.node == label && record.value.context.language == `lean &&
-      record.origin == (contribution `realization (BindingEncoding.realizationKey record.value.key) ()).origin).map (·.value))
+      isOrdinaryRealization record).map (·.value))
+
+/-- Look up a declaration in the selected ordinary models. A node-level request
+without an object must select a singleton realization. An exact dependency can
+select a member of an ordinary realization with multiple declarations. -/
+private def exactNativeOwners (models : Array Realization) (context : Context) (role : Name)
+    (object : Option ObjectKey) : Array (Realization × Declaration) :=
+  models.filterMap fun model => do
+    guard (model.context == context && model.role == role)
+    let declaration ← match object with
+      | some object => model.declaration? object
+      | none => match model.declarations with
+        | #[declaration] => some declaration
+        | _ => none
+    let projection := if role == `statement then ContentScope.statement else .implementation
+    guard (declaration.object.context == context && declaration.projection == projection)
+    return (model, declaration)
 
 /-- The ordinary source producer's native models, derived from the admitted
 contributions. Full authored alternatives remain available in `registry`. -/
@@ -614,12 +644,10 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
           let selectedText ← match sourceStep.documented with
             | none => pure source.selectedText
             | some (.error diagnostic) =>
-              collected := { collected with sourceDiagnostics := collected.sourceDiagnostics.addNode label #[diagnostic] }
               pure (.error diagnostic)
             | some (.ok handle) => do
               match ← providers.documented p.documented[handle]! with
               | .error diagnostic =>
-                collected := { collected with sourceDiagnostics := collected.sourceDiagnostics.addNode label #[diagnostic] }
                 pure (.error diagnostic)
               | .ok documented =>
                 if documented.format != source.context.language then
@@ -627,7 +655,6 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
                     code := "source-format-unavailable"
                     subject := (toJson source.destination.subject).compress
                     message := "Direct native docstring format does not match its authored realization context" }
-                  collected := { collected with sourceDiagnostics := collected.sourceDiagnostics.addNode label #[diagnostic] }
                   pure (.error diagnostic)
                 else if let some adoption := source.adoption then
                   if adoption.owner.toOption == some (documented.document.key.path, SHA256.text documented.document.text) &&
@@ -779,12 +806,15 @@ private def collectAuthored [Monad m] (providers : Providers m) (p : Plan)
       let (node, _) := record.nativeGoals[index]!
       let key : RealizationKey := ⟨node, `lean⟩
       let key := key.forRole `proof
-      let models := canonical ((collected.input.realizations.filter (·.value.key == key)).map (·.value))
-      unless models.size == 1 && models[0]!.context == ⟨`lean, record.project⟩ && models[0]!.declarations.size == 1 do
+      let models := (ordinaryNativeRealizations collected.input node).filter (·.key == key)
+      let noOwner : ExceptT (Array Diagnostic) m Unit :=
         reject "ambiguous-native-expectation" node.toString
           "Expected proposition requires one exact ordinary proof realization in its stored context" #[record.origin]
-      let witness := models[0]!.declarations[0]!.object
+      let #[(model, declaration)] := exactNativeOwners models ⟨`lean, record.project⟩ `proof none
+        | noOwner
+      let witness := declaration.object
       let expectedKey : RequirementKey := ⟨.declaration key witness, `expectedProof⟩
+      let some updated := model.attachDeclarationRequirement? expectedKey | noOwner
       let goalRequest := p.expected[step.goals[index]!]!
       let specification := p.specifications[goalRequest.specification]!
       let (specDoc, issues) ← providers.document p.documents[specification.document]!
@@ -801,9 +831,9 @@ private def collectAuthored [Monad m] (providers : Providers m) (p : Plan)
       let input := { collected.input with
         documents := collected.input.documents.push (authoredContribution record.origin `specification index specDoc)
         realizations := collected.input.realizations.map fun contribution =>
-          if contribution.value.key != key then contribution else { contribution with value := { contribution.value with
-            declarations := contribution.value.declarations.map fun declaration =>
-              { declaration with required := canonical (declaration.required.push expectedKey) } } }
+          if contribution.value == model && isOrdinaryRealization contribution then
+            { contribution with value := updated }
+          else contribution
         requirements := collected.input.requirements.push (authoredContribution record.origin `expectedRequirement index {
           key := expectedKey, expected := .proof checked.goal witness, coverage := .dependencyClosure })
         bindingInputs := collected.input.bindingInputs ++ (checked.semanticContext.toArray.map fun content =>
@@ -862,8 +892,7 @@ private def selectTarget (collected : Collected) (context : Context) (axis : Nam
   if objects.isEmpty then
     return ← fail "missing-native-contract" "Dependency has no ordinary native declarations"
   let owners (role : Name) (object : ObjectKey) : Array (Realization × Declaration) :=
-    candidates.filterMap fun model =>
-      if model.role == role then (model.declarations.find? (·.object == object)).map (model, ·) else none
+    exactNativeOwners candidates context role (some object)
   let mut required := #[]
   for object in objects do
     let some checked := collected.nativeChecks.find? (·.declaration == object)
@@ -882,8 +911,7 @@ private def selectTarget (collected : Collected) (context : Context) (axis : Nam
     let validator := nativeValidator role
     let key : RequirementKey := ⟨.declaration model.key object, role⟩
     let contracts := canonical ((input.requirements.filter (·.value.key == key)).map (·.value))
-    let expectedProjection := if role == `statement then .statement else .implementation
-    unless checked.roles.contains role && declaration.projection == expectedProjection && contracts.size == 1 &&
+    unless checked.roles.contains role && contracts.size == 1 &&
         contracts[0]!.expected == .check validator && contracts[0]!.coverage == .dependencyClosure &&
         declaration.required.contains key do
       return ← fail "invalid-native-contract" "Dependency requires its exact selected native role and completeness contract"
@@ -968,8 +996,7 @@ private def connectUses (collected : Collected) (uses : Array SelectedUse) : Col
             key := selectionKey, expected := .check dependencySelectionValidator })
           bindingInputs := collected.input.bindingInputs.push (contribution `dependencySelection (BindingEncoding.requirementKey selectionKey) {
             subject, name := selectedUsesFor selectionKey
-            content := (toJson (edges.map fun edge => (edge.source, edge.context, edge.realization,
-              edge.role, edge.reference, edge.selected))).compress }) } }
+            content := (toJson (edges.map SelectedUse.bindingData)).compress }) } }
         collected := recordObservation collected selectionKey (.check {
           validator := dependencySelectionValidator
           outcome := if failures.isEmpty then .passed else .unavailable

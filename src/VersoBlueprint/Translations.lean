@@ -216,10 +216,11 @@ private def Registry.referenceIssues (r : Registry) : Array Diagnostic := Id.run
           if object != decl.object then
             diagnostics := diagnostics.push <| issue "wrong-declaration-subject" key
               "A declaration-local requirement cannot validate a sibling declaration"
-        if let some req := r.requirement? key then
-          if let .proof _ witness := req.expected then
-            if witness != decl.object then
-              diagnostics := diagnostics.push <| issue "wrong-witness" key "Declaration requires its own checked witness"
+        if let .realization _ := key.subject then
+          if let some req := r.requirement? key then
+            if let .proof _ witness := req.expected then
+              if witness != decl.object then
+                diagnostics := diagnostics.push <| issue "wrong-witness" key "Declaration requires its own checked witness"
     for key in realization.requirements do
       if key.subject.realization? != some realization.key then
         diagnostics := diagnostics.push <| issue "wrong-subject" key "Realization requirement belongs elsewhere"
@@ -260,7 +261,11 @@ private def Registry.referenceIssues (r : Registry) : Array Diagnostic := Id.run
       | _ =>
         diagnostics := diagnostics.push <| issue "wrong-native-subject" requirement.key
           "An own-declaration native check must name the exact declaration it checks"
-    if let .proof goal _ := requirement.expected then
+    if let .proof goal witness := requirement.expected then
+      if let .declaration _ object := requirement.key.subject then
+        if witness != object then
+          diagnostics := diagnostics.push <| issue "wrong-witness" requirement.key
+            "Declaration requires its own checked witness"
       if let some key := requirement.key.subject.realization? then
         if !(r.realization? key).any (·.context == goal.context) then
           diagnostics := diagnostics.push <| issue "wrong-project" requirement.key "Proof goal is outside realization context"
@@ -429,8 +434,9 @@ private def Registry.subjectContentIssues (r : Registry) (subject : Subject) : A
         r.contentIssues subject realization.documents (realization.declarations.map (·.object))
     | none => #[issue "unknown-realization" key "Missing source realization"]
   | .declaration owner object =>
-    let selected := (r.realization? owner).bind (·.declarations.find? (·.object == object))
-    (selected.map (·.sourceIssues)).getD #[] ++ r.objectIssues object
+    match (r.realization? owner).bind (·.declarations.find? (·.object == object)) with
+    | some selected => selected.sourceIssues ++ r.objectIssues object
+    | none => #[issue "unknown-declaration" subject "Declaration is not owned by the selected realization"]
   | _ => #[]
 
 private def Registry.semanticIssues (r : Registry) (key : RealizationKey)
@@ -613,7 +619,11 @@ def admit (input : Input) : Except (Array Diagnostic) Registry := Id.run do
   let realizations := values input.realizations
   let translations := values input.translations
   let claims := values input.claims
-  let requirements := values input.requirements
+  -- Prerequisites are a set. Use the same canonical order as the binding
+  -- encoding while preserving the exact producer records for replay.
+  let requirementRecords := input.requirements.map fun record =>
+    { record with value.prerequisites := canonical record.value.prerequisites }
+  let requirements := values requirementRecords
   let evidence := values input.evidence
   let evidenceIndex := evidence.foldl (fun out item =>
     out.insert item.requirement ((out[item.requirement]?.getD #[]).push item))
@@ -634,7 +644,7 @@ def admit (input : Input) : Except (Array Diagnostic) Registry := Id.run do
     familyIssues "node" (·.label) input.nodes ++ familyIssues "document" (·.key) input.documents ++
     familyIssues "object" (·.key) input.objects ++ familyIssues "realization" (·.key) input.realizations ++
     familyIssues "translation" (·.key) input.translations ++ familyIssues "claim" (·.key) input.claims ++
-    familyIssues "requirement" (·.key) input.requirements ++ familyIssues "evidence" (·.id) input.evidence ++
+    familyIssues "requirement" (·.key) requirementRecords ++ familyIssues "evidence" (·.id) input.evidence ++
     familyIssues "binding input" (fun value => (value.subject, value.name)) input.bindingInputs ++ r.referenceIssues
   unless diagnostics.isEmpty do return .error (canonical diagnostics)
   let subjects := r.realizations.flatMap (fun value => #[Subject.realization value.key] ++

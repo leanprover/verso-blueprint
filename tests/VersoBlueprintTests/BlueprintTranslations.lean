@@ -627,6 +627,101 @@ def withMissingProofHelper : IO Input := do
   expect "R2: stale semantic descriptors cannot follow a declaration to another owner"
     (rejectsWith bad "invalid-binding-input")
 
+-- A declaration subject fixes the witness even if a realization or prerequisite
+-- refers to the contract without listing it in the declaration's required array.
+#eval show IO Unit from do
+  let sibling := { leanObject with native := "Fixture.other_theorem" }
+  let input : Input := { fixture with
+    objects := fixture.objects.push <| contribution `otherTheorem {
+      key := sibling, resolution := .resolved }
+    requirements := fixture.requirements.map fun record =>
+      if record.value.key == reviewKey then
+        { record with value.prerequisites := #[proofKey] }
+      else record }
+  for (onDeclaration, onRealization) in #[(true, false), (false, true), (false, false)] do
+    let declarations : Array Informal.Realizations.Declaration := #[{
+      object := leanObject, projection := .implementation
+      required := if onDeclaration then #[proofKey] else #[] },
+      { object := sibling, projection := .implementation }]
+    let attached : Input := { input with realizations := input.realizations.map fun record =>
+      if record.value.key == leanProofKey then
+        { record with value := { record.value with
+          required := if onRealization then #[proofKey] else #[]
+          declarations } }
+      else record }
+    let checked ← withMockEvidence attached `checkedOwnWitness proofKey mockProof
+    let registry ← registry checked
+    expect "declaration proof: the exact owned witness passes through every attachment path"
+      (registry.resultForRequirement proofKey).complete
+    let wrongWitness : Input := { checked with requirements := checked.requirements.map fun record =>
+      if record.value.key == proofKey then
+        { record with value.expected := .proof goal sibling }
+      else record }
+    expect "declaration proof: a resolved sibling cannot supply the witness through any attachment path"
+      (rejectsWith wrongWitness "wrong-witness")
+
+-- Realization-scoped proof evidence needs an owned witness before it can
+-- discharge the downstream prerequisite, even if the object resolved globally.
+#eval show IO Unit from do
+  let unowned := { leanObject with native := "Fixture.unowned_theorem" }
+  let ownProof : RequirementKey := ⟨.realization leanProofKey, `realization_proof⟩
+  let input : Input := { fixture with
+    objects := fixture.objects.push <| contribution `unownedWitness {
+      key := unowned, resolution := .resolved }
+    realizations := fixture.realizations.map fun record =>
+      if record.value.key == leanProofKey then { record with value.required := #[ownProof] } else record
+    requirements := fixture.requirements.map fun record =>
+      if record.value.key == reviewKey then
+        { record with value.prerequisites := #[ownProof] }
+      else record }
+  for (witness, owned) in #[(leanObject, true), (unowned, false)] do
+    let contract := contribution `realizationProof { key := ownProof, expected := .proof goal witness }
+    let input := { input with requirements := input.requirements.push contract }
+    let checked ← withMockEvidence input `checkedRealizationWitness ownProof (mockProof goal witness)
+    let reviewed ← withMockEvidence checked `reviewWithProofPrerequisite reviewKey mockReview
+    let registry ← registry reviewed
+    let proof := registry.resultForRequirement ownProof
+    expect "realization proof: only an owned witness discharges its contract and downstream prerequisite"
+      (proof.complete == owned &&
+        (registry.localResult reviewKey).complete &&
+        (registry.resultForRequirement reviewKey).complete == owned)
+    unless owned do
+      expect "realization proof: missing ownership is a source diagnostic"
+        (proof.status == .blocked && hasIssue proof "unknown-declaration" &&
+          hasIssue proof "witness-unavailable")
+
+-- Prerequisite order and repetition are irrelevant to the contract, while
+-- producer replay still checks the original records exactly.
+#eval show IO Unit from do
+  let set := canonical #[proofKey, relationReviewKey]
+  let baseline : Input := { fixture with requirements := fixture.requirements.map fun record =>
+    if record.value.key == reviewKey then { record with value.prerequisites := set } else record }
+  let checked ← withMockEvidence baseline `normalizedProof proofKey mockProof
+  let checked ← withMockEvidence checked `normalizedRelationReview relationReviewKey mockReview
+  let checked ← withMockEvidence checked `normalizedClaimReview reviewKey mockReview
+  let before ← registry checked
+  let repeated := set.reverse.push proofKey
+  let original ← match checked.requirements.find? (·.value.key == reviewKey) with
+    | some record => pure record
+    | none => throw <| IO.userError "Missing prerequisite normalization fixture"
+  let equivalent := contribution `equivalentClaimReview { original.value with prerequisites := repeated }
+  let merged : Input := { checked with requirements := checked.requirements.push equivalent }
+  for candidate in #[merged, reverseInput merged] do
+    let admitted ← registry candidate
+    expect "prerequisites: order and repetition do not change the contract or its binding"
+      (admitted.requirements == before.requirements &&
+        (admitted.requirement? reviewKey).any (·.prerequisites == set) &&
+        admitted.bindingFor reviewKey == before.bindingFor reviewKey &&
+        (admitted.resultForRequirement reviewKey).complete)
+    expect "prerequisites: inspection retains all original producer records"
+      (admitted.contributions.requirements == candidate.requirements)
+  let different := { equivalent with value.prerequisites := #[proofKey] }
+  let collision := { original with value.prerequisites := repeated }
+  expect "prerequisites: changing the set still conflicts"
+    (rejectsWith { checked with requirements := checked.requirements.push different } "semantic-conflict")
+  expect "prerequisites: one producer cannot replay a different raw record"
+    (rejectsWith { checked with requirements := checked.requirements.push collision } "producer-collision")
+
 -- Pilot relocation boundary: these are MOCK observations, not replayed Rocq or
 -- Lean checks. Today DocumentKey.path participates in identity and bindings.
 #eval show IO Unit from do

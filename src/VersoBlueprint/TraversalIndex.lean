@@ -7,6 +7,7 @@ Author: Emilio J. Gallego Arias
 import Lean
 import VersoManual
 import VersoBlueprint.Informal.Block.Model
+import VersoBlueprint.Realizations.Capture
 import VersoBlueprint.Realizations.Projection
 import VersoBlueprint.Informal.GroupData
 import VersoBlueprint.Informal.LeanCodePreviewKey
@@ -299,13 +300,28 @@ def saveOccurrence (state : TraverseState) (occurrence : Informal.BlockOccurrenc
 def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
   state.domains.get? domainName
 
-/-- Capture the rendering projection without retaining elaboration or provenance state. -/
+/-- Capture only populates the exact selected document after checking its owner and bytes. -/
+def adoptedStatementVerified (snapshot : Informal.Realizations.Capture.Snapshot)
+    (source : Informal.SourceData.SourceSelection) : Bool :=
+  source.adoption.isSome &&
+    (snapshot.registry.document? source.selectedDocumentKey).any (! ·.text.trimAscii.isEmpty)
+
+/-- Project an optional completed capture into the node records used by rendering.
+Without a capture, checks are absent and adopted statement bodies stay hidden. -/
 def capture (state : Informal.Environment.State)
-    (assessmentFor : Name → Option Informal.Realizations.NodeAssessment := fun _ => none)
-    (nativeChecks : Option (Std.HashMap Informal.Realizations.ObjectKey Informal.Data.ProvedStatus) := none) :
+    (snapshot? : Option Informal.Realizations.Capture.Snapshot := none) :
     Array Informal.RenderNode :=
+  let nativeChecks := snapshot?.map fun snapshot =>
+    snapshot.nativeChecks.foldl (init := ({} : Std.HashMap Informal.Realizations.ObjectKey Informal.Data.ProvedStatus))
+      fun checks checked => checks.insert checked.declaration checked.status
   state.inventory.toArray.map fun (label, node) =>
-    Informal.RenderNode.ofNode label node (node.owner.bind state.authors.get?) (assessmentFor label) nativeChecks
+    let rendered := Informal.RenderNode.ofNode label node (node.owner.bind state.authors.get?)
+      (snapshot?.map (·.assessmentFor label)) nativeChecks
+    if let some snapshot := snapshot? then
+      if let some source := node.sources.find? (·.adoption.isSome) then
+        { rendered with adoptedStatementAvailable := some (adoptedStatementVerified snapshot source) }
+      else rendered
+    else rendered
 
 def install (state : TraverseState) (nodes : Array Informal.RenderNode) : TraverseState :=
   nodes.foldl saveNode state

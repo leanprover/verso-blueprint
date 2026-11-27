@@ -312,7 +312,7 @@ private def adoptedPreviewSelection? (env : Lean.Environment) (label : Name)
   let some node := (informalExt.getState env).inventory.get? label | return none
   let some (source, adoption) := node.sources.findSome? (fun source => source.adoption.map (source, ·))
     | return none
-  unless PreviewSource.adoptedStatementVerified snapshot source do return none
+  unless TraversalIndex.Nodes.adoptedStatementVerified snapshot source do return none
   let some doc := Docstring.directCompiled? env adoption.canonical | return none
   let (stxs, _, format) ← Docstring.statementBlocks doc
   if source.context.language != format || stxs.isEmpty then return none
