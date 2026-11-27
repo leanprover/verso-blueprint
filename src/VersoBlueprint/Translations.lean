@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 import VersoBlueprint.Validation
 import VersoBlueprint.Util.SHA256
 import VersoBlueprint.Validation.BindingEncoding
+import Lean.Util.SCC
 import Std.Data.TreeSet.Basic
 
 /-! Pure admission and validation for canonical Blueprint capture. Admission
@@ -57,6 +58,14 @@ structure Input where
   bindingInputs : Array (Contribution BindingInput) := #[]
   deriving Repr, Inhabited, BEq, DecidableEq, ToJson
 
+/-- Availability of the same selection whose parts enter a content binding.
+Native checks can use fresh observations without the semantic descriptors that
+a review of native content requires. -/
+private structure ContentAvailability where
+  sourceIssues : Array Diagnostic := #[]
+  semanticIssues : Array Diagnostic := #[]
+  deriving Repr, Inhabited
+
 /-- Construct only through full admission. All indexes/caches are derived from
 this one immutable input; public source access cannot update a Registry. -/
 structure Registry where
@@ -82,6 +91,7 @@ structure Registry where
   private reviewSelectionIndex : Std.HashMap RequirementKey (Array ReviewSelection)
   private evidenceIndex : Std.HashMap RequirementKey (Array Evidence)
   private requiredIndex : Std.HashMap Subject (Array RequirementKey) := {}
+  private contentAvailability : Std.HashMap Subject ContentAvailability := {}
   private bindings : Std.HashMap RequirementKey ContentBinding := {}
   private localValues : Std.HashMap RequirementKey Result := {}
   private resultValues : Std.HashMap RequirementKey Result := {}
@@ -144,16 +154,27 @@ private def producerRecords [BEq α] (tag : String) (records : Array (Contributi
     result := result.push (record.origin.id, tag, record.origin, compatible)
   return result
 
-private def Input.producerIssues (input : Input) : Array Diagnostic := Id.run do
-  let records := producerRecords "node" input.nodes ++ producerRecords "document" input.documents ++
+private def Input.structuralProducers (input : Input) : Array (Name × String × Origin × Bool) :=
+  producerRecords "node" input.nodes ++ producerRecords "document" input.documents ++
     producerRecords "object" input.objects ++ producerRecords "realization" input.realizations ++
     producerRecords "translation" input.translations ++ producerRecords "claim" input.claims ++
-    producerRecords "requirement" input.requirements ++ producerRecords "evidence" input.evidence ++
+    producerRecords "requirement" input.requirements ++
     producerRecords "reviewSelection" input.reviewSelections ++
     producerRecords "bindingInput" input.bindingInputs
-  let mut buckets : Std.HashMap Name (Array (String × Origin × Bool)) := {}
+
+private abbrev ProducerBuckets := Std.HashMap Name (Array (String × Origin × Bool))
+
+/-- Extend only the affected producer buckets. An old structural bucket is
+available by identity when an evidence producer tries to reuse that identity. -/
+private def producerBuckets (records : Array (Name × String × Origin × Bool))
+    (prior : ProducerBuckets := {}) : ProducerBuckets := Id.run do
+  let mut buckets : ProducerBuckets := {}
   for (id, family, origin, compatible) in records do
-    buckets := buckets.insert id ((buckets[id]?.getD #[]).push (family, origin, compatible))
+    let bucket := buckets[id]?.getD (prior[id]?.getD #[])
+    buckets := buckets.insert id (bucket.push (family, origin, compatible))
+  return buckets
+
+private def producerIssues (buckets : ProducerBuckets) : Array Diagnostic := Id.run do
   let mut diagnostics := #[]
   for (id, bucket) in buckets do
     if id.isAnonymous || bucket.any (·.2.1.moduleName.isAnonymous) || bucket.any (! ·.2.2) ||
@@ -280,9 +301,6 @@ private def Registry.referenceIssues (r : Registry) : Array Diagnostic := Id.run
   for key in required do
     if (r.requirement? key).isNone then
       diagnostics := diagnostics.push <| issue "unknown-requirement" key "Missing contract requirement"
-  for evidence in r.evidence do
-    if evidence.id.isAnonymous || (r.requirement? evidence.requirement).isNone then
-      diagnostics := diagnostics.push <| issue "invalid-evidence" evidence.id "Missing evidence identity/requirement"
   for selection in r.reviewSelections do
     unless (r.requirement? selection.requirement).any (fun req => match req.expected with
         | .review .. => true | _ => false) do
@@ -292,6 +310,13 @@ private def Registry.referenceIssues (r : Registry) : Array Diagnostic := Id.run
     if !r.hasSubject input.subject || input.name.isAnonymous || blank input.content then
       diagnostics := diagnostics.push <| issue "invalid-binding-input" input.subject "Missing semantic subject/name/content"
   return diagnostics
+
+private def Registry.evidenceIssues (r : Registry) (records : Array (Contribution Evidence))
+    (evidence : Array Evidence) : Array Diagnostic :=
+  familyIssues "evidence" (·.id) records ++ evidence.filterMap fun item =>
+    if item.id.isAnonymous || (r.requirement? item.requirement).isNone then
+      some (issue "invalid-evidence" item.id "Missing evidence identity/requirement")
+    else none
 
 private def Registry.computeRequiredFor (r : Registry) : Subject → Array RequirementKey
   | .realization key => (r.realization? key).map (·.requirements) |>.getD #[]
@@ -328,76 +353,6 @@ private def selectedInput (scope : ContentScope) (native : Bool) (input : Bindin
     (!(native && (input.name == NativeLean.sourceContext || input.name == NativeLean.statementContext)) ||
       input.name == sourceTag scope)
 
-/-- Bind owned source selections and this obligation's claim/contract. Other
-requirements gate completion; their content, evidence and results are not selected
-implicitly. Hashes are only a compact encoding of these structured local inputs. -/
-private def Registry.computeBindings (r : Registry) : Std.HashMap RequirementKey ContentBinding := Id.run do
-  let documents := r.documents.foldl (fun out document =>
-    out.insert document.key (fingerprint "vbp.document.v3" (BindingEncoding.document document)))
-    ({} : Std.HashMap DocumentKey String)
-  let subjectInputs := r.bindingInputs.foldl (fun out input =>
-    out.insert input.subject ((out[input.subject]?.getD #[]).push input))
-    ({} : Std.HashMap Subject (Array BindingInput))
-  let inputs (subject : Subject) (scope : ContentScope) (native : Bool) :=
-    (subjectInputs[subject]?.getD #[]).filter (selectedInput scope native)
-      |>.map (fun input => (BindingEncoding.bindingInput input).compress)
-  let declarationParts (owner : RealizationKey) (declaration : Realizations.Declaration) :=
-    let object := declaration.object
-    let provenance := if object.context.language == `lean then #[] else
-      r.objectIndex[object]?.toArray.flatMap (fun value => value.document.toArray.map (documents[·]!))
-    #[(BindingEncoding.subject (.declaration owner object)).compress, (toJson declaration.projection).compress] ++
-      inputs (.declaration owner object) declaration.projection (object.context.language == `lean) ++ provenance
-  let modelParts (key : RealizationKey) : Array String :=
-    match r.realization? key with
-    | none => #[]
-    | some model =>
-      #[(BindingEncoding.realizationKey key).compress, (BindingEncoding.context model.context).compress,
-        Vir.nameKey model.role] ++ inputs (.realization key) .statement false ++
-        -- These bytes are explicitly owned even when native selections share a file.
-        model.documents.map (documents[·]!) ++ model.declarations.map (fun declaration =>
-          SHA256.tagged "vbp.owned-declaration.v3" (declarationParts key declaration))
-  let subjectParts (subject : Subject) : Array String := Id.run do
-    match subject with
-    | .realization key => return modelParts key
-    | .declaration key object =>
-      let some declaration := (r.realization? key).bind (fun model => model.declarations.find? (·.object == object))
-        | return #[]
-      return declarationParts key declaration
-    | .translation _ | .claim _ =>
-      let some key := subject.translation? | return #[]
-      let some relation := r.translation? key | return #[]
-      let endpoints (values : Array Endpoint) := values.map fun endpoint =>
-        SHA256.tagged "vbp.endpoint.v3" (modelParts endpoint.realization)
-      let mut parts := #[(BindingEncoding.translationKey key).compress, Vir.nameKey relation.kind,
-        SHA256.tagged "vbp.source-endpoints.v3" (endpoints relation.source),
-        SHA256.tagged "vbp.target-endpoints.v3" (endpoints relation.target)]
-      let claims := match subject with
-        | .claim key => (r.claim? key).toArray
-        | _ => r.claims.filter (·.key.translation == key)
-      parts := parts ++ claims.map (fun claim =>
-        (toJson (BindingEncoding.claimKey claim.key, claim.interpretation, claim.assumptions)).compress)
-      return parts ++ inputs subject .statement false
-  let mut bindings := {}
-  for requirement in r.requirements do
-    let key := requirement.key
-    let mut parts := #[(BindingEncoding.requirement requirement).compress] ++ subjectParts key.subject ++
-      ((subjectInputs[key.subject]?.getD #[]).filter (·.name == selectedUsesFor key)).map
-        (fun input => (BindingEncoding.bindingInput input).compress)
-    if let .proof goal witness := requirement.expected then
-      -- Independent-goal evidence assesses its own witness and selected expectation.
-      let descriptors := (subjectInputs[key.subject]?.getD #[]).filter
-        (·.name == NativeLean.expectedContextFor key)
-      parts := parts ++ #[(BindingEncoding.objectKey witness).compress] ++
-        descriptors.map (fun input => (BindingEncoding.bindingInput input).compress) ++
-        (goal.documents.filter (·.context.language != `lean)).map (documents[·]!)
-    bindings := bindings.insert key ("vbp-binding-sha256-v3:" ++ SHA256.tagged "vbp.assessment.v3" parts)
-  return bindings
-
-/-- Exact bindings are derived once from this immutable admitted input. No
-provider state, persistence or independent source of semantic truth is cached. -/
-def Registry.bindingFor (r : Registry) (key : RequirementKey) : Option ContentBinding :=
-  r.bindings[key]?
-
 private def Registry.documentIssues (r : Registry) (key : DocumentKey) : Array Diagnostic :=
   match r.documentIndex[key]? with
   | some document =>
@@ -406,10 +361,10 @@ private def Registry.documentIssues (r : Registry) (key : DocumentKey) : Array D
 
 /-- A resolved object is available through its source document, except a Lean
 declaration: the compiled environment establishes its content, so its
-availability does not depend on any document, and a selection of it requires its
-semantic descriptor instead (`semanticIssues`). -/
-private def Registry.objectIssues (r : Registry) (key : ObjectKey) : Array Diagnostic :=
-  match r.objectIndex[key]? with
+availability does not depend on any document. -/
+private def Registry.objectObservationIssues (r : Registry) (key : ObjectKey)
+    (observation : Option ObjectObservation) : Array Diagnostic :=
+  match observation with
   | some observation =>
     if observation.resolution != .resolved then
       #[issue "object-unavailable" key s!"{repr observation.resolution}: {observation.explanation}"]
@@ -419,53 +374,147 @@ private def Registry.objectIssues (r : Registry) (key : ObjectKey) : Array Diagn
       | none => #[issue "object-unavailable" key "No canonical source document for selected declaration"]
   | none => #[issue "object-unavailable" key "No source resolution observation"]
 
-private def Registry.contentIssues (r : Registry) (subject : Subject)
-    (documents : Array DocumentKey) (objects : Array ObjectKey) : Array Diagnostic :=
-  if documents.isEmpty && objects.isEmpty then
-    #[issue "content-unavailable" subject "Selected subject has no associated source content"]
-  else documents.flatMap (r.documentIssues ·) ++ objects.flatMap (r.objectIssues ·)
+private def Registry.objectIssues (r : Registry) (key : ObjectKey) : Array Diagnostic :=
+  r.objectObservationIssues key r.objectIndex[key]?
+
+private structure SelectedContent where
+  parts : Array String := #[]
+  availability : ContentAvailability := {}
+  deriving Inhabited
+
+private def bindingInputPart (input : BindingInput) : String :=
+  (BindingEncoding.bindingInput input).compress
+
+private def claimPart (claim : Claim) : String :=
+  (toJson (BindingEncoding.claimKey claim.key, claim.interpretation, claim.assumptions)).compress
+
+private def combineAvailability (selections : Array SelectedContent) : ContentAvailability := {
+  sourceIssues := selections.flatMap (·.availability.sourceIssues)
+  semanticIssues := selections.flatMap (·.availability.semanticIssues) }
+
+/-- Resolve an owned declaration or document once for both its binding parts
+and availability. Role projections and endpoint order remain structural. -/
+private def Registry.selectContent (r : Registry) (documents : Std.HashMap DocumentKey String)
+    (subjectInputs : Std.HashMap Subject (Array BindingInput)) :
+    Std.HashMap Subject SelectedContent := Id.run do
+  let inputs (subject : Subject) (scope : ContentScope) (native : Bool) :=
+    (subjectInputs[subject]?.getD #[]).filter (selectedInput scope native)
+  let bindingSubjects := r.requirements.foldl (fun out req => out.insert req.key.subject)
+    ({} : Std.HashSet Subject)
+  -- Model parts are also used by relation endpoints. Source availability is
+  -- needed for any model, even if no assessment binds that entire model.
+  let boundModels := r.translations.foldl (fun out relation =>
+    (relation.source ++ relation.target).foldl
+      (fun out endpoint => out.insert (.realization endpoint.realization)) out) bindingSubjects
+  let mut content : Std.HashMap Subject SelectedContent := {}
+  for model in r.realizations do
+    let subject := Subject.realization model.key
+    let mut declarations := #[]
+    let mut associationIssues := #[]
+    let mut observationIssues := #[]
+    for declaration in model.declarations do
+      let object := declaration.object
+      let subject := Subject.declaration model.key object
+      let native := object.context.language == `lean
+      let observation := r.objectIndex[object]?
+      let inputs := inputs subject declaration.projection native
+      let provenance := if native then #[] else
+        observation.toArray.flatMap fun value => value.document.toArray.map (documents[·]!)
+      let issues := r.objectObservationIssues object observation
+      let selection : SelectedContent := {
+        parts := #[(BindingEncoding.subject subject).compress, (toJson declaration.projection).compress] ++
+          inputs.map bindingInputPart ++ provenance
+        availability := {
+          sourceIssues := declaration.sourceIssues ++ issues
+          semanticIssues := if native && !(inputs.any (·.name == sourceTag declaration.projection)) then
+            #[issue "semantic-context-unavailable" object
+              "Selected native content lacks its requested semantic descriptor"] else #[] } }
+      declarations := declarations.push selection
+      associationIssues := associationIssues ++ declaration.sourceIssues
+      observationIssues := observationIssues ++ issues
+      content := content.insert subject selection
+    let sourceIssues := associationIssues ++
+      if model.documents.isEmpty && declarations.isEmpty then
+        #[issue "content-unavailable" subject "Selected subject has no associated source content"]
+      else model.documents.flatMap (r.documentIssues ·) ++ observationIssues
+    content := content.insert subject {
+      parts := if !boundModels.contains subject then #[] else
+        #[(BindingEncoding.realizationKey model.key).compress,
+        (BindingEncoding.context model.context).compress, Vir.nameKey model.role] ++
+        (inputs subject .statement false).map bindingInputPart ++ model.documents.map (documents[·]!) ++
+        declarations.map (fun declaration => SHA256.tagged "vbp.owned-declaration.v3" declaration.parts)
+      availability := {
+        sourceIssues, semanticIssues := declarations.flatMap (·.availability.semanticIssues) } }
+  let models := content
+  let endpoint (value : Endpoint) := models[Subject.realization value.realization]?.getD {}
+  let endpointParts (values : Array SelectedContent) :=
+    values.map (fun value => SHA256.tagged "vbp.endpoint.v3" value.parts)
+  let claimsByRelation := r.claims.foldl (fun out claim =>
+    out.insert claim.key.translation ((out[claim.key.translation]?.getD #[]).push claim))
+    ({} : Std.HashMap TranslationKey (Array Claim))
+  for relation in r.translations do
+    let source := relation.source.map endpoint
+    let target := relation.target.map endpoint
+    let availability := combineAvailability (source ++ target)
+    let endpoints := #[(BindingEncoding.translationKey relation.key).compress, Vir.nameKey relation.kind,
+      SHA256.tagged "vbp.source-endpoints.v3" (endpointParts source),
+      SHA256.tagged "vbp.target-endpoints.v3" (endpointParts target)]
+    let claims := claimsByRelation[relation.key]?.getD #[]
+    let insert (content : Std.HashMap Subject SelectedContent) (subject : Subject) (claims : Array Claim) :=
+      content.insert subject {
+        parts := endpoints ++ claims.map claimPart ++ (inputs subject .statement false).map bindingInputPart
+        availability }
+    content := insert content (.translation relation.key) claims
+    for claim in claims do
+      content := insert content (.claim claim.key) #[claim]
+  return content
+
+/-- Prerequisite identities are in the requirement encoding. Their contents
+and evidence do not become selections of this contract. -/
+private def Registry.deriveBindings (r : Registry) : Registry := Id.run do
+  let documents := r.documents.foldl (fun out document =>
+    out.insert document.key (fingerprint "vbp.document.v3" (BindingEncoding.document document)))
+    ({} : Std.HashMap DocumentKey String)
+  let subjectInputs := r.bindingInputs.foldl (fun out input =>
+    out.insert input.subject ((out[input.subject]?.getD #[]).push input))
+    ({} : Std.HashMap Subject (Array BindingInput))
+  let content := r.selectContent documents subjectInputs
+  let mut bindings := {}
+  for requirement in r.requirements do
+    let key := requirement.key
+    let selected := content[key.subject]?.getD {}
+    let inputs := subjectInputs[key.subject]?.getD #[]
+    let mut parts := #[(BindingEncoding.requirement requirement).compress] ++ selected.parts ++
+      (inputs.filter (·.name == selectedUsesFor key)).map bindingInputPart
+    if let .proof goal witness := requirement.expected then
+      let descriptors := inputs.filter (·.name == NativeLean.expectedContextFor key)
+      parts := parts ++ #[(BindingEncoding.objectKey witness).compress] ++
+        descriptors.map bindingInputPart ++ (goal.documents.filter (·.context.language != `lean)).map (documents[·]!)
+    bindings := bindings.insert key ("vbp-binding-sha256-v3:" ++ SHA256.tagged "vbp.assessment.v3" parts)
+  let contentAvailability := content.fold (fun out subject selected => out.insert subject selected.availability) {}
+  return { r with bindings, contentAvailability }
+
+/-- Exact bindings are derived once from this immutable admitted input. -/
+def Registry.bindingFor (r : Registry) (key : RequirementKey) : Option ContentBinding :=
+  r.bindings[key]?
 
 /-- Exact selections, without widening a declaration to siblings. -/
 private def Registry.subjectContentIssues (r : Registry) (subject : Subject) : Array Diagnostic :=
-  match subject with
-  | .realization key =>
-    match r.realization? key with
-    | some realization => realization.declarations.flatMap (·.sourceIssues) ++
-        r.contentIssues subject realization.documents (realization.declarations.map (·.object))
-    | none => #[issue "unknown-realization" key "Missing source realization"]
-  | .declaration owner object =>
-    match (r.realization? owner).bind (·.declarations.find? (·.object == object)) with
-    | some selected => selected.sourceIssues ++ r.objectIssues object
-    | none => #[issue "unknown-declaration" subject "Declaration is not owned by the selected realization"]
-  | _ => #[]
-
-private def Registry.semanticIssues (r : Registry) (key : RealizationKey)
-    (declarations : Array Realizations.Declaration) : Array Diagnostic :=
-  declarations.filterMap fun declaration =>
-    if declaration.object.context.language != `lean then none else
-    if r.bindingInputs.any (fun input => input.name == sourceTag declaration.projection &&
-        input.subject == .declaration key declaration.object) then none
-    else some <| issue "semantic-context-unavailable" declaration.object
-      "Selected native content lacks its requested semantic descriptor"
+  if subject.translation?.isSome then #[] else
+  match r.contentAvailability[subject]?, subject with
+  | some selected, _ => selected.sourceIssues
+  | none, .realization key => #[issue "unknown-realization" key "Missing source realization"]
+  | none, .declaration .. =>
+      #[issue "unknown-declaration" subject "Declaration is not owned by the selected realization"]
+  | none, _ => #[]
 
 private def Registry.availabilityIssues (r : Registry) (subject : Subject)
-    (includeSemantics : Bool := true) : Array Diagnostic := Id.run do
-  let selected (key : RealizationKey) (object : Option ObjectKey := none) :=
-    (r.realization? key).map (fun value => value.declarations.filter fun declaration =>
-      object.all (· == declaration.object)) |>.getD #[]
-  match subject.translation? with
-  | none =>
-    let semantic := match subject with
-      | .realization key => r.semanticIssues key (selected key)
-      | .declaration key object => r.semanticIssues key (selected key (some object))
-      | _ => #[]
-    return canonical (r.subjectContentIssues subject ++ if includeSemantics then semantic else #[])
-  | some key =>
-    let some relation := r.translation? key
-      | return #[issue "unknown-translation" key "Missing relation"]
-    return canonical <| (relation.source ++ relation.target).flatMap fun endpoint =>
-      r.subjectContentIssues (.realization endpoint.realization) ++
-        if includeSemantics then r.semanticIssues endpoint.realization (selected endpoint.realization) else #[]
+    (includeSemantics : Bool := true) : Array Diagnostic :=
+  match r.contentAvailability[subject]? with
+  | some available => canonical (available.sourceIssues ++ if includeSemantics then available.semanticIssues else #[])
+  | none => match subject.translation? with
+    | some key => #[issue "unknown-translation" key "Missing relation"]
+    | none => r.subjectContentIssues subject
 
 /-- Selection is resolved before suitability. No old matching approval is searched.
 Distinct active selections are ordinary unresolved assessment data. -/
@@ -527,51 +576,15 @@ private def Registry.computeLocalResult (r : Registry) (key : RequirementKey) : 
       (evidence.mismatch? req binding).map fun code => issue code evidence.id
         s!"Evidence does not discharge requirement. {evidence.observation.explanation}" }
 
-private structure Components where
-  next : Nat := 0
-  indices : Std.HashMap RequirementKey Nat := {}
-  lows : Std.HashMap RequirementKey Nat := {}
-  stack : Array RequirementKey := #[]
-  onStack : Std.HashSet RequirementKey := {}
-  finished : Array (Array RequirementKey) := #[]
-
-/-- Tarjan's walk visits every requirement/edge once. Components are emitted
-prerequisite-first, so closure evaluation reuses previously evaluated results. -/
-private partial def visitComponent (r : Registry) (key : RequirementKey) : StateM Components Unit := do
-  let index := (← get).next
-  modify fun state => { state with
-    next := index + 1, indices := state.indices.insert key index
-    lows := state.lows.insert key index, stack := state.stack.push key
-    onStack := state.onStack.insert key }
-  for dependency in ((r.requirement? key).map (·.prerequisites)).getD #[] do
-    if !(← get).indices.contains dependency then
-      visitComponent r dependency
-      modify fun state => { state with
-        lows := state.lows.insert key (min (state.lows[key]?.getD index) (state.lows[dependency]?.getD index)) }
-    else if (← get).onStack.contains dependency then
-      modify fun state => { state with
-        lows := state.lows.insert key (min (state.lows[key]?.getD index) (state.indices[dependency]?.getD index)) }
-  if (← get).lows[key]? == some index then
-    let mut component := #[]
-    let mut done := false
-    while !done do
-      let state ← get
-      let member := state.stack.back!
-      set { state with stack := state.stack.pop, onStack := state.onStack.erase member }
-      component := component.push member
-      done := member == key
-    modify fun state => { state with finished := state.finished.push (canonical component) }
-
 private def Registry.computeResults (r : Registry) : Std.HashMap RequirementKey Result := Id.run do
-  let build : StateM Components Unit := do
-    for requirement in r.requirements do
-      unless (← get).indices.contains requirement.key do visitComponent r requirement.key
-  let (_, components) := build.run {}
   let mut results : Std.HashMap RequirementKey Result := {}
   let prerequisites (key : RequirementKey) :=
     (r.requirement? key).map (·.prerequisites) |>.getD #[]
+  -- Edges point to prerequisites, so SCC returns them before their dependents.
+  let components := Lean.SCC.scc (r.requirements.map (·.key)).toList (fun key => (prerequisites key).toList)
   let localResult (key : RequirementKey) := r.localValues[key]?.getD { status := .blocked }
-  for component in components.finished do
+  for members in components do
+    let component := canonical members.toArray
     let first := component[0]!
     let firstPrerequisites := prerequisites first
     let cyclic := component.size > 1 || firstPrerequisites.contains first
@@ -610,9 +623,13 @@ def Registry.resultForRequirement (r : Registry) (key : RequirementKey) : Result
   r.resultValues[key]?.getD {
     status := .blocked, diagnostics := #[issue "unknown-requirement" key "Missing requirement"] }
 
-/-- Fatal admission remains all-or-nothing. No temporary input/index escapes
-before full reference validation, binding construction and closure evaluation. -/
-def admit (input : Input) : Except (Array Diagnostic) Registry := Id.run do
+/-- Validate the input and derive its structural bindings once. The pure
+callback can only read those bindings; its evidence is validated together
+with all existing evidence before any registry escapes. -/
+def admitWithEvidence (input : Input)
+    (collect : (RequirementKey → Option ContentBinding) →
+      Except (Array Diagnostic) (Array (Contribution Evidence))) :
+    Except (Array Diagnostic) Registry := do
   let nodes := values input.nodes
   let documents := values input.documents
   let objects := values input.objects
@@ -625,9 +642,6 @@ def admit (input : Input) : Except (Array Diagnostic) Registry := Id.run do
     { record with value.prerequisites := canonical record.value.prerequisites }
   let requirements := values requirementRecords
   let evidence := values input.evidence
-  let evidenceIndex := evidence.foldl (fun out item =>
-    out.insert item.requirement ((out[item.requirement]?.getD #[]).push item))
-    ({} : Std.HashMap RequirementKey (Array Evidence))
   let reviewSelectionIndex := (values input.reviewSelections).foldl (fun out selection =>
     out.insert selection.requirement ((out[selection.requirement]?.getD #[]).push selection))
     ({} : Std.HashMap RequirementKey (Array ReviewSelection))
@@ -639,25 +653,44 @@ def admit (input : Input) : Except (Array Diagnostic) Registry := Id.run do
     nodeIndex := indexBy (·.label) nodes, documentIndex := indexBy (·.key) documents
     objectIndex := indexBy (·.key) objects, realizationIndex := indexBy (·.key) realizations
     translationIndex := indexBy (·.key) translations, claimIndex := indexBy (·.key) claims
-    requirementIndex := indexBy (·.key) requirements, evidenceIndex }
-  let diagnostics := input.producerIssues ++
+    requirementIndex := indexBy (·.key) requirements, evidenceIndex := {} }
+  let structureProducers := producerBuckets input.structuralProducers
+  let evidenceProducers := producerBuckets (producerRecords "evidence" input.evidence) structureProducers
+  let allProducers := evidenceProducers.fold (fun out id bucket => out.insert id bucket) structureProducers
+  let diagnostics := producerIssues allProducers ++
     familyIssues "node" (·.label) input.nodes ++ familyIssues "document" (·.key) input.documents ++
     familyIssues "object" (·.key) input.objects ++ familyIssues "realization" (·.key) input.realizations ++
     familyIssues "translation" (·.key) input.translations ++ familyIssues "claim" (·.key) input.claims ++
-    familyIssues "requirement" (·.key) requirementRecords ++ familyIssues "evidence" (·.id) input.evidence ++
+    familyIssues "requirement" (·.key) requirementRecords ++ r.evidenceIssues input.evidence evidence ++
     familyIssues "binding input" (fun value => (value.subject, value.name)) input.bindingInputs ++ r.referenceIssues
-  unless diagnostics.isEmpty do return .error (canonical diagnostics)
+  unless diagnostics.isEmpty do throw (canonical diagnostics)
   let subjects := r.realizations.flatMap (fun value => #[Subject.realization value.key] ++
       value.declarations.map (fun decl => .declaration value.key decl.object)) ++
     r.translations.map (fun value => .translation value.key) ++ r.claims.map (fun value => .claim value.key)
   let requiredIndex := subjects.foldl (fun out subject => out.insert subject (r.computeRequiredFor subject))
     ({} : Std.HashMap Subject (Array RequirementKey))
   let r := { r with requiredIndex }
-  let r := { r with bindings := r.computeBindings }
+  let r := r.deriveBindings
+  let additional ← collect r.bindingFor
+  let (input, evidence) ← if additional.isEmpty then pure (input, evidence) else do
+    let input := { input with evidence := input.evidence ++ additional }
+    let evidence := values input.evidence
+    let buckets := producerBuckets (producerRecords "evidence" input.evidence) structureProducers
+    let diagnostics := producerIssues buckets ++ r.evidenceIssues input.evidence evidence
+    unless diagnostics.isEmpty do throw (canonical diagnostics)
+    pure (input, evidence)
+  let evidenceIndex := evidence.foldl (fun out item =>
+    out.insert item.requirement ((out[item.requirement]?.getD #[]).push item))
+    ({} : Std.HashMap RequirementKey (Array Evidence))
+  let r := { r with input, evidenceValues := evidence, evidenceIndex }
   let localValues := r.requirements.foldl (fun out req => out.insert req.key (r.computeLocalResult req.key))
     ({} : Std.HashMap RequirementKey Result)
   let r := { r with localValues }
-  return .ok { r with resultValues := r.computeResults }
+  return { r with resultValues := r.computeResults }
+
+/-- Admit a complete supplied batch. No partial registry escapes validation. -/
+def admit (input : Input) : Except (Array Diagnostic) Registry :=
+  admitWithEvidence input (fun _ => pure #[])
 
 def Registry.resultFor (r : Registry) (subject : Subject) : Result := Id.run do
   if !r.hasSubject subject then

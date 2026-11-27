@@ -1057,8 +1057,8 @@ private def publicLabelIssues (labels : Array Name) : Array Diagnostic := Id.run
       | none => seen := seen.insert spelling label
   return canonical issues
 
-/-- Complete candidate admission, same-candidate binding, and final admission.
-No caller can obtain an admitted fragment from this operation. -/
+/-- Bind captured observations to the checked structural input and admit the
+whole evidence batch atomically. -/
 private def finish (collected : Collected) : Except (Array Diagnostic) Snapshot := do
   let labels := collected.input.nodes.map (·.value.label) ++ collected.uses.map (fun use => (show Name from use.reference.label))
   let groups := collected.input.nodes.filterMap fun record =>
@@ -1068,17 +1068,15 @@ private def finish (collected : Collected) : Except (Array Diagnostic) Snapshot 
   let uses := selectUses collected
   let collected := connectUses collected uses
   let collected := attachOwnTypeObservations collected
-  let candidate ← admit collected.input
-  let mut input := collected.input
-  for (origin, key, observation) in collected.observations do
-    let some binding := candidate.bindingFor key
-      | throw #[{
-          code := "missing-binding", subject := key.name.toString,
-          message := "Complete candidate has no contract binding", origins := canonical #[origin] }]
-    input := { input with evidence := input.evidence.push { origin, value := {
-      id := origin.id, requirement := key, binding, observation } } }
+  let registry ← admitWithEvidence collected.input fun bindingFor =>
+    collected.observations.mapM fun (origin, key, observation) => do
+      let some binding := bindingFor key
+        | throw #[{
+            code := "missing-binding", subject := key.name.toString,
+            message := "Complete candidate has no contract binding", origins := canonical #[origin] }]
+      return { origin, value := { id := origin.id, requirement := key, binding, observation } }
   return {
-    registry := ← admit input, uses
+    registry, uses
     sourceDiagnostics := {
       nodes := canonicalDiagnostics collected.sourceDiagnostics.nodes
       documents := canonicalDiagnostics collected.sourceDiagnostics.documents }

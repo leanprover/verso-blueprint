@@ -52,6 +52,37 @@ private def checked (edges : Array (Array Nat)) (passed : Nat → Bool := fun _ 
       observation := .check { validator := `MOCK_CHECK, outcome := if passed n then .passed else .failed } } : Evidence)
   return { input with evidence }
 
+-- The structural binding handed to evidence collection must be exactly the
+-- final binding. Producer identities and evidence conflicts span both batches.
+#eval show IO Unit from do
+  let full ← checked #[#[], #[0]]
+  let initial := { full with evidence := full.evidence.take 1 }
+  let first := full.evidence[0]!
+  let second := full.evidence[1]!
+  let admitted ← obtain <| admitWithEvidence initial fun binding =>
+    if binding second.value.requirement == some second.value.binding then .ok #[second]
+    else .error #[{ code := "test-wrong-binding", subject := "fixture", message := "Changed binding" }]
+  let ordinary ← obtain (admit full)
+  ensure (admitted.contributions == full && admitted.evidence == ordinary.evidence &&
+    (admitted.resultForRequirement (requirement 1)).complete)
+    "Evidence attachment must preserve existing provenance and finalize the same closure"
+  let conflict := { first with value.observation := .check {
+    validator := `MOCK_CHECK, outcome := .failed } }
+  let changedOwner := { second with origin.id := full.nodes[0]!.origin.id }
+  let invalid := { second with value.requirement := requirement 99 }
+  for (extra, code) in #[(conflict, "semantic-conflict"), (changedOwner, "producer-collision"),
+      (invalid, "invalid-evidence")] do
+    let expected := { initial with evidence := initial.evidence.push extra }
+    match admitWithEvidence initial (fun _ => .ok #[extra]), admit expected with
+    | .error a, .error b =>
+      ensure (a == b && a.any (·.code == code)) s!"Evidence attachment must diagnose {code} across both batches"
+    | _, _ => throw <| IO.userError s!"Admission accepted invalid combined evidence: {code}"
+  let invalidInitial := { initial with evidence := #[invalid] }
+  match admitWithEvidence invalidInitial (fun _ => .error #[]) with
+  | .error issues =>
+    ensure (issues.any (·.code == "invalid-evidence")) "Invalid initial evidence must fail before attachment"
+  | .ok _ => throw <| IO.userError "Admission ignored invalid initial evidence"
+
 #eval show IO Unit from do
   -- Sixty-four shared diamonds have exponentially many paths but only 64 keys.
   let edges := (Array.range 64).map fun n =>
