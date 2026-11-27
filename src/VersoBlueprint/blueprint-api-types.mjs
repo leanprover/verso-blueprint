@@ -487,7 +487,7 @@
  * @property {BlueprintNodeAssessment | null} assessment Assessment from the same admitted capture; null for unresolved endpoints.
  * @property {"statement" | "proof" | null} actionableStage Canonical next step, absent when its selected prerequisites block work.
  * @property {"unassessed" | "blocked" | "ready" | "formalized" | "mathlib"} statementStatus Statement-track projection.
- * @property {"unassessed" | "none" | "ready" | "incomplete" | "formalized" | "formalizedWithAncestors"} proofStatus Proof-track projection.
+ * @property {"unassessed" | "none" | "incomplete" | "formalized" | "formalizedWithAncestors"} proofStatus Proof-track projection.
  * @property {BlueprintGraphWarningFlags} warnings Graph warning flags.
  * @property {BlueprintGraphNodeVisual} visual Current Blueprint graph styling metadata.
  */

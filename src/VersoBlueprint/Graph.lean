@@ -396,7 +396,6 @@ def statementBorderFormalizedColor : String := "#16a34a"
 def statementBorderMathlibColor : String := "#14532d"
 
 def proofBackgroundNeutralColor : String := "#f8fafc"
-def proofBackgroundReadyColor : String := "#dbeafe"
 def proofBackgroundIncompleteColor : String := "#fef3c7"
 def proofBackgroundFormalizedColor : String := "#dcfce7"
 def proofBackgroundFormalizedAncColor : String := "#166534"
@@ -415,7 +414,6 @@ def statementStatusMathlibText : String := "in Mathlib"
 
 def proofStatusNoneText : String := "no proof status"
 def proofStatusUnassessedText : String := "unassessed"
-def proofStatusReadyText : String := "ready to formalize"
 def proofStatusIncompleteText : String := "Lean code incomplete"
 def proofStatusFormalizedText : String := "locally formalized"
 def proofStatusFormalizedAncestorsText : String := "locally formalized + dependencies complete"
@@ -543,7 +541,6 @@ def proofStatusFillColor (kind : Data.NodeKind) : ProofStatus → String
   | .unassessed => proofBackgroundNeutralColor
   | .none =>
     if kind.isTheoremLike then proofBackgroundNeutralColor else definitionBackgroundColor
-  | .ready => proofBackgroundReadyColor
   | .incomplete => proofBackgroundIncompleteColor
   | .formalized => proofBackgroundFormalizedColor
   | .formalizedWithAncestors => proofBackgroundFormalizedAncColor
@@ -565,7 +562,6 @@ def StatementStatus.toText : StatementStatus → String
 def ProofStatus.toText : ProofStatus → String
   | .unassessed => proofStatusUnassessedText
   | .none => proofStatusNoneText
-  | .ready => proofStatusReadyText
   | .incomplete => proofStatusIncompleteText
   | .formalized => proofStatusFormalizedText
   | .formalizedWithAncestors => proofStatusFormalizedAncestorsText

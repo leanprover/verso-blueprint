@@ -134,8 +134,10 @@ def Snapshot.assessmentFor (snapshot : Snapshot) (label : Name) : NodeAssessment
   let nativeModels := snapshot.nativeRealizationsFor label
   let declarations := nativeModels.flatMap (·.declarations)
   let objects := canonical (declarations.map (·.object))
+  let nativeKey (model : Realization) (declaration : Declaration) : RequirementKey :=
+    ⟨.declaration model.key declaration.object, model.role⟩
   let checks := nativeModels.flatMap fun model => model.declarations.map fun declaration =>
-    let key : RequirementKey := ⟨.declaration model.key declaration.object, model.role⟩
+    let key := nativeKey model declaration
     let contract := (registry.requirement? key).filter fun value =>
       declaration.required.contains key && value.expected == .check (nativeValidator model.role) &&
         value.coverage == .dependencyClosure
@@ -178,11 +180,12 @@ def Snapshot.assessmentFor (snapshot : Snapshot) (label : Name) : NodeAssessment
     documentDiagnostics)
   return {
     hasNativeDeclarations := !objects.isEmpty
-    -- Native checks share object identities across labels. The selected
-    -- declaration must also have an available source at this label.
+    -- Native checks share object identities across labels. Only an attachment
+    -- that selected its native check at this label reports the checked status;
+    -- a failed source association does not withdraw a check that ran.
     hasAxiomLike := snapshot.nativeChecks.any fun checked =>
-      checked.status.isAxiomLike && declarations.any (fun declaration =>
-        declaration.object == checked.declaration && declaration.sourceIssues.isEmpty)
+      checked.status.isAxiomLike && nativeModels.any fun model => model.declarations.any fun declaration =>
+        declaration.object == checked.declaration && declaration.required.contains (nativeKey model declaration)
     nativeStatementComplete := statementComplete
     hasNativeBodyRequirement := !bodyChecks.isEmpty
     nativeBodyComplete := bodyComplete

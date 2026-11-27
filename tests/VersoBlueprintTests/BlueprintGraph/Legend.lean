@@ -63,8 +63,7 @@ def groupLegend : Array LegendGroup := groupGraphLegendGroups
       | none => false
       | some swatch =>
         swatch.background == proofBackgroundIncompleteColor &&
-        proofStatusIncompleteText == "Lean code incomplete" &&
-        !(proofGroup.items.any (·.label == proofStatusReadyText))
+        proofStatusIncompleteText == "Lean code incomplete"
 
 /-- info: true -/
 #guard_msgs in

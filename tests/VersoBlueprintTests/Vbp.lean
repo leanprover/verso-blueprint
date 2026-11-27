@@ -427,7 +427,7 @@ private def sampleMetadataManifest : ManifestFile := withNodeRows {
         kind := some .definition
         actionableStage := some "statement"
         statementStatus := .ready
-        proofStatus := .ready
+        proofStatus := .none
         visual := { fillcolor := "#ffffff" }
       },
       {

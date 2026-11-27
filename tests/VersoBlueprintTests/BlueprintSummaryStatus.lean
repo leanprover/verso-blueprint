@@ -169,4 +169,30 @@ run_cmd liftTermElabM do
       summary.missingLeanDecls.any (fun item => item.label == forward && item.canonical == declaration))
     "The summary must list the resolved axiom once and report the unresolved attachment as missing"
 
+-- A resolved attachment keeps its checked axiom status when its owning source
+-- association fails: the source failure is reported, not the axiom hidden.
+run_cmd liftTermElabM do
+  let forward := Name.mkSimple "summary.forwardAxiom"
+  let resolved := Name.mkSimple "summary.resolvedAxiom"
+  let declaration := ``declaredLaterAxiom
+  let raw := Capture.Raw.ofState (Environment.informalExt.getState (← getEnv))
+  let some (_, node) := raw.nodes.find? (·.1 == resolved) | throwError "Missing resolved axiom control"
+  let #[association] := node.nativeAssociations | throwError "Expected one resolved axiom attachment"
+  let some range := association.reference.range? | throwError "Expected a recorded declaration range"
+  -- A stale recorded range fails source preparation, never the native check.
+  let stale := { association with reference := { association.reference with
+    range? := some { range with charUtf16 := range.charUtf16 + 1 } } }
+  let plan := Capture.plan { raw with nodes := raw.nodes.map fun (label, accepted) =>
+    (label, if label == resolved then { accepted with nativeAssociations := #[stale] } else accepted) }
+  let snapshot ← obtain (Capture.evaluate plan (← obtain (← Capture.observe plan)))
+  let failed := (snapshot.nativeRealizationsFor resolved).any fun model => model.declarations.any fun d =>
+    d.object.native == declaration.toString && !d.sourceIssues.isEmpty
+  ensure (failed && snapshot.sourceDiagnostics.nodes.any fun (label, issue) =>
+      label == resolved && issue.code == "source-association-unavailable")
+    "The stale attachment must fail its owning source association at this label"
+  ensure (snapshot.assessmentFor resolved).hasAxiomLike
+    "A failed source association hid the resolved attachment's checked axiom status"
+  ensure (!(snapshot.assessmentFor forward).hasAxiomLike)
+    "The forward attachment borrowed the resolved attachment's axiom status"
+
 end Verso.VersoBlueprintTests.BlueprintSummaryStatus

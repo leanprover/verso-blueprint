@@ -121,7 +121,6 @@ deriving Inhabited, Repr, DecidableEq, ToJson, FromJson, Quote
 inductive ProofStatus where
   | unassessed
   | none
-  | ready
   | incomplete
   | formalized
   | formalizedWithAncestors

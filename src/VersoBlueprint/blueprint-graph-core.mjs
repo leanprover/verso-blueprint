@@ -283,7 +283,7 @@ function isGraphNode(value) {
   if (!Array.isArray(value.statementUses) || !value.statementUses.every(isUseRef) ||
       !Array.isArray(value.proofUses) || !value.proofUses.every(isUseRef) || !isNodeVisual(value.visual)) return false;
   if (!isChoice(value.statementStatus, ["unassessed", "blocked", "ready", "formalized", "mathlib"]) ||
-      !isChoice(value.proofStatus, ["unassessed", "none", "ready", "incomplete", "formalized", "formalizedWithAncestors"])) return false;
+      !isChoice(value.proofStatus, ["unassessed", "none", "incomplete", "formalized", "formalizedWithAncestors"])) return false;
   if (value.actionableStage !== null &&
       value.actionableStage !== "statement" && value.actionableStage !== "proof") return false;
   if (value.assessment === null) {
