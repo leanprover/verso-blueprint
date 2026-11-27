@@ -16,7 +16,6 @@ run_cmd Lean.Elab.Command.liftCoreM do
   let some source := (pending.registrations.flatMap (·.sources)).find? (·.context.language == `lean)
     | throwError "Missing actual inline source"
   let variant : SourceData.Registration := { sources := #[{ source with
-    context := ⟨`lean, `otherProject⟩
     document := ⟨⟨`lean, `otherProject⟩, source.document.path⟩
     payload := .leanInline { stx := .missing } }] }
   Environment.modify fun state => { state with

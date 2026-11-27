@@ -120,7 +120,7 @@ structure LiterateDef where
   provedStatus : ProvedStatus := .incomplete {}
 deriving Repr, Inhabited
 
-structure LiterateThm extends LiterateDef where
+structure LiterateThm extends LiterateDef
 deriving Repr, Inhabited
 
 def ConstantInfo.blueprintNodeKind? : ConstantInfo → Option NodeKind
@@ -380,17 +380,11 @@ def Code.definedDeclNames (code : Code) : Array Name :=
 
 structure InformalBody where
   stx : Syntax
-  previewBlocks : Array (Verso.Doc.Block Verso.Genre.Manual) := #[]
-  /--
-  Manual block term syntax retained when the producing phase cannot evaluate it
-  into typed preview blocks, as with a docstring on an imported Blueprint
-  attribute.
-  -/
-  elabStx : Array Syntax := #[]
+  blocks : Array (Verso.Doc.Block Verso.Genre.Manual) := #[]
 deriving Repr, Inhabited
 
 def InformalBody.hasBody (data : InformalBody) : Bool :=
-  !data.previewBlocks.isEmpty || !data.elabStx.isEmpty
+  !data.blocks.isEmpty
 
 /-- Stable canonical union; build an ephemeral index once for this incoming group. -/
 def ExternalRef.mergeSnapshots (current incoming : Array ExternalRef) : Array ExternalRef := Id.run do

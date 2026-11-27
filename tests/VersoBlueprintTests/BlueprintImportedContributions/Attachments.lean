@@ -15,9 +15,9 @@ import VersoBlueprintTests.BlueprintImportedContributions.Proof
   let some node ← Informal.Environment.getNodeInventory? `key_theorem | return false
   let labels ← node.leanDecls.mapM Informal.Environment.labelsForLeanDecl
   let markup := node.sources.filterMap fun source =>
-    match source.payload with | .markup markup => some markup | _ => none
+    match source.payload with | .markup markup _ => some markup | _ => none
   let hasRust := node.sources.any fun source =>
-    match source.payload with | .text _ => true | _ => false
+    match source.payload with | .text _ _ => true | _ => false
   return (← Informal.Environment.importedConflicts).isEmpty &&
     (node.proseView `verso `statement).any (·.hasBody) &&
     (node.proseView `verso `proof).any (·.hasBody) &&

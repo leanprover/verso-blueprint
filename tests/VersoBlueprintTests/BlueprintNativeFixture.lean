@@ -23,7 +23,6 @@ def associations (node : Name) (placement : Name) (references : Array Data.Exter
 def source (node realization : Name) (role : Option Name) (language : Name) (payload : SourceData.ProviderPayload)
     (project : Name := `blueprintFixtures) : SourceData.SourceSelection := {
   destination := ⟨⟨node, realization⟩, role⟩
-  context := ⟨language, project⟩
   document := ⟨⟨language, project⟩, "synthetic-fixture.lean"⟩
   source := .unavailable "Synthetic reducer fixture; no provider lookup"
   payload }

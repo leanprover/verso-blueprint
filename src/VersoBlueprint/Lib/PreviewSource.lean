@@ -33,28 +33,16 @@ all stored facets, retaining their storage keys for checked resolution.
 
 abbrev ManualBlock := Verso.Doc.Block Verso.Genre.Manual
 
-structure Preview where
-  blocks : Array ManualBlock := #[]
-  stxs : Array Syntax := #[]
-deriving Inhabited, Repr
-
-/-- An environment-time preview for one Blueprint label.
-
-The `facet` and `key` fields identify the preview that should be used by
-callers, while `preview` contains the phase-local renderable payload. -/
+/-- A renderable facet from the elaborated source inventory. -/
 structure Selection where
   facet : PreviewCache.Facet
   key : String
-  preview : Preview
+  blocks : Array ManualBlock
 deriving Inhabited, Repr
 
-def Selection.ofPreview (label : Name) (facet : PreviewCache.Facet) (preview : Preview) :
+def Selection.ofBlocks (label : Name) (facet : PreviewCache.Facet) (blocks : Array ManualBlock) :
     Selection :=
-  {
-    facet
-    key := PreviewCache.key label facet
-    preview
-  }
+  { facet, key := PreviewCache.key label facet, blocks }
 
 def traversalEntry?
     (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option PreviewCache.Entry :=
@@ -105,17 +93,13 @@ def traversalPreviewCandidateKey?
 private def nonEmptyOrNone {α} (xs : Array α) : Option (Array α) :=
   if xs.isEmpty then none else some xs
 
-private def nodeFacetPreview? (node : Data.NodeInventory) (facet : PreviewCache.Facet) : Option Preview := do
+private def nodeFacetPreview? (node : Data.NodeInventory) (facet : PreviewCache.Facet) :
+    Option (Array ManualBlock) := do
   let facetName := match facet with
     | .statement => `statement
     | .proof => `proof
-  let informalData ← node.defaultProseView facetName
-  match nonEmptyOrNone informalData.previewBlocks with
-  | some blocks => some { blocks }
-  | none =>
-    match nonEmptyOrNone informalData.elabStx with
-    | some stxs => some { stxs }
-    | none => none
+  let body ← node.defaultProseView facetName
+  nonEmptyOrNone body.blocks
 
 def environmentSelection? (env : Environment) (label : Name) : Option Selection := do
   let state := informalExt.getState env
@@ -124,14 +108,12 @@ def environmentSelection? (env : Environment) (label : Name) : Option Selection 
     PreviewCache.Facet.select? fun facet =>
       if facet == .statement && node.sources.any (·.adoption.isSome) then none
       else nodeFacetPreview? node facet
-  pure <| Selection.ofPreview label facet preview
+  pure <| Selection.ofBlocks label facet preview
 
-def renderWidgetHtml (preview? : Option Preview)
+def renderWidgetHtml (blocks? : Option (Array ManualBlock))
     (snapshot? : Option Realizations.Capture.Snapshot := none) :
     Lean.Elab.Term.TermElabM Verso.Output.Html := do
-  let some preview := preview? | return .empty
-  let blocks ← if preview.blocks.isEmpty then Informal.evalElaboratedBlocks preview.stxs
-    else pure preview.blocks
+  let some blocks := blocks? | return .empty
   if blocks.isEmpty then return .empty
   match snapshot? with
   | none => Informal.renderPreviewBlocksHtml blocks

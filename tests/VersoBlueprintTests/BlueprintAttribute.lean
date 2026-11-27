@@ -127,7 +127,7 @@ private def isBlueprintAttrRef (expectedDecl : Name) (expectedKind : Informal.Da
       `Verso.VersoBlueprintTests.BlueprintAttribute.HybridProvider.hybridVersoDocstring
     let bodyWasPersisted :=
       match bodyNode.proseView `verso `statement with
-      | some statement => !statement.previewBlocks.isEmpty && statement.elabStx.isEmpty
+      | some statement => statement.hasBody
       | none => false
     let lateDocstringDidNotFill :=
       match lateDocstringNode.proseView `verso `statement with
@@ -178,7 +178,7 @@ private def isBlueprintAttrRef (expectedDecl : Name) (expectedKind : Informal.Da
 private def importedStatementExportOk (node : Informal.Data.NodeInventory) : Bool :=
   match node.proseView `markdown `statement with
   | some st => (node.usesOn `statement).isEmpty &&
-      (!st.previewBlocks.isEmpty || !st.elabStx.isEmpty)
+      st.hasBody
   | none => false
 
 /-- info: true -/

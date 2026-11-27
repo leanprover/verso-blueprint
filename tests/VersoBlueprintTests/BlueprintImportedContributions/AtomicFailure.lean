@@ -58,7 +58,7 @@ error: AtomicFailure.«test.synthetic»:key_theorem@3/0 label=key_theorem refs=[
     tags := #["rejected"]
     issueUrl := some "https://example.com/issues/1"
     sources := #[BlueprintNativeFixture.source `key_theorem `verso (some `proof) `verso
-      (.prose { stx := .missing, previewBlocks := #[.para #[.text "Rejected proof"]] })]
+      (.prose { stx := .missing, blocks := #[.para #[.text "Rejected proof"]] })]
   }
   let after := Environment.informalExt.getState (← getEnv)
   unless reprStr before == reprStr after do

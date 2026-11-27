@@ -184,7 +184,10 @@ run_cmd liftTermElabM do
   let wrongOwner (alter : SourceData.AdoptedDocstring → SourceData.AdoptedDocstring) : Capture.Plan :=
     Capture.plan { raw with nodes := raw.nodes.map fun (label, node) =>
       (label, if label != one then node else
-        { node with sources := node.sources.map fun source => { source with adoption := source.adoption.map alter } }) }
+        { node with sources := node.sources.map fun source =>
+            match source.payload with
+            | .prose body (.adopted adoption) => { source with payload := .prose body (.adopted (alter adoption)) }
+            | _ => source }) }
   for alter in #[(fun adoption : SourceData.AdoptedDocstring => { adoption with moduleName := `WrongModule }),
       fun adoption : SourceData.AdoptedDocstring => { adoption with package := some "WrongPackage" }] do
     let wrong ← capture (wrongOwner alter)

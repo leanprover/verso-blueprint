@@ -125,22 +125,6 @@ private def renderManualBlocksHtml
   let (blocks, st) ← traverseManualBlocks blocks impls logError
   renderManualBlocksHtmlWithState blocks impls st (logError := logError)
 
-private unsafe def evalElaboratedBlocksUnsafe (stxs : Array Lean.Syntax) :
-    Lean.Elab.Term.TermElabM (Array (Verso.Doc.Block Verso.Genre.Manual)) := do
-  if stxs.isEmpty then
-    pure #[]
-  else
-    let tyExpr ← Lean.Elab.Term.elabType (← `(Verso.Doc.Block Verso.Genre.Manual))
-    stxs.mapM fun stx => do
-      let expr ← Lean.Elab.Term.elabTermAndSynthesize stx (some tyExpr)
-      Lean.Meta.evalExpr (Verso.Doc.Block Verso.Genre.Manual) tyExpr expr
-
-/-- Evaluate elaborated Manual block terms back into Manual blocks. -/
-@[implemented_by evalElaboratedBlocksUnsafe]
-opaque evalElaboratedBlocks
-    (stxs : Array Lean.Syntax) :
-    Lean.Elab.Term.TermElabM (Array (Verso.Doc.Block Verso.Genre.Manual))
-
 private unsafe def getExtensionImpls : Lean.Elab.Term.TermElabM Verso.Genre.Manual.ExtensionImpls := do
   let tyExpr ← Lean.Elab.Term.elabType (← `(Verso.Genre.Manual.ExtensionImpls))
   let implExpr ← Lean.Elab.Term.elabTermAndSynthesize (← `(extension_impls%)) (some tyExpr)

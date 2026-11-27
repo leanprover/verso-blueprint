@@ -297,7 +297,7 @@ run_cmd liftTermElabM do
       node.realizations.findSome? fun realization =>
         realization.sources.findSome? fun sourceStep =>
           match sourceStep.source.payload, sourceStep.documented with
-          | .prose _, some (.ok _) => some (node.label, node.accepted, sourceStep.source)
+          | .prose _ (.attribute _), some (.ok _) => some (node.label, node.accepted, sourceStep.source)
           | _, _ => none
     | throwError "Missing actual attribute-owned Verso source for destination identity control"
   let docLeft := { docSource with destination := { docSource.destination with
@@ -442,7 +442,9 @@ run_cmd liftTermElabM do
       unreadable.sourceDiagnostics.documents.any fun (key, issue) =>
         key == source.selectedDocumentKey && issue.code == "source-unavailable"))
     "An unreadable fence owner did not retain per-selection unavailability"
-  let invalid := { firstTex with fence := some (SourceData.FencedSelection.ofSyntax "" .missing .missing) }
+  let .markup markup _ := firstTex.payload | throwError "Missing actual fenced TeX selection"
+  let invalidFence := SourceData.FencedSelection.ofSyntax "" .missing .missing
+  let invalid := { firstTex with payload := .markup markup (some invalidFence) }
   let unsupported ← captureWith { raw with
     nodes := #[(label, { registered with sources := #[invalid], uses := #[], nativeAssociations := #[] })]
     authored := #[] } IO.FS.readFile
@@ -504,7 +506,7 @@ run_cmd liftTermElabM do
   let state := Environment.informalExt.getState (← getEnv)
   let label := Name.mkSimple "storage.source"
   let .some registered := state.inventory.get? label | throwError "Missing prose source fixture"
-  let proseSources := registered.sources.filter fun source => source.payload matches .prose _
+  let proseSources := registered.sources.filter fun source => source.payload matches .prose ..
   let some prose := proseSources[0]? | throwError "Missing directive prose source"
   let some role := prose.destination.role | throwError "Directive prose needs a role"
   let model := prose.destination.realization.forRole role

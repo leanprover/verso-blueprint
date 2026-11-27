@@ -25,7 +25,7 @@ run_cmd Lean.Elab.Command.liftCoreM do
       state.nodeRegistrations.all (fun _ pending => pending.localRegistrations.isEmpty) do
     throwError "Diamond import duplicated a source or re-exported imported registrations"
   unless sources.all (fun source => source.context.project == `blueprintFixtures &&
-      source.destination.realization.node == label && source.document.context == source.context &&
+      source.destination.realization.node == label &&
       source.source.ok && source.source.location.any (·.path == source.document.path)) do
     throwError "Owning document, project, destination or UTF-16 source location was lost"
   unless sources.all (fun source => source.document.path.endsWith "Owner.lean" ||
@@ -39,7 +39,7 @@ run_cmd Lean.Elab.Command.liftCoreM do
       source.destination == ⟨⟨label, `rocqTranslation⟩, some `implementation⟩ &&
       source.context.language == `rocq && source.document.path.endsWith "Attachment.lean" &&
       (match source.payload with
-      | .text raw => raw == "Definition flag_identity (b : bool) := b."
+      | .text raw _ => raw == "Definition flag_identity (b : bool) := b."
       | _ => false)) do
     throwError "Imported Rocq source bytes or their named destination were lost"
   unless uses.any (fun use => use.reference.label == Name.mkSimple "storage.forward" &&
@@ -56,10 +56,10 @@ run_cmd Lean.Elab.Command.liftCoreM do
     throwError "Inline declaration membership/index was lost"
   let rust := sources.filterMap fun source =>
     if source.context.language != `rust then none
-    else match source.payload with | .text raw => some raw | _ => none
+    else match source.payload with | .text raw _ => some raw | _ => none
   unless rust == #["fn example() -> &'static str { \"𝒫::bad»name\" }\n"] do
     throwError "Original Rust text changed: {repr rust}"
-  let markup := sources.filterMap fun source => match source.payload with | .markup value => some value | _ => none
+  let markup := sources.filterMap fun source => match source.payload with | .markup value _ => some value | _ => none
   unless markup.size == 3 && markup[0]!.raw == "\\forall x,\\;𝒫(x)\n" &&
       markup[1]!.raw == "**𝒫** and `foreign::name.with.dot»tail`\n" &&
       markup[0]!.slot == "body.with.dot" && markup[1]!.slot == "body.with.dot" &&
@@ -83,7 +83,6 @@ run_cmd Lean.Elab.Command.liftCoreM do
       let rustKey : Realizations.RealizationKey := ⟨label, `rustTranslation⟩
       let rustSource : SourceData.SourceSelection := {
         destination := ⟨rustKey, some `implementation⟩
-        context := rustContext
         document := ⟨rustContext, "src/lib.rs"⟩
         source := .unavailable "Foreign fixture bytes are present without a provider range"
         payload := .text "pub fn value() -> u8 { 1 }" }
@@ -91,7 +90,6 @@ run_cmd Lean.Elab.Command.liftCoreM do
       let rocqKey : Realizations.RealizationKey := ⟨label, `rocqTranslation⟩
       let rocqSource : SourceData.SourceSelection := {
         destination := ⟨rocqKey, some `proof⟩
-        context := rocqContext
         document := ⟨rocqContext, "theories/Flag.v"⟩
         source := .unavailable "Foreign fixture bytes are present without a provider range"
         payload := .text "Theorem flag_involutive : forall x, flag (flag x) = x." }
@@ -104,7 +102,7 @@ run_cmd Lean.Elab.Command.liftCoreM do
           | throwError "Distinct language realization/facet sources were rejected"
       let retainedSources := foreignNode.sources.filterMap fun stored =>
         match stored.payload with
-        | .text raw => some (stored.destination, stored.document, raw)
+        | .text raw _ => some (stored.destination, stored.document, raw)
         | _ => none
       unless retainedSources.contains (rustSource.destination, rustSource.document, "pub fn value() -> u8 { 1 }") &&
           retainedSources.contains (rocqSource.destination, rocqSource.document, "Theorem flag_involutive : forall x, flag (flag x) = x.") &&
@@ -120,12 +118,11 @@ run_cmd Lean.Elab.Command.liftCoreM do
     -- Empty source payload avoids a duplicate-body failure, reaching context validation.
     CanonicalNativePersistence.rejected "source-context-mismatch" <|
       Environment.contribute label { sources := #[{ source with
-        context := ⟨`verso, `otherProject⟩
         document := ⟨⟨`verso, `otherProject⟩, source.document.path⟩
         payload := .prose { stx := .missing } }] }
     CanonicalNativePersistence.rejected "source-document-context" <|
       Environment.contribute label { sources := #[{ source with
-        document := ⟨⟨`verso, `otherProject⟩, source.document.path⟩
+        document := ⟨⟨`verso, .anonymous⟩, source.document.path⟩
         payload := .prose { stx := .missing } }] }
     CanonicalNativePersistence.rejected "invalid-use-destination" <|
       Environment.contribute label { uses := #[{

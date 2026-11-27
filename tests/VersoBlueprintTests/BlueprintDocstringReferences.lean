@@ -124,7 +124,7 @@ attribute [blueprint "attr.doc.invalid.recovered"] invalidDocstringIntent
 #eval show MetaM Bool from do
   let some (.inr doc) ← findInternalDocString? (← getEnv) ``invalidDocstringIntent
     | return false
-  let (_, dependencies) ← Informal.Docstring.versoDocstringToManualBlocksStx doc
+  let (_, dependencies) ← Informal.Docstring.versoDocstringToManualBlocks doc
   let some node ← Informal.Environment.getNodeInventory? (Name.mkSimple "attr.doc.invalid.recovered")
     | return false
   pure <| dependencies.isEmpty &&

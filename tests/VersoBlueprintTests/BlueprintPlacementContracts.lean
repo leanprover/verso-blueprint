@@ -255,14 +255,14 @@ private partial def proseParagraphs : Doc.Block Genre.Manual → Array (Doc.Bloc
 #eval show IO Unit from do
   for block in #[Verso.Doc.Block.para #[.bold #[.text "round trip"]], .concat #[]] do
     let json := toJson (block : Doc.Block Genre.Manual)
-    let .ok restored := Graft.decodePersistedManualBlock json.compress
+    let .ok restored := Docstring.decodePersistedManualBlock json.compress
       | throw <| IO.userError "Persisted Manual body failed reconstruction"
     unless toJson restored == json do throw <| IO.userError "Persisted Manual body changed"
 
 open Verso.Doc.Elab in
 @[block_command]
 meta def malformedPersistedBody : BlockCommandOf Graft.BlueprintNodeConfig
-  | _ => Graft.persistedManualBlockTermFromJson "null"
+  | _ => liftM <| Docstring.persistedManualBlockTermFromJson "null"
 
 /-- error: Blueprint persisted statement block could not be decoded: object expected -/
 #guard_msgs in

@@ -42,7 +42,7 @@ this presentation value is never stored or used to infer validation scope. -/
 def NodeInventory.proseView (node : NodeInventory) (realization role : Name) : Option InformalBody := Id.run do
   let bodies := node.sources.filterMap fun source =>
     if source.destination.realization.name != realization || source.destination.role != some role then none
-    else match source.payload with | .prose body => some body | _ => none
+    else match source.payload with | .prose body _ => some body | _ => none
   return bodies.find? (·.hasBody) <|> bodies[0]? <|>
     (if node.uses.any (·.role == role) then some { stx := .missing } else none)
 

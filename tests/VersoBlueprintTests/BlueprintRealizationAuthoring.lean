@@ -351,7 +351,7 @@ private def rollbackInput (label : Name) : CoreM (Contributions.Record × Source
   return ({ id, label, nativeAssociations := BlueprintNativeFixture.associations label `statement #[reference] Owner.projectName, priority := none, source := none },
     { count := state.nextCount + 100, tags := #["synthetic candidate"]
       sources := #[BlueprintNativeFixture.source label `verso (some `statement) `verso
-        (.prose { stx := .missing, previewBlocks := #[.para #[.text "Synthetic transaction body"]] }) Owner.projectName] })
+        (.prose { stx := .missing, blocks := #[.para #[.text "Synthetic transaction body"]] }) Owner.projectName] })
 
 -- Ordinary capture has no default-enrollment phase or theorem/docstring gate.
 -- Supplemental attributes still publish the admitted candidate and catalog once.

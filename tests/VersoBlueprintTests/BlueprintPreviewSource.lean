@@ -24,8 +24,7 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSource
     pure <|
       selection.facet == .statement &&
       selection.key == PreviewCache.statementKey label &&
-      !selection.preview.blocks.isEmpty &&
-      selection.preview.stxs.isEmpty
+      !selection.blocks.isEmpty
 
 /-- info: true -/
 #guard_msgs in
@@ -37,8 +36,7 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSource
     pure <|
       selection.facet == .proof &&
       selection.key == PreviewCache.proofKey label &&
-      !selection.preview.blocks.isEmpty &&
-      selection.preview.stxs.isEmpty
+      !selection.blocks.isEmpty
 
 /-- info: true -/
 #guard_msgs in

@@ -178,9 +178,12 @@ def Inline.withPreviewAvailability (impls : ExtensionImpls)
     (available : PreviewKey → Bool) : ExtensionImpls :=
   Inline.withPreviewRendering impls (PreviewResources.immediate available)
 
-def nodeReferenceTerm (label : Data.Label) (contents : Array Term) : CoreM Term := do
-    let data : InlineData := { label }
-    ``(Inline.other (Inline.informal $(quote data)) #[$contents,*])
+def nodeReference (label : Data.Label) (contents : Array (Inline Genre.Manual)) :
+    Inline Genre.Manual :=
+  .other (Inline.informal { label }) contents
+
+def nodeReferenceTerm (label : Data.Label) (contents : Array Term) : CoreM Term :=
+  ``(nodeReference $(quote label) #[$contents,*])
 
 @[role]
 def uses : RoleExpanderOf UsesConfig

@@ -81,13 +81,13 @@ private theorem mem_inlineCode_source (node : NodeInventory) {code : Code} :
   constructor
   · rintro ⟨source, hsource, hmatch⟩
     cases hp : source.payload with
-    | prose body => simp [hp] at hmatch
+    | prose body origin => simp [hp] at hmatch
     | leanInline inline =>
       simp only [hp] at hmatch
       cases hmatch
       exact ⟨source, hsource, hp⟩
-    | text raw => simp [hp] at hmatch
-    | markup markup => simp [hp] at hmatch
+    | text raw fence => simp [hp] at hmatch
+    | markup markup fence => simp [hp] at hmatch
   · rintro ⟨source, hsource, hpayload⟩
     exact ⟨source, hsource, by simp only [hpayload]⟩
 

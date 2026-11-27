@@ -405,9 +405,11 @@ private def externalMarkupImpl
     }
     match cfg.label? with
     | some label =>
+      let fenceRef ← getRef
+      let fence := SourceData.FencedSelection.ofSyntax (← getFileMap).source fenceRef contents.raw
       let source ← liftM <| Environment.sourceAt label
         (Name.str (Name.mkSimple language.key) cfg.slot) (some `statement) (Name.mkSimple language.key)
-        (.markup markup) (← getRef) (fenceContents := some contents.raw)
+        (.markup markup (some fence)) fenceRef
       let some _ ← Environment.contribute label { sources := #[source] }
         | ``(Block.concat #[])
       let display := cfg.display.getD <| ExternalMarkupDisplayMode.fromOptions (← getOptions)

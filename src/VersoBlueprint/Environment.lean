@@ -317,7 +317,7 @@ initialize informalExt : PersistentEnvExtension Entry Empty State ←
       let nodeEntries := state.nodeRegistrations.toArray.filterMap fun (name, pending) =>
         if pending.localRegistrations.isEmpty then none else some <| (name, pending)
       let nodeEntries := nodeEntries.map fun (name, pending) =>
-        let contributions := pending.localRegistrations.map (·.compact)
+        let contributions := pending.localRegistrations
         match state.inventory.get? name with
         | some node =>
           let facts := (state.localFactRecords.filter (fun record => record.label == name)).reverse
@@ -377,21 +377,17 @@ def sourceProject : CoreM Name := do
 
 /-- Capture the owning source identity at production time. Missing ranges stay
 explicit; no reader/provider runs before the owning module has finished building.
-Pass `role := none` only for compiled Lean payloads, whose roles are checked.
-For fenced text and markup, pass the original syntax of the body inside `ref`. -/
+Pass `role := none` only for compiled Lean payloads, whose roles are checked. -/
 def sourceAt (node realization : Name) (role : Option Name) (language : Name)
-    (payload : SourceData.ProviderPayload) (ref : Syntax)
-    (fenceContents : Option Syntax := none) : CoreM SourceData.SourceSelection := do
+    (payload : SourceData.ProviderPayload) (ref : Syntax) : CoreM SourceData.SourceSelection := do
   let context : Realizations.Context := ⟨language, ← sourceProject⟩
   let location ← SourceLocation.ofSyntax? ref
-  let fileMap ← getFileMap
   return {
     destination := ⟨⟨node, realization⟩, role⟩
-    context, document := ⟨context, ← getFileName⟩
+    document := ⟨context, ← getFileName⟩
     source := match location with
       | some location => .found location
       | none => .unavailable "Original source range unavailable at registration"
-    fence := fenceContents.map fun contents => SourceData.FencedSelection.ofSyntax fileMap.source ref contents
     payload }
 
 private def State.planAuthoring (state : State) (record : AuthoringRecord) :
@@ -516,8 +512,9 @@ def checkLabelAndNesting (label : Label) (kind : Data.InProgressKind) : m Bool :
 private def DirectiveDraft.toRegistration (current : DirectiveDraft) (count : Nat) (ref : Syntax)
     (blocks : Array (Verso.Doc.Block Verso.Genre.Manual)) : CoreM SourceData.Registration := do
   let format := current.adoption.map (·.2) |>.getD `verso
-  let source ← sourceAt current.label format (some current.role) format (.prose { stx := ref, previewBlocks := blocks }) ref
-  let source := { source with adoption := current.adoption.map (·.1) }
+  let origin := current.adoption.map (fun (selection, _) => SourceData.ProseOrigin.adopted selection) |>.getD .authored
+  let source ← sourceAt current.label format (some current.role) format
+    (.prose { stx := ref, blocks } origin) ref
   return {
     toNodeContribution := { current.toNodeContribution with count := if current.kind.isSome then count else 0 }
     sources := #[source]

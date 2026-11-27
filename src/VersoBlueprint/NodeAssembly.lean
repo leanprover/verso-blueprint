@@ -42,15 +42,15 @@ private def mergeContribution (label : Label) (node : NodeInventory)
       if (previous.adoption.isSome || source.adoption.isSome) &&
           previous.destination.role == some `statement && source.destination.role == some `statement then
         let claimsDefault (selection : SourceData.SourceSelection) :=
-          selection.adoption.isSome || match selection.payload with | .prose body => body.hasBody | _ => false
+          selection.adoption.isSome || match selection.payload with | .prose body _ => body.hasBody | _ => false
         if claimsDefault previous && claimsDefault source then
           conflict s!"Label {label}: duplicate-source: adopted docstring competes for the default statement body"
       if previous.destination == source.destination then
         let occupied := match previous.payload, source.payload with
-          | .prose first, .prose second => first.hasBody && second.hasBody
-          | .text _, .text _ => true
-          | .prose body, .text _ | .text _, .prose body => body.hasBody
-          | .markup first, .markup second => first.key == second.key
+          | .prose first _, .prose second _ => first.hasBody && second.hasBody
+          | .text .., .text .. => true
+          | .prose body _, .text .. | .text .., .prose body _ => body.hasBody
+          | .markup first _, .markup second _ => first.key == second.key
           | _, _ => false
         if occupied then
           let role := source.destination.role.map toString |>.getD "compiled Lean"

@@ -8,7 +8,6 @@ import Lean
 import ProofWidgets.Component.Panel.Basic
 import ProofWidgets.Component.HtmlDisplay
 import VersoBlueprint.Data
-import VersoBlueprint.Docstring.Manual
 import VersoBlueprint.Environment
 import VersoBlueprint.Graph
 import VersoBlueprint.Lib.PreviewSource
@@ -294,19 +293,16 @@ structure BuildResult where
 
 def BuildResult.renderPreviewHtml (result : BuildResult) :
     Lean.Elab.Term.TermElabM Verso.Output.Html :=
-  PreviewSource.renderWidgetHtml (result.previewSelection?.map (·.preview)) result.snapshot?
+  PreviewSource.renderWidgetHtml (result.previewSelection?.map (·.blocks)) result.snapshot?
 
 private def adoptedPreviewSelection? (env : Lean.Environment) (label : Name)
-    (snapshot : Informal.Realizations.Capture.Snapshot) :
-    Lean.Elab.Term.TermElabM (Option PreviewSource.Selection) := do
-  let some node := (informalExt.getState env).inventory.get? label | return none
-  let some (source, adoption) := node.sources.findSome? (fun source => source.adoption.map (source, ·))
-    | return none
-  unless TraversalIndex.Nodes.adoptedStatementVerified snapshot source do return none
-  let .ok doc := Docstring.directCompiled env adoption.canonical | return none
-  let (stxs, _, format) ← Docstring.statementBlocks doc
-  if source.context.language != format || stxs.isEmpty then return none
-  return some <| PreviewSource.Selection.ofPreview label .statement { stxs := stxs.map (·.raw) }
+    (snapshot : Informal.Realizations.Capture.Snapshot) : Option PreviewSource.Selection := do
+  let node ← (informalExt.getState env).inventory.get? label
+  let source ← node.sources.find? (·.adoption.isSome)
+  guard (TraversalIndex.Nodes.adoptedStatementVerified snapshot source)
+  let .prose body (.adopted _) := source.payload | none
+  guard body.hasBody
+  return PreviewSource.Selection.ofBlocks label .statement body.blocks
 
 def buildFromCapture (label : Name)
     (capture : Except (Array Informal.Realizations.Diagnostic) Informal.Realizations.Capture.Snapshot) :
@@ -327,7 +323,7 @@ def buildFromCapture (label : Name)
     unless labels.contains label do
       let available := labels.map toString |>.take 12
       throwError m!"No Label Found for '{label}'. Known captured labels (first {available.size}): {String.intercalate ", " available.toList}"
-    let adoptedPreview? ← adoptedPreviewSelection? env label snapshot
+    let adoptedPreview? := adoptedPreviewSelection? env label snapshot
     let previewSelection? := adoptedPreview? <|> PreviewSource.environmentSelection? env label
     let graphModel := Informal.Graph.buildModel snapshot #[label] (groupTitles := state.groups.toArray)
     let dot := graphModel.toDotWith { direction := .LR } Informal.Graph.GraphDotStyle.compact

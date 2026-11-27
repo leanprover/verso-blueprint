@@ -58,14 +58,14 @@ private def proofModel : Realization := {
 
 #eval show IO Unit from do
   let source : SourceSelection := {
-    destination := ⟨key, some `statement⟩, context, document
+    destination := ⟨key, some `statement⟩, document
     source := Data.SourceLocationResult.unavailable "Structural fixture has no source lookup"
     payload := .text "Structural source fixture" }
   ensure ((source.issues node model).isEmpty) "An explicitly unavailable location is retained, not fabricated"
-  ensure (has (({ source with context := ⟨`lean, `otherProject⟩ } : SourceSelection).issues node model)
+  ensure (has (({ source with document := { document with context := ⟨`lean, `otherProject⟩ } } : SourceSelection).issues node model)
     "source-context-mismatch") "A same-spelled declaration from another project is not this source"
-  ensure (has (({ source with document := { document with context := ⟨`rocq, `canonicalProject⟩ } } : SourceSelection).issues node model)
-    "source-document-context") "Document ownership cannot disagree with the source context"
+  ensure (has (({ source with document := { document with context := ⟨`lean, .anonymous⟩ } } : SourceSelection).issues node model)
+    "source-document-context") "The single source context must identify an explicit project"
   ensure (has (({ source with destination := ⟨⟨`otherNode, key.name⟩, some `statement⟩ } : SourceSelection).issues node model)
     "source-destination-mismatch") "Source selections cannot leak across concept identity"
   ensure (has (({ source with destination := ⟨key, some `missing⟩ } : SourceSelection).issues node model)
@@ -77,7 +77,7 @@ private def proofModel : Realization := {
   let rocq : Context := ⟨`rocq, context.project⟩
   let rocqDocument : DocumentKey := ⟨rocq, "Flag.v"⟩
   let foreign : SourceSelection := { source with
-    context := rocq, document := rocqDocument
+    document := rocqDocument
     payload := .text "Module::symbol.with-dot»name is original foreign text" }
   let foreignModel : Realization := {
     key := key.forRole `statement
@@ -151,10 +151,9 @@ private def proofModel : Realization := {
     ⟨proseContext, s!"{realization}.vdoc"⟩
   let prose (realization facet : Name) (text : String) : SourceSelection := {
     destination := ⟨⟨node, realization⟩, some facet⟩
-    context := proseContext
     document := doc realization
     source := .unavailable "Raw preservation fixture; no source lookup"
-    payload := .prose { stx := .missing, previewBlocks := #[.para #[.text text]] } }
+    payload := .prose { stx := .missing, blocks := #[.para #[.text text]] } }
   let first := prose custom `statement "Original authored statement"
   let second := prose alternative `commentary "Independent commentary source slot"
   let customKey : RealizationKey := ⟨node, custom⟩
@@ -202,7 +201,6 @@ private def proofModel : Realization := {
   -- are retained without trimming or using emptiness to select a winner.
   let textSource (language realization facet : Name) (path raw : String) : SourceSelection := {
     destination := ⟨⟨node, realization⟩, some facet⟩
-    context := ⟨language, `canonicalProject⟩
     document := ⟨⟨language, `canonicalProject⟩, path⟩
     source := .unavailable "Raw text fixture; no source lookup"
     payload := .text raw }
@@ -219,7 +217,7 @@ private def proofModel : Realization := {
     ensure (mixed.sources.size == 2 &&
         (mixed.proseView custom `statement).any (fun body => !body.hasBody) &&
         mixed.sources.any (fun source => source.destination == sameFacetText.destination &&
-          (match source.payload with | .text raw => raw == "Independent statement source" | _ => false)))
+          (match source.payload with | .text raw _ => raw == "Independent statement source" | _ => false)))
       "Missing prose placeholders coexist with text without acquiring body or losing bytes"
   let rustBody := textSource `rust `rust `implementation "src/lib.rs" "pub fn value() -> u8 { 1 }"
   let rustProof := textSource `rust `rust `proof "src/proof.rs" "pub fn proof() -> bool { true }"
@@ -230,7 +228,7 @@ private def proofModel : Realization := {
     | .error issues => throw <| IO.userError s!"Distinct text destinations were rejected: {repr issues}"
   let textDestinations := textNode.sources.filterMap fun source =>
     match source.payload with
-    | .text raw => some (source.destination, source.document, raw)
+    | .text raw _ => some (source.destination, source.document, raw)
     | _ => none
   ensure (textDestinations.size == 3 && textDestinations.contains
       (rustBody.destination, rustBody.document, "pub fn value() -> u8 { 1 }") &&
@@ -246,7 +244,7 @@ private def proofModel : Realization := {
     | .ok stored => pure stored
     | .error issues => throw <| IO.userError s!"An empty text payload was rejected: {repr issues}"
   ensure (emptyNode.sources.any fun source => source.document == emptyRustBody.document &&
-      match source.payload with | .text raw => raw.isEmpty | _ => false)
+      match source.payload with | .text raw _ => raw.isEmpty | _ => false)
     "An empty text payload remains visible byte-for-byte"
   match ({} : Data.NodeInventory).applyRegistrations node #[{ sources := #[emptyRustBody, rustBody] }] with
   | .error _ => pure ()
@@ -258,7 +256,6 @@ private def proofModel : Realization := {
   let texDocument (path : String) : DocumentKey := ⟨texContext, path⟩
   let markupSource (path slot raw : String) : SourceSelection := {
     destination := ⟨⟨node, `tex⟩, some `statement⟩
-    context := texContext
     document := texDocument path
     source := .unavailable "Raw markup fixture; no source lookup"
     payload := .markup { language := .tex, slot, raw } }
@@ -271,7 +268,7 @@ private def proofModel : Realization := {
     | .error issues => throw <| IO.userError s!"Distinct markup slots were rejected: {repr issues}"
   let markupFacts := markupNode.sources.filterMap fun source =>
     match source.payload with
-    | .markup markup => some (source.document.path, markup.slot, markup.raw)
+    | .markup markup _ => some (source.document.path, markup.slot, markup.raw)
     | _ => none
   ensure (markupFacts == #[
       ("paper-a.tex", "statement", "\\forall x, P(x)"),
@@ -313,7 +310,7 @@ private def proofModel : Realization := {
   let inlineDef := `SyntheticNative.inlineDef
   let inlineTheorem := `SyntheticNative.inlineTheorem
   let source : SourceSelection := {
-    destination := ⟨key, none⟩, context, document
+    destination := ⟨key, none⟩, document
     source := Data.SourceLocationResult.unavailable "Synthetic inline metadata; no source lookup"
     payload := .leanInline {
       stx := .missing
@@ -406,7 +403,7 @@ private def proofModel : Realization := {
   ensure ((nativeMembershipIssues node escapedModel #[association escaped `statement] #[] escapedRoles).isEmpty)
     "A losslessly escaped dot remains a supported native identity"
   ensure (has (nativeMembershipIssues node complete associations
-    #[{ source with context := ⟨`rust, context.project⟩ }] checkedRoles) "source-context-mismatch")
+    #[{ source with document := { source.document with context := ⟨`rust, context.project⟩ } }] checkedRoles) "source-context-mismatch")
     "Inline collection cannot relabel compiled Lean source as foreign content"
   ensure (has (nativeMembershipIssues `anotherConcept complete associations #[source] checkedRoles)
     "source-destination-mismatch") "An enclosing concept mismatch remains explicit"

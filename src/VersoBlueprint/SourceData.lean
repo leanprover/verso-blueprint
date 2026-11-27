@@ -31,16 +31,6 @@ def SourceDestination.subject (destination : SourceDestination) : Subject :=
   | some role => .realization (destination.realization.forRole role)
   | none => .realization destination.realization
 
-/-- Heterogeneous provider payloads retain their actual typed representation.
-The canonical document/context and destination are supplied separately. -/
-inductive ProviderPayload where
-  | prose (body : Data.InformalBody)
-  | leanInline (code : Data.Code)
-  | text (raw : String)
-  /-- Raw markup and its authored external location; never a rendered/parsed surrogate. -/
-  | markup (value : Data.ExternalMarkup)
-  deriving Repr, Inhabited
-
 /-- Original fence bytes with a body range relative to the fence. The fence
 establishes ownership; its body becomes the canonical document. -/
 structure FencedSelection where
@@ -68,16 +58,46 @@ structure AdoptedDocstring where
   owner : Except Diagnostic (String × String)
   deriving Repr, Inhabited
 
+/-- A prose selection has exactly one producer. -/
+inductive ProseOrigin where
+  | authored
+  | attribute (owner : OwnDocstring)
+  | adopted (selection : AdoptedDocstring)
+  deriving Repr, Inhabited
+
+/-- Only prose carries docstring ownership; only text and markup select a fence. -/
+inductive ProviderPayload where
+  | prose (body : Data.InformalBody) (origin : ProseOrigin := .authored)
+  | leanInline (code : Data.Code)
+  | text (raw : String) (fence : Option (Except String FencedSelection) := none)
+  /-- Raw markup and its authored external location. -/
+  | markup (value : Data.ExternalMarkup) (fence : Option (Except String FencedSelection) := none)
+  deriving Repr, Inhabited
+
 structure SourceSelection where
   destination : SourceDestination
-  context : Context
   document : DocumentKey
   source : Data.SourceLocationResult
   payload : ProviderPayload
-  ownDocstring : Option OwnDocstring := none
-  adoption : Option AdoptedDocstring := none
-  fence : Option (Except String FencedSelection) := none
   deriving Repr, Inhabited
+
+def SourceSelection.context (selection : SourceSelection) : Context :=
+  selection.document.context
+
+def SourceSelection.ownDocstring (selection : SourceSelection) : Option OwnDocstring :=
+  match selection.payload with
+  | .prose _ (.attribute owner) => some owner
+  | _ => none
+
+def SourceSelection.adoption (selection : SourceSelection) : Option AdoptedDocstring :=
+  match selection.payload with
+  | .prose _ (.adopted source) => some source
+  | _ => none
+
+def SourceSelection.fence (selection : SourceSelection) : Option (Except String FencedSelection) :=
+  match selection.payload with
+  | .text _ fence | .markup _ fence => fence
+  | _ => none
 
 /-- The original buffer and byte range a syntax selection points into. -/
 private def syntaxRange (stx : Syntax) : Except String (String × Syntax.Range) := do
@@ -114,7 +134,7 @@ selected bytes. Coordinates are deliberately absent so moving an unchanged body
 does not change its identity. -/
 private def SourceSelection.selectionIdentity (source : SourceSelection) : Option String := do
   let text ← match source.payload with
-    | .prose body => some ((syntaxRange body.stx).map fun (buffer, range) => extract buffer range)
+    | .prose body _ => some ((syntaxRange body.stx).map fun (buffer, range) => extract buffer range)
     | _ => source.fence.map (·.map FencedSelection.text)
   return (text.map SHA256.text).toOption.getD "unavailable"
 
@@ -141,7 +161,7 @@ def SourceSelection.selectedDocumentKey (source : SourceSelection) : DocumentKey
 /-- The whole original source buffer a prose selection's stored syntax points into. -/
 def SourceSelection.proseBuffer? (source : SourceSelection) : Option String :=
   match source.payload with
-  | .prose body => (syntaxRange body.stx).toOption.map (·.1)
+  | .prose body _ => (syntaxRange body.stx).toOption.map (·.1)
   | _ => none
 
 private def SourceSelection.selectionIssue (source : SourceSelection) (message : String) : Diagnostic := {
@@ -159,7 +179,7 @@ points into, as compiled. No file is read, so a source edited or removed after
 its module was built does not change the result. Cached preview/AST renderings
 and nearby text are never substituted. -/
 def SourceSelection.selectedText (source : SourceSelection) : Except Diagnostic String := do
-  let .prose body := source.payload
+  let .prose body _ := source.payload
     | throw (source.selectionIssue "Only prose sources select text from their stored syntax")
   let location ← source.locationForSelection
   let (buffer, range) ← (syntaxRange body.stx).mapError source.selectionIssue
@@ -231,20 +251,10 @@ def usesFor (node : Name) (realization : Option Name) (role : Name)
     (references : Array Data.UseRef) : Array UseDeclaration :=
   references.map fun reference => { node, realization, role, reference }
 
-/-- Provider bytes stay unmodified. Only redundant elaborated preview syntax is
-compacted on export, as in the ordinary existing import boundary. -/
-def Registration.compact (registration : Registration) : Registration :=
-  { registration with sources := registration.sources.map fun source =>
-      match source.payload with
-      | .prose body =>
-        { source with payload := .prose <|
-            if body.previewBlocks.isEmpty then body else { body with elabStx := #[] } }
-      | _ => source }
-
 /-- A prose body or explicit authored kind establishes the concept's origin. -/
 def Registration.claimsAuthoredNode (registration : Registration) : Bool :=
   registration.kind.isSome || registration.sources.any fun source =>
-    match source.payload with | .prose body => body.hasBody | _ => false
+    match source.payload with | .prose body _ => body.hasBody | _ => false
 
 /-- Native associations preserve Lean's typed identity and every snapshot field.
 The collector must retain the whole association, including its destination, in
@@ -306,36 +316,31 @@ def SourceSelection.rawIssues (source : SourceSelection) (node : Name) : Array D
   | _, some role =>
     if role.isAnonymous then
       issues := issues.push (issue "unknown-source-role" subject "Source requires an explicit role")
-  if !source.context.valid || !source.document.valid || source.document.context != source.context then
+  if !source.document.valid then
     issues := issues.push (issue "source-document-context" subject "Source requires an explicit project, language and owning document")
   match source.payload with
   | .leanInline _ =>
     if source.context.language != `lean then
       issues := issues.push (issue "source-payload-context" subject "Compiled Lean payload requires a Lean source context")
-  | .prose _ =>
+  | .prose .. =>
     if source.context.language != `verso && source.context.language != `markdown then
       issues := issues.push (issue "source-payload-context" subject
         "Prose requires its original Verso or Markdown source context")
-  | .markup value =>
+  | .markup value _ =>
     if source.context.language != Name.mkSimple value.language.key then
       issues := issues.push (issue "source-payload-context" subject "Markup language must agree with its source context")
-  | .text _ => pure ()
+  | .text .. => pure ()
   if let some owner := source.ownDocstring then
-    unless (source.payload matches .prose _) && source.destination.role == some `statement &&
-        source.adoption.isNone && !owner.moduleName.isAnonymous && !owner.canonical.isAnonymous do
+    unless source.destination.role == some `statement &&
+        !owner.moduleName.isAnonymous && !owner.canonical.isAnonymous do
       issues := issues.push (issue "invalid-own-docstring" subject
         "An attribute docstring requires a prose statement and its owning declaration")
   if let some selection := source.adoption then
-    unless (source.payload matches .prose _) && source.destination.role == some `statement &&
+    unless source.destination.role == some `statement &&
         source.context.language == source.destination.realization.name &&
         !selection.consumerModule.isAnonymous && !selection.canonical.isAnonymous do
       issues := issues.push (issue "invalid-docstring-adoption" subject
         "Adoption requires one consumer-owned prose statement and a canonical declaration")
-  if source.fence.isSome then
-    match source.payload with
-    | .text _ | .markup _ => pure ()
-    | _ =>
-      issues := issues.push (issue "unexpected-source-selection" subject "Only text and markup payloads can select a code block body")
   match source.source.ok, source.source.location, source.source.error with
   | true, some location, none =>
     if blank location.path || location.path != source.document.path then

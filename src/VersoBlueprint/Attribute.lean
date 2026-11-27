@@ -132,13 +132,13 @@ private def statementFromDocstring? (decl : Name) (ref : Syntax) :
     CoreM (Option (Data.InformalBody × Array Data.UseRef × Name)) := do
   let env ← getEnv
   let some internalDoc ← liftM <| findInternalDocString? env decl | return none
-  let (elabStx, deps, format) ← Informal.Docstring.statementBlocks internalDoc
-  if elabStx.isEmpty then
+  let (blocks, deps, format) ← Informal.Docstring.statementBlocks internalDoc
+  if blocks.isEmpty then
     pure none
   else
     pure <| some ({
       stx := ref
-      elabStx := elabStx.map (·.raw)
+      blocks
     }, deps, format)
 
 private def labelsForManualTarget
@@ -224,8 +224,8 @@ private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref
     priority := none
     source }
   let sources ← docstring?.toArray.mapM fun (body, _, format) => do
-    let selection ← Environment.sourceAt label format (some `statement) format (.prose body) ref
-    return { selection with ownDocstring := some { moduleName, canonical := decl } }
+    Environment.sourceAt label format (some `statement) format
+      (.prose body (.attribute { moduleName, canonical := decl })) ref
   discard <| Environment.contributeAttribute fact {
     sources
     uses := deps }

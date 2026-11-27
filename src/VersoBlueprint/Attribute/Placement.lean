@@ -3,6 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
+import VersoBlueprint.Docstring.Manual
 import VersoBlueprint.Environment
 import VersoBlueprint.Graft.Node
 import VersoBlueprint.Informal.Block.Common
@@ -30,33 +31,14 @@ def Placement.showsCode (placement : Placement) : Bool :=
 def nodeHasBlueprintAttributeAttachments (node : Data.NodeInventory) : Bool :=
   node.hasAttributeAssociations
 
-/-- Decode the persisted Manual representation without disguising failure as prose. -/
-def decodePersistedManualBlock (jsonText : String) :
-    Except String (Doc.Block Genre.Manual) :=
-  Json.parse jsonText >>= fromJson?
-
-/-- Validate at the consuming elaboration boundary, before constructing a body term. -/
-public meta def persistedManualBlockTermFromJson (jsonText : String) : DocElabM Term := do
-  match decodePersistedManualBlock jsonText with
-  | .error err => throwError "Blueprint persisted statement block could not be decoded: {err}"
-  | .ok _ =>
-    `((Informal.Graft.decodePersistedManualBlock $(quote jsonText)).toOption.get!)
-
 private meta def attributeNodeOccurrence? (cfg : BlueprintNodeConfig) :
     DocElabM (Option (BlockOccurrence × Array Syntax)) := do
   if cfg.toNode.facet != "statement" then return none
   let label := LabelNameParsing.parse cfg.label
   let some node ← Environment.getNodeInventory? label | return none
   if !nodeHasBlueprintAttributeAttachments node then return none
-  let statementStxs ←
-    match node.defaultProseView `statement with
-    | none => pure #[]
-    | some statement =>
-      if statement.previewBlocks.isEmpty then
-        pure statement.elabStx
-      else
-        statement.previewBlocks.mapM fun block =>
-          return (← persistedManualBlockTermFromJson (toJson block).compress).raw
+  let blocks := (node.defaultProseView `statement).map (·.blocks) |>.getD #[]
+  let statementStxs ← liftM <| Docstring.persistedManualBlockTerms blocks
   let opts ← getOptions
   let sourceLocation :=
     match ← Data.SourceLocation.ofSyntax? (← getRef) with
@@ -71,7 +53,7 @@ private meta def attributeNodeOccurrence? (cfg : BlueprintNodeConfig) :
     subNumberingPrefix := Informal.subNumberingPrefix opts
     subNumberingCounter := Informal.subNumberingCounter opts
   }
-  return some (occurrence, statementStxs)
+  return some (occurrence, statementStxs.map (·.raw))
 
 public meta def elaboratePlacement (config : BlueprintNodeConfig) :
     DocElabM (Placement × Array Term) := do

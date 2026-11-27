@@ -184,9 +184,9 @@ Work:
    requirements onto `PreviewManifest.Entry`; remaining candidates include
    repeated traversal-store decoding and validation-message assembly patterns
    across preview, source, and status data
-2. keep `Informal.Environment.InProgress` separate from `Data.NodeInventory` while it
-   owns directive-stack state and typed preview blocks; attribute docstring term
-   syntax belongs only to persisted `InformalData`
+2. keep `Informal.Environment.DirectiveDraft` separate from `Data.NodeInventory`.
+   The draft holds in-progress directive metadata. Accepted prose keeps a typed
+   Manual body and the original source syntax used for provenance.
 3. keep `Informal.Environment.State` as the persisted semantic store and
    traversal indexes as rendered-site projections; consolidate only if the
    replacement keeps numbering, hrefs, preview ids, and HTML-cache keys

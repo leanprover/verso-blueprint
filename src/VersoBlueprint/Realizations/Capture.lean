@@ -384,7 +384,7 @@ def plan (raw : Raw) : Plan := Id.run do
       let context := (canonical (sources.map (·.context) ++ associations.map (·.context)))[0]?.getD default
       let mut sourceSteps := #[]
       for source in sources do
-        let document := if source.payload matches .prose _ then none else some source.document
+        let document := if source.payload matches .prose .. then none else some source.document
         let mut documented : Option (Except Diagnostic NativeRequest) := none
         if let some adoption := source.adoption then
           let owners := records.filter fun record =>
@@ -647,7 +647,7 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
         if let some reason := source.source.error then
           collected := { collected with sourceDiagnostics := collected.sourceDiagnostics.addNode label #[{
             code := "source-association-unavailable", subject := s!"{label}/{base.name}/{source.destination.role.getD `compiled}", message := reason }] }
-        if let .prose _ := source.payload then
+        if let .prose _ _ := source.payload then
           let selectedKey := source.selectedDocumentKey
           let selectedText ← match sourceStep.documented with
             | none => pure source.selectedText

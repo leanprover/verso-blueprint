@@ -256,16 +256,19 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
         let parsedContents ← parseDirectiveSourceMetadata cfg contents
         if cfg.leanDocstring.isSome && !parsedContents.body.isEmpty then
           throwErrorAt blockRef "An adopted docstring and an explicit Verso body compete for the default statement"
-        let contents ← match cfg.leanDocstring with
-          | none => parsedContents.body.mapM elabBlock
+        let (blocks, retainedContents) ← match cfg.leanDocstring with
+          | none =>
+            let terms ← parsedContents.body.mapM elabBlock
+            liftM <| retainElaboratedBlocks terms
           | some raw => do
             let env ← getEnv
             let name := raw.trimAscii.toString.toName
-            match Docstring.directCompiled env name with
-            | .ok doc => pure (← liftM <| Docstring.statementBlocks doc).1
-            | .error _ => pure #[]
-        let (previewBlocks, retainedContents) ← liftM <| retainElaboratedBlocks contents
-        pure ((retainedContents, parsedContents.sourceRef?), if cfg.leanDocstring.isSome then #[] else previewBlocks)
+            let blocks ← match Docstring.directCompiled env name with
+              | .ok doc => pure (← liftM <| Docstring.statementBlocks doc).1
+              | .error _ => pure #[]
+            let terms ← liftM <| Docstring.persistedManualBlockTerms blocks
+            pure (blocks, ← `(#[$terms,*]))
+        pure ((retainedContents, parsedContents.sourceRef?), blocks)
       | return ← ``(Block.concat #[])
     let opts ← getOptions
     let sourceLocation :=

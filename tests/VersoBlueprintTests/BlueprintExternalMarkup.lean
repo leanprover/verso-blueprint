@@ -34,7 +34,7 @@ private def externalMarkupLocation?
 private def nodeExternalMarkup (node : Informal.Data.NodeInventory) : Informal.Data.ExternalMarkupSet :=
   node.sources.foldl (init := {}) fun entries source =>
     match source.payload with
-    | .markup markup => entries.insert markup
+    | .markup markup _ => entries.insert markup
     | _ => entries
 
 private def previewEntry?
@@ -817,7 +817,7 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
       loc.range.«end».character == 0 &&
       unlabeledAnchor.kind == .theorem &&
       (unlabeledAnchor.proseView `verso `statement).isSome &&
-      !(unlabeledAnchor.sources.any fun source => match source.payload with | .markup _ => true | _ => false) &&
+      !(unlabeledAnchor.sources.any fun source => match source.payload with | .markup _ _ => true | _ => false) &&
       (witness.proseView `verso `statement).isNone &&
       (witness.proseView `verso `proof).isNone &&
       hasSubstr witnessSource "\\begin{theorem}" &&
