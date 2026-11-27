@@ -1237,7 +1237,7 @@ class TestPreviewRuntimeRegressions:
             "custom_client_external_markdown_metadata"
         )
         expect(code_panel.locator(".bp_code_summary_preview_body")).to_contain_text(
-            "No associated Lean code or declarations."
+            "No associated Lean code or declaration display snapshots."
         )
 
         page.mouse.move(0, 0)
