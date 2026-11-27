@@ -724,20 +724,6 @@ run_cmd liftTermElabM do
     ensure (selected rejected == some "" && rejected.sourceDiagnostics.nodes.any fun (owner, issue) =>
       owner == label && issue.code == "source-selection-unavailable")
       "Edited or non-Lean fence source reused an old checked attribute comment"
-  let inherited ← capture (text ++ "\nattribute [inherit_doc Nat] CaptureFenceOwner.documented\n")
-  ensure (selected inherited == some "" && inherited.sourceDiagnostics.nodes.any fun (owner, issue) =>
-    owner == label && issue.code == "inherited-docstring")
-    "Inheritance in the enclosing module must reject a fenced own-comment selection"
-  let followingFence (target : String) := text.replace "```\n:::::::" <|
-    s!"```\n\n```internal\nattribute [inherit_doc Nat] {target}\n```\n:::::::"
-  let unrelated ← capture (followingFence "_root_.CaptureFenceOwner.unrelatedNative")
-  ensure (selected unrelated == some comment && unrelated.sourceDiagnostics.nodes.isEmpty)
-    "Inheritance in another fence for a known unrelated declaration hid the genuine own comment"
-  for target in #["_root_.CaptureFenceOwner.documented", "documented"] do
-    let inherited ← capture (followingFence target)
-    ensure (selected inherited == some "" && inherited.sourceDiagnostics.nodes.any fun (owner, issue) =>
-      owner == label && issue.code == "inherited-docstring")
-      "Matching or ambiguous inheritance in another fence reused the selected own comment"
 
 run_cmd liftTermElabM do
   let label := Name.mkSimple "capture.incrementalFencedAttribute"
@@ -754,17 +740,9 @@ run_cmd liftTermElabM do
     project := `blueprintFixtures
     canonical := `CaptureFenceOwner.precedingDocumented
     moduleName := `VersoBlueprintTests.BlueprintRealizationCapture.IncrementalFenceOwner }
-  let path := source.document.path
-  let text ← IO.FS.readFile path
-  let select (target : String) := NativeSource.selectDocumented request path (fun _ =>
-    pure (text ++ s!"\n```internal\nattribute [inherit_doc Nat] {target}\n```\n"))
-  let unrelated ← obtain (← select "_root_.CaptureFenceOwner.incrementalDocumented")
-  ensure (unrelated.rawDocstring == " This declaration precedes the incremental document. ")
-    "Unrelated inheritance inside #doc hid a preceding top-level comment"
-  match ← select "_root_.CaptureFenceOwner.precedingDocumented" with
-  | .ok _ => throwError "Inheritance inside #doc was ignored for a preceding top-level comment"
-  | .error diagnostic =>
-    ensure (diagnostic.code == "inherited-docstring") "Expected checked enclosing-fence inheritance rejection"
+  let preceding ← obtain (← NativeSource.selectDocumented request source.document.path)
+  ensure (preceding.rawDocstring == " This declaration precedes the incremental document. ")
+    "Top-level comment preceding an incremental #doc did not select cleanly"
 
 -- Source attribution is per registration. Only the genuine imported block and
 -- its compatible copy may use the shared declaration and native check.

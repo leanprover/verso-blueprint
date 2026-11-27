@@ -64,18 +64,17 @@ run_cmd liftTermElabM do
     source.ranges.selectionRange == ranges.selectionRange && source.semanticContext.isSome)
     "Direct source must preserve typed identity, the environment's native ranges and current semantic inputs"
   -- Parser-boundary injection only, not successful proof/provider evidence:
-  -- The later unsupported command prevents ruling out inheritance in this file.
+  -- A later unsupported command fails full-file `parseSource`, while compiled
+  -- environment metadata still establishes own vs inherited docstrings for an
+  -- earlier parsed declaration.
   let text ← IO.FS.readFile sourcePath
   let tailInput := text ++ "\nsyntax \"sourceTailCommand\" : command\nsourceTailCommand\n"
   ensure (!(← NativeSource.parseSource request.canonical sourcePath tailInput).isOk)
     "Control tail must require unsupported parser context"
   let documentedRequest := { request with canonical := `RealizationAdapterFixture.number }
-  let documentedTail ← NativeSource.selectDocumented documentedRequest sourcePath (fun _ => pure tailInput)
-  match documentedTail with
-  | .error diagnostic =>
-    ensure (diagnostic.code == "source-parse-failed")
-      "Docstring association must still inspect the whole source for later inheritance"
-  | .ok _ => throwError "Docstring association skipped part of its owning source"
+  let documentedTail ← obtain (← NativeSource.selectDocumented documentedRequest sourcePath (fun _ => pure tailInput))
+  ensure (documentedTail.format == `markdown && !documentedTail.rawDocstring.isEmpty)
+    "Unrelated trailing unsupported syntax should not block compiled-environment docstring selection"
   for (result, code) in #[
       (← NativeSource.selectDocumented documentedRequest sourcePath (fun _ => pure ("\n" ++ text)),
         "source-association-unavailable"),
@@ -1039,28 +1038,20 @@ run_cmd liftTermElabM do
   discard <| obtain (← select first malformed)
   discard <| obtain (← select ``RealizationParserFixture.afterRecovery malformed)
 
-  let uncertain := malformed ++ "\nattribute [«inherit_doc» True.intro] ???\n"
-  match ← select first uncertain with
-  | .error issue =>
-    ensure (issue.code == "source-parse-failed" && issue.message.contains "inherit_doc")
-      "Malformed source with possible inheritance must fail conservatively"
-  | .ok _ => throwError "Parser recovery hid a possible inheritance application"
-
   let selected := ``RealizationParserFixture.afterScope
   let other := ``RealizationParserFixture.Other.afterScope
-  let unrelated := text ++ "\nnamespace RealizationParserFixture.Other\nattribute [inherit_doc True.intro] afterScope\nend RealizationParserFixture.Other\n"
-  discard <| obtain (← select selected unrelated)
-  let renamed := text ++ "\nopen RealizationParserFixture renaming afterScope -> renamed in\nattribute [inherit_doc True.intro] renamed\n"
-  discard <| obtain (← select other renamed)
-  let laterShadow := text.replace "namespace Other\n" "namespace Other\nattribute [inherit_doc True.intro] afterScope\n"
-  for (name, bytes) in #[(other, unrelated), (selected, renamed), (selected, laterShadow),
-      (selected, text ++ "\nattribute [inherit_doc True.intro] _root_.RealizationParserFixture.afterScope\n"),
-      (selected, text ++ "\nopen RealizationParserFixture RealizationParserFixture.Other\nattribute [inherit_doc True.intro] afterScope\n")] do
-    match ← select name bytes with
+  let untouchedExportSibling := ``RealizationParserFixture.ExportShadow.Other.target
+  discard <| obtain (← select selected text)
+  discard <| obtain (← select untouchedExportSibling text)
+  for inheritedName in #[
+      ``RealizationParserFixture.standaloneInherited,
+      ``RealizationParserFixture.renamedInherited,
+      ``RealizationParserFixture.ExportShadow.Before.target] do
+    match ← select inheritedName text with
     | .error diagnostic =>
-      ensure (diagnostic.code == "inherited-docstring" && diagnostic.subject == name.toString)
-        "A matching or ambiguous standalone inheritance must block the selected direct comment"
-    | .ok _ => throwError "Standalone inheritance escaped its owning scope"
+      ensure (diagnostic.code == "inherited-docstring" && diagnostic.subject == inheritedName.toString)
+        s!"Expected compiled inherited-docstring rejection for {inheritedName}, got {diagnostic.code}"
+    | .ok _ => throwError s!"Compiled standalone inheritance was accepted for {inheritedName}"
 
   let original ← obtain (← select other text)
   let crlf := text.replace "\n" "\r\n"

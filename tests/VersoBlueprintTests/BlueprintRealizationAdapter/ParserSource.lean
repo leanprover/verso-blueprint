@@ -70,4 +70,36 @@ theorem afterScope : True := True.intro
 
 end Other
 
+/-- Source docstring for compiled standalone inheritance tests. -/
+theorem inheritSource : True := True.intro
+
+/-- Direct comment overridden by standalone inherit_doc. -/
+theorem standaloneInherited : True := True.intro
+
+attribute [inherit_doc inheritSource] standaloneInherited
+
+/-- Direct comment overridden through open renaming. -/
+theorem renamedInherited : True := True.intro
+
+open RealizationParserFixture renaming renamedInherited → renamedAlias in
+attribute [inherit_doc inheritSource] renamedAlias
+
+namespace ExportShadow
+namespace Before
+/-- Source sentinel. -/
+theorem source : True := True.intro
+/-- Original direct comment. -/
+theorem target : True := True.intro
+end Before
+namespace Other
+/-- Unrelated sibling target. -/
+theorem target : True := True.intro
+end Other
+namespace Local
+open Before
+attribute [inherit_doc Before.source] target
+export Other (target)
+end Local
+end ExportShadow
+
 end RealizationParserFixture

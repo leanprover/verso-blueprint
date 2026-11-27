@@ -90,6 +90,7 @@ one exists.
 | Highlighted code | [`UPC-0014 Portable Hover Fragment Transfer`](./cards/UPC-0014-portable-hover-fragment-transfer/README.md) | Verso | medium |
 | Lake build graph | [`UPC-0019 Module-Level Lake Input Dependencies`](./cards/UPC-0019-module-level-lake-input-dependencies/README.md) | Lake | medium |
 | Directive parsing | [`UPC-0011 List-Valued Directive Arguments`](./cards/UPC-0011-list-valued-directive-arguments/README.md) | Verso | medium |
+| Docstring metadata | [`UPC-0022 Expose Inherited Docstring Target Query`](./cards/UPC-0022-expose-inherited-docstring-target/README.md) | Lean | medium |
 
 ## Triage Candidates
 
