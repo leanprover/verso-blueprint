@@ -1,3 +1,5 @@
+import { requireBlueprintDataApi, loadManifestEntry } from "./preview-runtime-base.mjs";
+
 // Source metadata lookup.
 //
 // The manifest owns source provenance. This module only resolves each
@@ -6,19 +8,6 @@
 
 function trimmedString(value) {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function blueprintDataApi(options) {
-  const opts = options && typeof options === "object" ? options : {};
-  return opts.dataApi && typeof opts.dataApi === "object" ? opts.dataApi : null;
-}
-
-function requireBlueprintDataApi(options) {
-  const dataApi = blueprintDataApi(options);
-  if (!dataApi) {
-    throw new Error("Blueprint data API missing; call through createPreview() or createBlueprintDataApi()");
-  }
-  return dataApi;
 }
 
 // Render results can also carry `key`; require manifest-entry fields before
@@ -50,11 +39,6 @@ function sourceMetadataKeyFromInput(input) {
   if (directKey) return directKey;
   if (!input || typeof input !== "object" || Array.isArray(input)) return "";
   return trimmedString(input.key);
-}
-
-async function loadManifestEntry(previewKey, options) {
-  const dataApi = requireBlueprintDataApi(options);
-  return dataApi.loadManifestEntry(previewKey, options);
 }
 
 async function resolveSourceMetadataEntry(source, options) {

@@ -26,15 +26,12 @@ def mkDefDecl (name : Name) (typeSorry : Bool := false) : LiterateDef :=
   {
     name
     provedStatus := fixtureStatus (if typeSorry then 1 else 0) 0
-    typeSorryRefs := if typeSorry then #[.missing] else #[]
   }
 
 def mkThmDecl (name : Name) (typeSorry : Bool := false) (proofSorry : Bool := false) : LiterateThm :=
   {
     name
     provedStatus := fixtureStatus (if typeSorry then 1 else 0) (if proofSorry then 1 else 0)
-    typeSorryRefs := if typeSorry then #[.missing] else #[]
-    proofSorryRefs := if proofSorry then #[.missing] else #[]
   }
 
 def mkDefCode (decl : Name) (typeSorry : Bool := false) : Code :=

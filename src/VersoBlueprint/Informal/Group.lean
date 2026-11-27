@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import VersoManual
 
+import VersoBlueprint.Informal.DirectiveText
 import VersoBlueprint.Data
 import VersoBlueprint.Environment
 import VersoBlueprint.Informal.GroupData
@@ -63,36 +64,9 @@ block_extension Block.groupMetadata (groupData : GroupBlockData) where
         | pure .empty
       pure .empty
 
-private def collapseWhitespace (s : String) : String :=
-  let s := s.replace "\n" " "
-  let s := s.replace "\r" " "
-  let s := s.replace "\t" " "
-  String.intercalate " " <| (s.splitOn " ").filter (fun chunk => !chunk.isEmpty)
-
-private def blockChunkText (env : Environment) (block : TSyntax `block) : String :=
-  match block with
-  | `(block|para[$inlines*]) =>
-    Verso.Doc.Elab.inlinesToString env inlines
-  | `(block|header($_){$inlines*}) =>
-    Verso.Doc.Elab.inlinesToString env inlines
-  | _ =>
-    (Syntax.reprint block.raw).getD ""
-
-private def groupHeaderFromContents (contents : Array (TSyntax `block)) : DocElabM String := do
-  let env ← getEnv
-  let raw := contents.foldl (init := "") fun acc block =>
-    let chunk := (blockChunkText env block).trimAscii.toString
-    if chunk.isEmpty then
-      acc
-    else if acc.isEmpty then
-      chunk
-    else
-      acc ++ "\n" ++ chunk
-  pure (collapseWhitespace raw)
-
 private def groupExpanderImpl : DirectiveExpanderOf GroupConfig
   | cfg, contents => do
-    let header ← groupHeaderFromContents contents
+    let header ← blocksPlainText contents
     let headerWasEmpty := header.isEmpty
     let header := if headerWasEmpty then cfg.label.toString else header
     if headerWasEmpty then

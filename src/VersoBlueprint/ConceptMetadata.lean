@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
+import VersoBlueprint.Util.Array
 import Lean
 import Lean.Data.Json
 import Lean.Data.Lsp
@@ -51,10 +52,6 @@ String-authored labels retain their original punctuation rather than Lean quotes
 def Label.publicString : Name → String
   | .str .anonymous s => s
   | name => name.toString
-
-/-- Append a Blueprint label only when it is not already present. -/
-def Label.pushUnique (labels : Array Label) (label : Label) : Array Label :=
-  if labels.contains label then labels else labels.push label
 
 def LabelMap A := NameMap A
 

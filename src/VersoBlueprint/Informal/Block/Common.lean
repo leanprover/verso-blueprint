@@ -61,27 +61,13 @@ def BlockStatusMark.text (s : BlockStatusMark) : String :=
   | some txt => txt
   | none => s.status.presentation.statusMarkSymbol
 
-def BlockStatusMark.toHtml (s : BlockStatusMark) : Output.Html :=
-  open Verso.Output.Html in
-  {{ <span class="bp_status_mark" title={{s.title}}>{{.text true s.text}}</span> }}
-
 def codeHoverListItem (body : Output.Html) : Output.Html :=
   open Verso.Output.Html in
   {{<li>{{body}}</li>}}
 
-def codeHoverTextItem (text : String) : Output.Html :=
-  open Verso.Output.Html in
-  let body : Output.Html := .text true text
-  codeHoverListItem body
-
 def codeHoverEmptyItem (text : String) : Output.Html :=
   open Verso.Output.Html in
   {{<li class="bp_code_hover_none">{{.text true text}}</li>}}
-
-def codeHoverCodeItem (text : String) : Output.Html :=
-  open Verso.Output.Html in
-  let body : Output.Html := {{<code>{{.text true text}}</code>}}
-  codeHoverListItem body
 
 def codeHoverSection (title : String) (items : Array Output.Html) : Output.Html :=
   open Verso.Output.Html in

@@ -250,9 +250,8 @@ private def externalDeclRenderedWith [Monad m]
 private def externalDeclRendered (status : ExternalDeclStatusView) (item : LinkedExternalDecl) : Output.Html :=
   Id.run <| externalDeclRenderedWith (fun renderedHtml => pure renderedHtml.selfContained) status item
 
-private def registerPageHoverPayload [Monad m]
-    (payload : ExternalDeclHoverPayload) :
-    Verso.Doc.Html.HtmlT Verso.Genre.Manual m Nat :=
+private def registerHoverPayload [Monad m] [MonadStateOf (Verso.Code.Hover.State Output.Html) m]
+    (payload : ExternalDeclHoverPayload) : m Nat :=
   modifyGet fun st =>
     let (id, dedup) := st.dedup.insert (.text false payload.html)
     (id, { st with dedup })
@@ -287,7 +286,7 @@ Verso's normal dedup table before the page id is emitted.
 private def renderedHtmlWithPageHovers [Monad m]
     (renderedHtml : ExternalDeclRenderedHtml) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m String := do
-  renderedHtmlWithHoverTable registerPageHoverPayload renderedHtml
+  renderedHtmlWithHoverTable registerHoverPayload renderedHtml
 
 private def externalDeclRenderedWithPageHovers [Monad m]
     (status : ExternalDeclStatusView)
@@ -365,16 +364,10 @@ private def renderExternalDeclList (rows : Array Output.Html) : Output.Html :=
 private abbrev ExternalDeclCacheHoverRender :=
   StateM (Verso.Code.Hover.State Output.Html)
 
-private def registerCacheHoverPayload (payload : ExternalDeclHoverPayload) :
-    ExternalDeclCacheHoverRender Nat :=
-  modifyGet fun st =>
-    let (id, dedup) := st.dedup.insert (.text false payload.html)
-    (id, { st with dedup })
-
 private def renderedHtmlWithCacheHovers
     (renderedHtml : ExternalDeclRenderedHtml) :
     ExternalDeclCacheHoverRender String := do
-  renderedHtmlWithHoverTable registerCacheHoverPayload renderedHtml
+  renderedHtmlWithHoverTable registerHoverPayload renderedHtml
 
 private def externalDeclRenderedWithCacheHovers
     (status : ExternalDeclStatusView)

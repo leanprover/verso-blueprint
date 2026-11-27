@@ -201,8 +201,6 @@ private def getDefinedDeclsImpl (fileMap : FileMap) (before after : Environment)
         commandIndex
         commandLines
         provedStatus
-        typeSorryRefs
-        proofSorryRefs
       } : LiterateThm)
     | _ =>
       defs := defs.push ({
@@ -211,7 +209,6 @@ private def getDefinedDeclsImpl (fileMap : FileMap) (before after : Environment)
         commandIndex
         commandLines
         provedStatus
-        typeSorryRefs
       } : LiterateDef)
   let cmpDef (a b : LiterateDef) :=
     a.commandIndex < b.commandIndex ||

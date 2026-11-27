@@ -242,19 +242,6 @@ def ProvedStatus.withDirectRefCounts (status : ProvedStatus) (typeRefs proofRefs
         | .unknown => item }
   | other => other
 
-/-- True when any declaration in a collection is incomplete. -/
-def ProvedStatus.anyIncomplete (decls : Array α) (statusOf : α → ProvedStatus) : Bool :=
-  decls.any fun decl => (statusOf decl).isIncomplete
-
-/-- True when any declaration blocks statement completion for the given node kind. -/
-def ProvedStatus.anyBlocksStatementCompletion (kind : NodeKind) (decls : Array α)
-    (statusOf : α → ProvedStatus) : Bool :=
-  decls.any fun decl => (statusOf decl).blocksStatementCompletion kind
-
-/-- True when any declaration blocks proof completion. -/
-def ProvedStatus.anyBlocksProofCompletion (decls : Array α) (statusOf : α → ProvedStatus) : Bool :=
-  decls.any fun decl => (statusOf decl).blocksProofCompletion
-
 @[simp] theorem ProvedStatus.mergeConservative_proved_left (status : ProvedStatus) :
     ProvedStatus.mergeConservative .proved status = status := by
   cases status <;> rfl

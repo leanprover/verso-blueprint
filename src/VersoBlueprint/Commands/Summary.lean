@@ -11,7 +11,7 @@ import VersoManual
 import VersoBlueprint.Commands.Common
 import VersoBlueprint.Commands.SerializedExtension
 import VersoBlueprint.Commands.Summary.Collect
-import VersoBlueprint.Commands.Summary.Render
+import VersoBlueprint.Commands.Summary.Sections
 
 namespace Informal.Commands
 

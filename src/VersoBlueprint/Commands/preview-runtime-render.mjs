@@ -1,4 +1,4 @@
-import { escapeHtml, readHtml } from "./preview-runtime-base.mjs";
+import { escapeHtml, readHtml, requireBlueprintDataApi, loadManifestEntry } from "./preview-runtime-base.mjs";
 import { missingPreviewKeyDiagnosticHtml, previewKey } from "./preview-runtime-data.mjs";
 import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
 
@@ -13,24 +13,6 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
     return err instanceof Error && typeof err.message === "string" && err.message.length > 0
       ? err.message
       : String(err);
-  }
-
-  function blueprintDataApi(options) {
-    const opts = options && typeof options === "object" ? options : {};
-    return opts.dataApi && typeof opts.dataApi === "object" ? opts.dataApi : null;
-  }
-
-  function requireBlueprintDataApi(options) {
-    const dataApi = blueprintDataApi(options);
-    if (!dataApi) {
-      throw new Error("Blueprint data API missing; call through createPreview() or createBlueprintDataApi()");
-    }
-    return dataApi;
-  }
-
-  function loadManifestEntry(previewKey, options) {
-    const dataApi = requireBlueprintDataApi(options);
-    return dataApi.loadManifestEntry(previewKey, options);
   }
 
   function loadHtmlCacheEntry(previewKey, options) {

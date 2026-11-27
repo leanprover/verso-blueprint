@@ -712,12 +712,6 @@ def dataApiModuleAliasFilename : String := "data.mjs"
 
 def previewApiModuleAliasFilename : String := "preview.mjs"
 
-def graphApiModulePath : String := apiModuleDirname ++ "/" ++ graphApiModuleAliasFilename
-
-def dataApiModulePath : String := apiModuleDirname ++ "/" ++ dataApiModuleAliasFilename
-
-def previewApiModulePath : String := apiModuleDirname ++ "/" ++ previewApiModuleAliasFilename
-
 -- Keep this module rebuilt when the standalone browser ESM APIs change.
 private def graphCoreModuleMjs : String := include_str "blueprint-graph-core.mjs"
 
@@ -976,12 +970,6 @@ structure EntryHeading where
   label : String
 deriving Inhabited, Repr
 
-/-- Informal block kind represented by this manifest entry. -/
-def Entry.blockKind (entry : Entry) : Informal.Data.InProgressKind :=
-  match entry.facet with
-  | .proof => .proof
-  | .statement => .statement (entry.kind.getD .theorem)
-
 /-- Primary source ref for internal block-rendering paths that still accept one source attachment. -/
 def Entry.primarySource? (entry : Entry) : Option Informal.Source.Ref :=
   entry.sources[0]?
@@ -1111,9 +1099,6 @@ def Index.findEntry? (index : Index) (key : String) : Option Entry :=
 
 def Index.findHtml? (index : Index) (key : String) : Option String :=
   (index.findEntry? key).map (·.html)
-
-def File.findEntry? (file : File) (key : String) : Option Entry :=
-  file.index.findEntry? key
 
 def File.findHtml? (file : File) (key : String) : Option String :=
   file.index.findHtml? key
@@ -1561,21 +1546,18 @@ def File.findPrimaryQueryableEntry? (file : File) (label : String) : Option Entr
   let entries := file.findQueryableEntriesByLabel label
   entries.find? (·.isStatement) <|> entries[0]?
 
-private def pushUniqueString (values : Array String) (value : String) : Array String :=
-  if values.contains value then values else values.push value
-
 /-- Sorted owner names present on queryable statement entries. -/
 def File.ownerValues (file : File) : Array String :=
   let owners := file.queryableStatementEntries.foldl (init := #[]) fun owners entry =>
       match entry.ownerDisplayName with
       | none => owners
-      | some owner => pushUniqueString owners owner
+      | some owner => pushUnique owners owner
   owners.qsort (· < ·)
 
 /-- Sorted tag values present on queryable statement entries. -/
 def File.tagValues (file : File) : Array String :=
   let tags := file.queryableStatementEntries.foldl (init := #[]) fun tags entry =>
-      entry.tags.foldl pushUniqueString tags
+      entry.tags.foldl pushUnique tags
   tags.qsort (· < ·)
 
 /-- Queryable statement entries carrying owner, tag, priority, or effort metadata. -/
@@ -1949,9 +1931,6 @@ private def groupTitle? (state : TraverseState) (parent : Name) : Option String 
 private def blockParentTitle? (state : TraverseState) (blockData : Informal.BlockData) : Option String :=
   blockData.parent.map fun parent =>
     (groupTitle? state parent).getD parent.toString
-
-private def pushUnique [BEq α] (values : Array α) (value : α) : Array α :=
-  if values.contains value then values else values.push value
 
 private def externalDeclsFromLeanPreviewKeys
     (state : TraverseState)

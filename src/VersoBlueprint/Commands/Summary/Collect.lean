@@ -49,9 +49,6 @@ private def bumpUsageCounts (acc : UsageCounts) (inStatement inProof : Bool) : U
     proofUses := acc.proofUses + (if inProof then 1 else 0)
   }
 
-private def pushUniqueName (xs : Array Name) (x : Name) : Array Name :=
-  if xs.contains x then xs else xs.push x
-
 private def buildUsageMaps (snapshot : Realizations.Capture.Snapshot)
     (entries : Array (Name × Realizations.Node)) : NameMap UsageCounts × NameMap (Array Name) :=
   entries.foldl (init := (({} : NameMap UsageCounts), ({} : NameMap (Array Name)))) fun (usageMap, reverseMap) (sourceLabel, _) =>
@@ -63,10 +60,10 @@ private def buildUsageMaps (snapshot : Realizations.Capture.Snapshot)
     let usageMap :=
       proofDeps.foldl (init := usageMap) fun acc dep =>
         acc.insert dep (bumpUsageCounts (acc.getD dep {}) false true)
-    let reverseDeps := Informal.Graph.eraseDups (statementDeps ++ proofDeps)
+    let reverseDeps := Informal.uniqueInOrder (statementDeps ++ proofDeps)
     let reverseMap :=
       reverseDeps.foldl (init := reverseMap) fun acc dep =>
-        acc.insert dep (pushUniqueName (acc.getD dep #[]) sourceLabel)
+        acc.insert dep (pushUnique (acc.getD dep #[]) sourceLabel)
     (usageMap, reverseMap)
 
 partial def downstreamUseCount (reverseMap : NameMap (Array Name))
@@ -115,7 +112,7 @@ private def realizationHasAvailableSource (snapshot : Realizations.Capture.Snaps
 private def nodeLeanObjects (snapshot : Realizations.Capture.Snapshot) (label : Name) : List Name :=
   let names := (defaultLeanRealizations snapshot label).flatMap fun realization =>
     realization.declarations.map fun declaration => declaration.object.native.toName
-  names.foldl pushUniqueName #[] |>.toList
+  names.foldl pushUnique #[] |>.toList
 
 /- Summary detail rows preserve fresh native provider inventory for inspection.
 They are not closure/completion authority; semantic completion is projected from
@@ -589,7 +586,7 @@ private def collectDependencyLoadItems (ctx : SummaryBuildContext) : List Depend
   let items := ctx.entries.foldl (init := #[]) fun acc (label, node) =>
     let statementDeps := (Informal.Graph.capturedUses ctx.snapshot label `statement).map (·.label)
     let proofDeps := (Informal.Graph.capturedUses ctx.snapshot label `proof).map (·.label)
-    let totalDeps := (Informal.Graph.eraseDups (statementDeps ++ proofDeps)).size
+    let totalDeps := (Informal.uniqueInOrder (statementDeps ++ proofDeps)).size
     if totalDeps == 0 then
       acc
     else

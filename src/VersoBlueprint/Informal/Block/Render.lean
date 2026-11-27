@@ -275,9 +275,6 @@ private def externalMarkupBadgeText : Data.ExternalMarkupLanguage → String
   | .markdown => "MD"
   | .tex => "TeX"
 
-private def pushUniqueString (values : Array String) (value : String) : Array String :=
-  if values.contains value then values else values.push value
-
 private def trimmedOptionalString (value? : Option String) : Option String := do
   let rawValue ← value?
   let value := rawValue.trimAscii.toString
@@ -289,7 +286,7 @@ private def collectTrimmedUniqueBy {α : Type} (values : Array α)
     (init := #[])
     fun collected item =>
       match trimmedOptionalString (value? item) with
-      | some value => pushUniqueString collected value
+      | some value => pushUnique collected value
       | none => collected
 
 private def externalMarkupLanguages (markup : Array Data.ExternalMarkup) :
@@ -309,7 +306,7 @@ private def externalMarkupSlotsFor
     (init := #[])
     fun acc item =>
       if decide (item.language = language) then
-        pushUniqueString acc item.slot
+        pushUnique acc item.slot
       else
         acc
 

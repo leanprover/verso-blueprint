@@ -118,11 +118,9 @@ structure LiterateDef where
   commandIndex : Nat := 0
   commandLines : Nat := 1
   provedStatus : ProvedStatus := .incomplete {}
-  typeSorryRefs : Array Syntax := #[]
 deriving Repr, Inhabited
 
 structure LiterateThm extends LiterateDef where
-  proofSorryRefs : Array Syntax := #[]
 deriving Repr, Inhabited
 
 def ConstantInfo.blueprintNodeKind? : ConstantInfo → Option NodeKind
@@ -285,11 +283,6 @@ def ExternalDeclProvenance.sourcePath? : ExternalDeclProvenance → Option Strin
   | .outWorkspace _ sourcePath? => sourcePath?
   | .unknown => none
 
-def ExternalDeclProvenance.label : ExternalDeclProvenance → String
-  | .inWorkspace _ _ => "in workspace"
-  | .outWorkspace _ _ => "out workspace"
-  | .unknown => "unknown provenance"
-
 inductive ExternalDeclLookupError where
   | notPresentAtRegistration
   | notFoundInEnvironment
@@ -373,13 +366,9 @@ def ExternalRef.mergeStatus (previous next : Option ProvedStatus) : Option Prove
   | some a, some b => some (a.mergeConservative b)
   | _, _ => previous <|> next
 
-structure RustInlineCode where
-  raw : String
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
-
 def pushUniqueNativeName (names : Array Name) (name : Name) : Array Name :=
   let name := name.eraseMacroScopes
-  if names.contains name then names else names.push name
+  pushUnique names name
 
 def Code.definedDeclNames (code : Code) : Array Name :=
   (code.definedDefs.map (·.name) ++ code.definedTheorems.map (·.name)).foldl

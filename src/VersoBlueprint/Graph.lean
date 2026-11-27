@@ -530,9 +530,6 @@ def groupGraphLegendGroups : Array LegendGroup :=
     }
   ]
 
-def eraseDups (xs : Array Name) : Array Name :=
-  xs.foldl (init := #[]) fun acc x => if acc.contains x then acc else acc.push x
-
 /-- Project native checks and their selected prerequisites onto the compact graph
 statuses. Actionability is exported independently of proof status. -/
 def statusesForAssessment (assessment : Realizations.NodeAssessment) :
@@ -672,7 +669,7 @@ def capturedUses (snapshot : Realizations.Capture.Snapshot) (label role : Name) 
 
 private def expandLabels (snapshot : Realizations.Capture.Snapshot) (roots : Array Name) : Array Name :=
   Id.run <| do
-    let mut queue : Array Name := eraseDups roots
+    let mut queue : Array Name := uniqueInOrder roots
     let mut enqueued : NameSet := queue.foldl (init := {}) fun acc label => acc.insert label
     let mut seen : NameSet := {}
     let mut idx : Nat := 0
@@ -718,8 +715,8 @@ private def edgeAxes (isStatement isProof : Bool) : Array EdgeAxis :=
   if isProof then axes.push .proof else axes
 
 private def edgesForNode (node : GraphNode Ref) : Array EdgeData :=
-  let stmtDeps := eraseDups node.deps
-  let proofDeps := eraseDups node.proofDeps
+  let stmtDeps := uniqueInOrder node.deps
+  let proofDeps := uniqueInOrder node.proofDeps
   let deps := proofDeps.foldl (init := stmtDeps) fun deps dep =>
     if deps.contains dep then deps else deps.push dep
   deps.map fun dep => {
@@ -1028,8 +1025,8 @@ def Graph.toDot (g : Graph Ref) (header : String)
           | some parent =>
             let members := groupMembers.getD parent #[]
             groupMembers.insert parent (members.push node.label)
-        let stmtDeps := eraseDups node.deps
-        let proofDeps := eraseDups node.proofDeps
+        let stmtDeps := uniqueInOrder node.deps
+        let proofDeps := uniqueInOrder node.proofDeps
         let stmtDepSet : NameSet :=
           stmtDeps.foldl (init := ({} : NameSet)) fun acc dep => acc.insert dep
         let proofDepSet : NameSet :=

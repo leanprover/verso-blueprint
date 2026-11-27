@@ -63,11 +63,6 @@ structure PanelIndicatorParts where
   /-- Top-right indicator node for the code panel summary row. -/
   indicator : Output.Html := .empty
 
-inductive DeclSummaryKind where
-  | definition
-  | theoremLike
-deriving Inhabited, Repr, BEq
-
 /--
 Normalized declaration summary row shared by inline and external Lean summary UI.
 
@@ -86,7 +81,6 @@ structure DeclSummaryItem where
   /-- Explicit HTML-cache preview lookup key, when it differs from `previewName`. -/
   previewLookupKey? : Option String := none
   href : Option String := none
-  kind : DeclSummaryKind := .definition
   status : Option Data.ProvedStatus := none
   present : Bool := true
 deriving Inhabited, Repr
@@ -171,7 +165,6 @@ private def inlineDeclSummaryItems (definedDefs definedTheorems : Array CodeDecl
       previewName := decl.name
       previewLookupKey?
       href := hrefOf decl.name
-      kind := .definition
       status := some decl.provedStatus
     }
   let theoremLikes := definedTheorems.map fun decl =>
@@ -180,7 +173,6 @@ private def inlineDeclSummaryItems (definedDefs definedTheorems : Array CodeDecl
       previewName := decl.name
       previewLookupKey?
       href := hrefOf decl.name
-      kind := .theoremLike
       status := some decl.provedStatus
     }
   defs ++ theoremLikes
@@ -199,11 +191,6 @@ def externalDeclKindText? (decl : Data.ExternalRef) : Option String :=
     | .theorem => some "theorem"
     | .corollary => some "corollary"
 
-private def externalSummaryKind (decl : Data.ExternalRef) : DeclSummaryKind :=
-  match decl.kind with
-  | .definition => .definition
-  | .proposition | .lemma | .theorem | .corollary => .theoremLike
-
 private def externalDeclHref (decl : Data.ExternalRef) (hrefOf : Name → Option String) : Option String :=
   if decl.present then
     match hrefOf decl.canonical with
@@ -219,7 +206,6 @@ private def externalDeclSummaryItems (decls : Array Data.ExternalRef)
       displayName := decl.written
       previewName := decl.canonical
       href := externalDeclHref decl hrefOf
-      kind := externalSummaryKind decl
       status := decl.provedStatus
       present := decl.present
     }

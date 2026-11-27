@@ -43,7 +43,6 @@ deriving Inhabited, Repr
 The `facet` and `key` fields identify the preview that should be used by
 callers, while `preview` contains the phase-local renderable payload. -/
 structure Selection where
-  label : Name
   facet : PreviewCache.Facet
   key : String
   preview : Preview
@@ -52,7 +51,6 @@ deriving Inhabited, Repr
 def Selection.ofPreview (label : Name) (facet : PreviewCache.Facet) (preview : Preview) :
     Selection :=
   {
-    label
     facet
     key := PreviewCache.key label facet
     preview

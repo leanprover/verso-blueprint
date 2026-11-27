@@ -127,7 +127,6 @@ structure CodeConfig where
   label : Data.Label
   leanLabel : Name
   autoDeps : Option Bool := none
-  labelSyntax : Syntax := Syntax.missing
 
 section
 variable [Monad m] [MonadInfoTree m] [MonadResolveName m] [MonadLiftT CoreM m] [MonadEnv m]
@@ -141,7 +140,6 @@ def CodeConfig.parse : ArgParse m CodeConfig :=
       label
       leanLabel
       autoDeps
-      labelSyntax := labelArg.syntax
     }) <$> .positional `label (.withSyntax .string)
       <*> .named' `autoDeps true
       <*> .lift "current elaboration options" getOptions

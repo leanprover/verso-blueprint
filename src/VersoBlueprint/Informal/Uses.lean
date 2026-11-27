@@ -52,7 +52,6 @@ but deliberately does not accept dependency metadata or register a use edge.
 -/
 structure BprefConfig where
   label : Data.Label
-  labelSyntax : Syntax := Syntax.missing
 
 section
 variable [Monad m] [MonadError m]
@@ -82,7 +81,6 @@ def BprefConfig.parse : ArgParse m BprefConfig :=
     let parsedLabel := LabelArg.parse labelArg
     {
       label := parsedLabel.label
-      labelSyntax := parsedLabel.labelSyntax
     }) <$> .positional `label (.withSyntax .string)
 
 instance : FromArgs BprefConfig m where

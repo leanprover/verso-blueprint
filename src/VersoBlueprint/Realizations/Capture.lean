@@ -929,7 +929,7 @@ private def selectTarget (collected : Collected) (context : Context) (axis : Nam
 private def selectUses (collected : Collected) : Array SelectedUse := Id.run do
   let mut selected := #[]
   let scopes := (collected.uses.map fun use => (use.node, use.realization, use.role)).foldl
-    (fun scopes scope => if scopes.contains scope then scopes else scopes.push scope) #[]
+    pushUnique #[]
   for (source, realization, role) in scopes do
     let uses := Data.UseRef.mergeByLabel #[] <| (collected.uses.filter fun use =>
       use.node == source && use.realization == realization && use.role == role).map (·.reference)

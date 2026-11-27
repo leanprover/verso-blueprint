@@ -223,9 +223,6 @@ private def sortUsedByEntries (entries : Array UsedByEntry) : Array UsedByEntry 
   entries.qsort fun a b =>
     BlockData.traversalOrderLess a.source b.source
 
-private def pushUnique [DecidableEq α] (values : Array α) (value : α) : Array α :=
-  if values.contains value then values else values.push value
-
 private def mergeUsedByEntry (existing : UsedByEntry) (useRef : Data.UseRef) (facet : PreviewCache.Facet) :
     UsedByEntry :=
   {

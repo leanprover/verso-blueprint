@@ -367,12 +367,6 @@ private def updatePanel (title label : String) (out : BuildResult) (stx : Syntax
     validationMessage := out.validationMessage? }
   liftM <| Widget.savePanelWidgetInfo blueprintWidget.javascriptHash (rpcEncode props) stx
 
-def activateForLabelDoc (label : Name) (stx : Syntax) : Verso.Doc.Elab.DocElabM Unit := do
-  if stx.getPos?.isNone then
-    return ()
-  let out ← buildFor label
-  liftM <| updatePanel s!"BluePrint widget: {label}" label.toString out stx
-
 show_panel_widgets [local blueprintWidget]
 
 /-- Graph command -/

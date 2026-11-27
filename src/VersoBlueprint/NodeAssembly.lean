@@ -81,7 +81,7 @@ private def mergeContribution (label : Label) (node : NodeInventory)
     kind, kindIsExplicit
     count := if node.count == 0 then incoming.count else node.count
     sources, uses, parent, owner, effort, prUrl, issueUrl
-    tags := incoming.tags.foldl (fun tags tag => if tags.contains tag then tags else tags.push tag) node.tags }
+    tags := incoming.tags.foldl pushUnique node.tags }
 
 /-- Raw well-formedness only. Destination membership is checked after complete
 realization composition; no fixed language-slot representability gate remains. -/

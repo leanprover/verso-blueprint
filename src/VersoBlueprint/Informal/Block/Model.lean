@@ -447,7 +447,4 @@ def NodeDisplay.proofTitle (display : NodeDisplay) : String :=
 def BlockData.statementDeps (data : BlockData) : Array Data.Label :=
   Data.UseRef.labels data.statementUses
 
-def BlockData.proofDeps (data : BlockData) : Array Data.Label :=
-  Data.UseRef.labels data.proofUses
-
 end Informal

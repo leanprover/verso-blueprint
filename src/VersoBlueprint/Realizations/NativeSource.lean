@@ -587,7 +587,7 @@ def PreparedModel.prepareValidation (p : PreparedModel) (expected : Syntax)
   unless model.role == `proof && declaration.projection == .implementation do
     return .error wrongWitness
   let some updated := model.attachDeclarationRequirement? key | return .error wrongWitness
-  let docs := goalDocuments.foldl (fun docs key => if docs.contains key then docs else docs.push key) #[]
+  let docs := goalDocuments.foldl pushUnique #[]
   let checked ← NativeLean.check p.witness.context.project p.witness expected docs semantics
   let .ok checked := checked | return checked.map (fun checked => (p.input, checked))
   let input := { p.input with

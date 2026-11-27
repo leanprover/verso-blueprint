@@ -159,7 +159,7 @@ private def resolveManualTargets
     (currentDecl currentLabel : Name) (targets : Array AutoDepTarget) : CoreM (Array Data.Label) := do
   targets.foldlM (init := #[]) fun acc target => do
     let labels ← labelsForManualTarget currentDecl currentLabel target
-    return labels.foldl Data.Label.pushUnique acc
+    return labels.foldl pushUnique acc
 
 private def collectAxisDeps
     (currentDecl currentLabel role : Name) (inferred : Array SourceData.UseDeclaration) (manual : AutoDepEntries)
@@ -167,7 +167,7 @@ private def collectAxisDeps
     CoreM (Array SourceData.UseDeclaration) := do
   let explicit ← resolveManualTargets currentDecl currentLabel manual.add
   let excluded ← resolveManualTargets currentDecl currentLabel manual.exclude
-  let excluded := Data.Label.pushUnique excluded currentLabel
+  let excluded := pushUnique excluded currentLabel
   let mut out := inferred.filter fun use => use.role == role && !excluded.contains use.reference.label
   for dependency in docstringDeps do
     if !excluded.contains dependency.label then

@@ -13,7 +13,7 @@ open Lean
 
 private theorem mem_pushName (names : Array Name) (name query : Name) :
     query ∈ pushUniqueNativeName names name ↔ query ∈ names ∨ name.eraseMacroScopes = query := by
-  unfold pushUniqueNativeName
+  unfold pushUniqueNativeName pushUnique
   dsimp only
   split
   · rename_i h

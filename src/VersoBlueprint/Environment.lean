@@ -110,9 +110,6 @@ def authoringRecordIssues (records : Array AuthoringRecord) : Array Realizations
       issues := issues.push (authoringIssue "producer-collision" "Conflicting raw authoring envelopes" (bucket.map (·.origin)))
   return Realizations.canonical issues
 
-private def pushUnique [BEq α] (values : Array α) (value : α) : Array α :=
-  if values.contains value then values else values.push value
-
 /-- Every registration of one Blueprint label and its provenance. These are the
 persisted inputs; the label's `NodeInventory` is assembled from them. -/
 structure NodeRegistrations where
@@ -232,7 +229,7 @@ private def addLeanDeclLabel
     (leanNameLabels : NameMap (Array Label)) (decl label : Name) : NameMap (Array Label) :=
   let decl := decl.eraseMacroScopes
   let labels := leanNameLabels.getD decl #[]
-  leanNameLabels.insert decl (Label.pushUnique labels label)
+  leanNameLabels.insert decl (pushUnique labels label)
 
 private def addNodeLeanDeclLabels
     (leanNameLabels : NameMap (Array Label)) (label : Name) (node : NodeInventory) :
