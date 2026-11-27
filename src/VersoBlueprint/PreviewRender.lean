@@ -173,19 +173,4 @@ def renderPreviewBlocksHtmlWithSnapshot
     (snapshot : Informal.Realizations.Capture.Snapshot) : Lean.Elab.Term.TermElabM Verso.Output.Html :=
   renderPreviewBlocksHtmlUsingCapture blocks (some snapshot)
 
-/-- Render cached elaborated statement blocks to HTML using the manual renderer. -/
-private unsafe def renderStatementElabHtmlUnsafe (stxs : Array Lean.Syntax) : Lean.Elab.Term.TermElabM Verso.Output.Html := do
-  let blocks ← evalElaboratedBlocks stxs
-  renderPreviewBlocksHtml blocks
-
-/-- Render cached elaborated statement blocks to HTML using the manual renderer. -/
-@[implemented_by renderStatementElabHtmlUnsafe]
-opaque renderStatementElabHtml (stxs : Array Lean.Syntax) : Lean.Elab.Term.TermElabM Verso.Output.Html
-
-/-- Render an elaborated statement preview with a caller-supplied completed capture. -/
-def renderStatementElabHtmlWithSnapshot (stxs : Array Lean.Syntax)
-    (snapshot : Informal.Realizations.Capture.Snapshot) : Lean.Elab.Term.TermElabM Verso.Output.Html := do
-  let blocks ← evalElaboratedBlocks stxs
-  renderPreviewBlocksHtmlWithSnapshot blocks snapshot
-
 end Informal

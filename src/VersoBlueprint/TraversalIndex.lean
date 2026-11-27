@@ -195,10 +195,6 @@ def saveSelected (state : TraverseState) (id : Verso.Multi.InternalId)
   let previewKey := key entry.label entry.facet
   saveId (saveData state previewKey (toJson { entry with target := some id })) previewKey id
 
-
-def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
-  state.domains.get? domainName
-
 /-- Decode every statement/proof traversal-preview entry, preserving per-entry decode errors. -/
 def entries (state : TraverseState) :
     Array (Except DecodeError (StoredEntry PreviewCache.Entry)) :=
@@ -296,9 +292,6 @@ def saveOccurrence (state : TraverseState) (occurrence : Informal.BlockOccurrenc
     -- external declaration payloads without decoding or serializing them again.
     saveObjectData state domainName occurrence.label.toString
       (object.data.setObjVal! "occurrence" (toJson (some occurrence)))
-
-def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
-  state.domains.get? domainName
 
 /-- Capture only populates the exact selected document after checking its owner and bytes. -/
 def adoptedStatementVerified (snapshot : Informal.Realizations.Capture.Snapshot)
@@ -448,9 +441,6 @@ def object? (state : TraverseState) (label : Name) : Option Verso.Multi.Object :
 def data? (state : TraverseState) (label : Name) : Option Informal.Rust.InlineCodeData :=
   objectData? state domainName label.toString
 
-def href? (state : TraverseState) (label : Name) : Option String :=
-  Resolve.resolveDomainHref? state domainName label.toString
-
 def saveId (state : TraverseState) (label : Name) (id : Verso.Multi.InternalId) : TraverseState :=
   saveObjectId state domainName label.toString id
 
@@ -471,9 +461,6 @@ def spec : StoreSpec := {
 }
 
 def domainName : Name := spec.name
-
-def object? (state : TraverseState) (id : String) : Option Verso.Multi.Object :=
-  state.getDomainObject? domainName id
 
 def data? (state : TraverseState) (id : String) : Option Informal.Source.Document :=
   objectData? state domainName id
@@ -500,9 +487,6 @@ def spec : StoreSpec := {
 
 def domainName : Name := spec.name
 
-def object? (state : TraverseState) (label : Name) : Option Verso.Multi.Object :=
-  state.getDomainObject? domainName label.toString
-
 def data? (state : TraverseState) (label : Name) : Option Informal.Data.ExternalMarkupData :=
   objectData? state domainName label.toString
 
@@ -511,9 +495,6 @@ def saveId (state : TraverseState) (label : Name) (id : Verso.Multi.InternalId) 
 
 def saveData (state : TraverseState) (label : Name) (data : Json) : TraverseState :=
   saveObjectData state domainName label.toString data
-
-def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
-  state.domains.get? domainName
 
 /-- Decode every external-markup store entry, preserving per-entry decode errors. -/
 def entries (state : TraverseState) :
@@ -554,12 +535,6 @@ def spec : StoreSpec := {
 
 def domainName : Name := spec.name
 
-def object? (state : TraverseState) (key : String) : Option Verso.Multi.Object :=
-  state.getDomainObject? domainName key
-
-def data? (state : TraverseState) (key : String) : Option Informal.Graph.CachedGraphData :=
-  objectData? state domainName key
-
 def saveId
     (state : TraverseState) (key : String) (id : Verso.Multi.InternalId) : TraverseState :=
   saveObjectId state domainName key id
@@ -567,9 +542,6 @@ def saveId
 def saveData (state : TraverseState) (key : String) (data : Informal.Graph.CachedGraphData) :
     TraverseState :=
   saveObjectData state domainName key (toJson data)
-
-def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
-  state.domains.get? domainName
 
 /-- Decode every cached graph entry, preserving per-entry decode errors. -/
 def entries (state : TraverseState) :
@@ -604,18 +576,12 @@ def object? (state : TraverseState) (previewKey : String) : Option Verso.Multi.O
 def href? (state : TraverseState) (previewKey : String) : Option String :=
   (Resolve.resolveDomainHrefs state domainName previewKey)[0]?
 
-def hrefFor? (state : TraverseState) (decl : Name) : Option String :=
-  href? state (lookupKey decl)
-
 def saveId
     (state : TraverseState) (previewKey : String) (id : Verso.Multi.InternalId) : TraverseState :=
   saveObjectId state domainName previewKey id
 
 def saveData (state : TraverseState) (previewKey : String) (data : Json) : TraverseState :=
   saveObjectData state domainName previewKey data
-
-def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
-  state.domains.get? domainName
 
 end LeanCodePreviews
 
@@ -636,9 +602,6 @@ def key (occurrence : Verso.Multi.InternalId) (decl : Name) : String :=
 
 def object? (state : TraverseState) (targetKey : String) : Option Verso.Multi.Object :=
   state.getDomainObject? domainName targetKey
-
-def href? (state : TraverseState) (label decl : Name) : Option String :=
-  Resolve.resolveRenderedExternalDeclHref? state label decl
 
 /-- HTML `id` attributes for a registered rendered external-declaration row. -/
 def htmlIdAttrs (state : TraverseState) (occurrence : Verso.Multi.InternalId) (decl : Name) : Array (String × String) :=
@@ -667,14 +630,8 @@ def spec : StoreSpec := {
 
 def domainName : Name := spec.name
 
-def object? (state : TraverseState) (previewKey : String) : Option Verso.Multi.Object :=
-  state.getDomainObject? domainName previewKey
-
 def saveData (state : TraverseState) (previewKey : String) (data : Json) : TraverseState :=
   saveObjectData state domainName previewKey data
-
-def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
-  state.domains.get? domainName
 
 end CitationPreviews
 

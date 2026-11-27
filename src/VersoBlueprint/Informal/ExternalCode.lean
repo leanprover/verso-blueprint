@@ -131,22 +131,6 @@ private structure LinkedExternalDecl where
   href : Option String := none
   anchorAttrs : Array (String × String) := #[]
 
-/--
-Resolve the row link for an external reference.
-
-For present declarations we prefer the canonical Lean name, but fall back to the
-written name so older data and unresolved names still produce the best available
-link. Missing declarations only have the written name to try.
--/
-private def externalRefHref?
-    (getDeclHref : Name → Option String) (decl : Data.ExternalRef) : Option String :=
-  if decl.present then
-    match getDeclHref decl.canonical with
-    | some href => some href
-    | none => getDeclHref decl.written
-  else
-    getDeclHref decl.written
-
 /-- Build the small render model used by both preview and panel rows. -/
 private def linkedExternalDecl
     (getDeclHref : Name → Option String)
@@ -154,7 +138,7 @@ private def linkedExternalDecl
     (decl : Data.ExternalRef) : LinkedExternalDecl :=
   {
     decl
-    href := externalRefHref? getDeclHref decl
+    href := decl.href? getDeclHref
     anchorAttrs := getDeclAnchorAttrs decl
   }
 

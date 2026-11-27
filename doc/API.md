@@ -1959,8 +1959,8 @@ without returning partial observations. Its scope restores the environment,
 metavariables and info state on every exit, retaining traces for diagnosis.
 Providers share the caller's budget; observation does not reset it per request.
 The standard `BlueprintDocument` capture reuses this assessment for graph,
-summary, headings and manifest queries. `CodeHealth` is only declaration-panel
-inventory.
+summary, headings and manifest queries. Declaration-panel counts describe
+the available native declaration snapshots.
 
 Native validity, independently authored expected propositions and prose
 correspondence are separate contracts. `hasNativeBodyRequirement` records whether a

@@ -60,6 +60,17 @@ def NodeAssessment.leanDependencyMessage (assessment : NodeAssessment) : String 
     "Selected Lean prerequisites complete"
   else "Selected Lean prerequisites unfinished"
 
+/-- Status wording shared by the widget and informal block headings. -/
+def NodeAssessment.nativeStatusMessage (assessment : NodeAssessment) : String :=
+  if !assessment.hasNativeDeclarations then assessment.leanRequirementMessage else
+  let statement := if assessment.nativeStatementComplete then "passed" else "unfinished"
+  let body := if assessment.hasNativeBodyRequirement then
+    if assessment.nativeProofComplete then "passed" else "unfinished"
+    else "not required"
+  let classification := if assessment.hasAxiomLike then "Axiom-like declarations present. " else ""
+  s!"{classification}Native statement: {statement}. Native body: {body}. " ++
+    s!"{assessment.leanRequirementMessage}. {assessment.leanDependencyMessage}."
+
 def NodeAssessment.fromJsonString! (serialized : String) : NodeAssessment :=
   match Lean.Json.parse serialized >>= Lean.fromJson? with
   | .ok value => value

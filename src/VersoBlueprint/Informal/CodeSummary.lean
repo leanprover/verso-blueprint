@@ -8,7 +8,6 @@ import Lean
 import Verso
 import VersoManual
 import VersoBlueprint.Graph
-import VersoBlueprint.CodeHealth
 import VersoBlueprint.Informal.Block.Common
 import VersoBlueprint.Informal.LeanCodePreviewKey
 import VersoBlueprint.Informal.LeanCodeLink
@@ -137,13 +136,7 @@ private def renderExternalRenderFailureItems (failures : Array ExternalRenderFai
     (hrefOf : Name → Option String) : Array Output.Html :=
   open Verso.Output.Html in
   failures.map fun failure =>
-    let href :=
-      if failure.decl.present then
-        match hrefOf failure.decl.canonical with
-        | some href => some href
-        | none => hrefOf failure.decl.written
-      else
-        hrefOf failure.decl.written
+    let href := failure.decl.href? hrefOf
     let declNode :=
       let txt := {{<code>{{.text true s!"{failure.decl.written}"}}</code>}}
       match href with
@@ -191,13 +184,6 @@ def externalDeclKindText? (decl : Data.ExternalRef) : Option String :=
     | .theorem => some "theorem"
     | .corollary => some "corollary"
 
-private def externalDeclHref (decl : Data.ExternalRef) (hrefOf : Name → Option String) : Option String :=
-  if decl.present then
-    match hrefOf decl.canonical with
-    | some href => some href
-    | none => hrefOf decl.written
-  else
-    hrefOf decl.written
 
 private def externalDeclSummaryItems (decls : Array Data.ExternalRef)
     (hrefOf : Name → Option String) : Array DeclSummaryItem :=
@@ -205,7 +191,7 @@ private def externalDeclSummaryItems (decls : Array Data.ExternalRef)
     {
       displayName := decl.written
       previewName := decl.canonical
-      href := externalDeclHref decl hrefOf
+      href := decl.href? hrefOf
       status := decl.provedStatus
       present := decl.present
     }
@@ -346,15 +332,9 @@ private def statusMarkFromAssessment (assessment? : Option Realizations.NodeAsse
       symbolOverride? := some "?" }
   let complete := assessment.nativeLocallyComplete && assessment.requiredComplete && !assessment.hasAxiomLike
   let status := if assessment.hasAxiomLike then .axiomLike else if complete then .proved else .incomplete {}
-  let nativeStatement := if assessment.nativeStatementComplete then "passed" else "unfinished"
-  let nativeBody := if assessment.hasNativeBodyRequirement then
-    if assessment.nativeProofComplete then "passed" else "unfinished"
-    else "not required"
-  let classification := if assessment.hasAxiomLike then "Axiom-like declarations present. " else ""
   return {
     status
-    title := s!"{classification}Native statement: {nativeStatement}. Native body: {nativeBody}. " ++
-      s!"{assessment.leanRequirementMessage}. {assessment.leanDependencyMessage}."
+    title := assessment.nativeStatusMessage
     symbolOverride? := if complete || assessment.hasAxiomLike then none else some "⚠" }
 
 private def sortDeclsByCommand (decls : Array CodeDeclData) : Array CodeDeclData :=
@@ -454,8 +434,30 @@ private def pluralizeKindText (kind : String) : String :=
   | "corollary" => "corollaries"
   | _ => kind ++ "s"
 
+private structure ExternalStatusCounts where
+  totalDecls : Nat := 0
+  missingDecls : Nat := 0
+  awaitingCapture : Nat := 0
+  incompleteDecls : Nat := 0
+
+private def ExternalStatusCounts.presentDecls (counts : ExternalStatusCounts) : Nat :=
+  counts.totalDecls - counts.missingDecls
+
+private def countExternalStatuses (decls : Array Data.ExternalRef) : ExternalStatusCounts :=
+  let statuses := decls.foldl (init := ({} : Lean.NameMap (Option Data.ProvedStatus))) fun statuses decl =>
+    let name := decl.canonical.eraseMacroScopes
+    statuses.insert name (Data.ExternalRef.mergeStatus (statuses.getD name none) decl.observedStatus)
+  statuses.foldl (init := { totalDecls := statuses.size }) fun counts _ status =>
+    match status with
+    | none => { counts with awaitingCapture := counts.awaitingCapture + 1 }
+    | some status => {
+        counts with
+        missingDecls := counts.missingDecls + if status.isMissing then 1 else 0
+        incompleteDecls := counts.incompleteDecls + if !status.isMissing && status.isIncomplete then 1 else 0
+      }
+
 private def externalIndicatorKindText?
-    (decls : Array Data.ExternalRef) (health : Informal.Graph.CodeHealth) : Option String :=
+    (decls : Array Data.ExternalRef) (health : ExternalStatusCounts) : Option String :=
   if health.missingDecls > 0 || decls.isEmpty then
     none
   else
@@ -470,7 +472,7 @@ private def externalIndicatorKindText?
         none
 
 private def externalIndicatorText
-    (decls : Array Data.ExternalRef) (health : Informal.Graph.CodeHealth) : String :=
+    (decls : Array Data.ExternalRef) (health : ExternalStatusCounts) : String :=
   let declText :=
     match externalIndicatorKindText? decls health with
     | some kind =>
@@ -485,11 +487,11 @@ private def externalIndicatorText
         s!"{health.totalDecls} declarations"
   if health.missingDecls > 0 then
     s!"{declText}, {health.missingDecls} missing"
-  else if health.anyGapCount > 0 then
+  else if health.incompleteDecls > 0 then
     if health.totalDecls == 1 then
       s!"{declText}, incomplete"
     else
-      s!"{declText}, {health.anyGapCount} incomplete"
+      s!"{declText}, {health.incompleteDecls} incomplete"
   else if health.awaitingCapture > 0 then
     s!"{declText}, awaiting capture"
   else
@@ -503,7 +505,7 @@ private structure ExternalIndicatorPresentation where
 deriving Inhabited
 
 private def externalIndicatorPresentation
-    (decls : Array Data.ExternalRef) (health : Informal.Graph.CodeHealth) :
+    (decls : Array Data.ExternalRef) (health : ExternalStatusCounts) :
     ExternalIndicatorPresentation :=
   let badgeText := externalIndicatorText decls health
   if health.missingDecls > 0 then
@@ -512,10 +514,10 @@ private def externalIndicatorPresentation
       title := s!"{health.presentDecls}/{health.totalDecls} declarations present ({health.missingDecls} missing)"
       badgeText
     }
-  else if health.anyGapCount > 0 then
+  else if health.incompleteDecls > 0 then
     {
       className := "bp_external_status_sorry"
-      title := s!"All declarations present, {health.anyGapCount} incomplete"
+      title := s!"All declarations present, {health.incompleteDecls} incomplete"
       badgeText
     }
   else if health.awaitingCapture > 0 then
@@ -534,14 +536,14 @@ private def externalIndicatorPresentation
 private def renderExternalPanelIndicator (decls : Array Data.ExternalRef)
     (label : Data.Label) (hrefOf : Name → Option String) : PanelIndicatorParts :=
   open Verso.Output.Html in
-  let health := Informal.Graph.codeHealthOfBlockSource .definition {} (some { externalDecls := decls })
+  let health := countExternalStatuses decls
   let renderHealth := externalRenderHealth decls
   let previewBody := renderSummaryPreview { source := some { externalDecls := decls } } hrefOf
   let presentation := externalIndicatorPresentation decls health
   let summaryTitle :=
     s!"Lean declaration display for {label}: " ++
       appendRenderHealthSummary
-      (externalCodeEntryTitle health.presentDecls health.totalDecls health.missingDecls health.anyGapCount)
+      (externalCodeEntryTitle health.presentDecls health.totalDecls health.missingDecls health.incompleteDecls)
       renderHealth
   let badgeTitle :=
     appendRenderHealthSummary

@@ -1553,9 +1553,8 @@ coloring, and other status views do not silently drift apart.
 `Realizations.Capture` collects ordinary source registrations and native associations,
 admits the complete model, and binds fresh native observations to that same
 snapshot. Graph, summary, headings and CLI use `Snapshot.assessmentFor` and its
-safe detailed report. The old CodeHealth completion helpers and recursive graph
-closure evaluator are removed. CodeHealth remains declaration-panel inventory;
-retained display statuses cannot supply current completion evidence.
+safe detailed report. Declaration panels summarize captured and retained
+display statuses for their own declarations.
 
 Native validity, independently specified propositions and prose correspondence
 remain distinct. A local native proof may pass while required Blueprint

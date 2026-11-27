@@ -109,11 +109,6 @@ private def realizationHasAvailableSource (snapshot : Realizations.Capture.Snaps
     snapshot.registry.documents.any fun document =>
       document.key == key && !document.text.trimAscii.toString.isEmpty
 
-private def nodeLeanObjects (snapshot : Realizations.Capture.Snapshot) (label : Name) : List Name :=
-  let names := (defaultLeanRealizations snapshot label).flatMap fun realization =>
-    realization.declarations.map fun declaration => declaration.object.native.toName
-  names.foldl pushUnique #[] |>.toList
-
 /- Summary detail rows preserve fresh native provider inventory for inspection.
 They are not closure/completion authority; semantic completion is projected from
 the admitted Registry into NodeAssessment above. -/
@@ -172,7 +167,8 @@ private def nodeLeanSummary (snapshot : Realizations.Capture.Snapshot) (label : 
   return {
     leanDecls := declarations.size
     incompleteDecls := incompleteDecls.size
-    leanObjects := nodeLeanObjects snapshot label
+    leanObjects := declarations.foldl (init := #[]) (fun names declaration =>
+      pushUnique names declaration.object.native.toName) |>.toList
     incompleteDetails := incompleteDetails.toList
     missingLeanDecls
   }
@@ -204,16 +200,6 @@ private def nodeRenderFailures (state : Environment.State) (snapshot : Realizati
           }
   return failures.toList
 
-private def nodeMissingLeanDeclCount (snapshot : Realizations.Capture.Snapshot) (label : Name) : Nat :=
-  match snapshot.registry.nodes.find? (·.label == label) with
-  | some node => (nodeLeanSummary snapshot label node).missingLeanDecls.length
-  | none => 0
-
-private def nodeIncompleteLeanDeclCount (snapshot : Realizations.Capture.Snapshot) (label : Name) : Nat :=
-  match snapshot.registry.nodes.find? (·.label == label) with
-  | some node => (nodeLeanSummary snapshot label node).incompleteDecls
-  | none => 0
-
 private def ownerDisplayName (state : Environment.State) (node : Realizations.Node) : Option String :=
   match node.owner with
   | some owner =>
@@ -222,8 +208,8 @@ private def ownerDisplayName (state : Environment.State) (node : Realizations.No
     | none => some owner.toString
   | none => none
 
-private def metadataEntryItem (state : Environment.State) (snapshot : Realizations.Capture.Snapshot)
-    (label : Name) (node : Realizations.Node) : MetadataEntryItem :=
+private def metadataEntryItem (state : Environment.State) (label : Name)
+    (node : Realizations.Node) (leanObjects : List Name) : MetadataEntryItem :=
   {
     label
     kind := toString node.kind
@@ -233,13 +219,13 @@ private def metadataEntryItem (state : Environment.State) (snapshot : Realizatio
     prUrl := node.prUrl
     issueUrl := node.issueUrl
     tags := node.tags.toList
-    leanObjects := nodeLeanObjects snapshot label
+    leanObjects
   }
 
-private def mkActionableItem? (state : Environment.State) (snapshot : Realizations.Capture.Snapshot)
+private def mkActionableItem? (state : Environment.State)
     (assessment : Realizations.NodeAssessment)
     (usageMap : NameMap UsageCounts) (reverseMap : NameMap (Array Name))
-    (label : Name) (node : Realizations.Node) : Option PriorityItem :=
+    (label : Name) (node : Realizations.Node) (leanObjects : List Name) : Option PriorityItem :=
   let (statementStatus, proofStatus) := Informal.Graph.statusesForAssessment assessment
   match Informal.Graph.actionableStageForAssessment? assessment with
   | Option.none => Option.none
@@ -260,7 +246,7 @@ private def mkActionableItem? (state : Environment.State) (snapshot : Realizatio
       proofStatus := if assessment.proofRoleComplete.isSome then Informal.Graph.ProofStatus.toText proofStatus else ""
       directUses := usage.directUses
       downstreamUses
-      leanObjects := nodeLeanObjects snapshot label
+      leanObjects
     }
 
 private def metadataIsQuickWin (priority effort : Option String) : Bool :=
@@ -273,11 +259,16 @@ private def addParentTheoremLikeItem (groups : NameMap (List IndexItem)) (parent
     NameMap (List IndexItem) :=
   groups.insert parent (item :: groups.getD parent [])
 
+private structure SummaryNodeDetails where
+  assessment : Realizations.NodeAssessment
+  leanSummary : NodeLeanSummary
+deriving Inhabited
+
 private structure SummaryBuildContext where
   state : Environment.State
   snapshot : Realizations.Capture.Snapshot
   entries : Array (Name × Realizations.Node)
-  assessments : Std.HashMap Name Realizations.NodeAssessment
+  nodeDetails : Std.HashMap Name SummaryNodeDetails
   parentChildren : NameMap (Array Name)
   groupHeaders : NameMap String
   usageMap : NameMap UsageCounts
@@ -285,8 +276,10 @@ private structure SummaryBuildContext where
 
 private def mkSummaryBuildContext (state : Environment.State) (snapshot : Realizations.Capture.Snapshot) : SummaryBuildContext :=
   let entries := snapshot.registry.nodes.map fun node => (node.label, node)
-  let assessments := entries.foldl (init := ({} : Std.HashMap Name Realizations.NodeAssessment)) fun acc (label, _) =>
-    acc.insert label (snapshot.assessmentFor label)
+  let nodeDetails := entries.foldl (init := ({} : Std.HashMap Name SummaryNodeDetails)) fun acc (label, node) =>
+    acc.insert label {
+      assessment := snapshot.assessmentFor label
+      leanSummary := nodeLeanSummary snapshot label node }
   let parentChildren := entries.foldl (init := ({} : NameMap (Array Name))) fun acc (child, node) =>
     match node.parent with
     | none => acc
@@ -296,7 +289,7 @@ private def mkSummaryBuildContext (state : Environment.State) (snapshot : Realiz
     state
     snapshot
     entries
-    assessments
+    nodeDetails
     parentChildren
     groupHeaders := state.groups
     usageMap
@@ -309,12 +302,16 @@ private def SummaryBuildContext.downstreamUses (ctx : SummaryBuildContext) (labe
 /-- Every entry and group child comes from the admitted entries used to fill the map. -/
 private def SummaryBuildContext.assessmentFor (ctx : SummaryBuildContext) (label : Name) :
     Realizations.NodeAssessment :=
-  ctx.assessments[label]!
+  (ctx.nodeDetails[label]!).assessment
+
+private def SummaryBuildContext.leanSummaryFor (ctx : SummaryBuildContext) (label : Name) :
+    NodeLeanSummary :=
+  (ctx.nodeDetails[label]!).leanSummary
 
 private def SummaryBuildContext.actionableItem? (ctx : SummaryBuildContext)
     (label : Name) (node : Realizations.Node) : Option PriorityItem :=
-  mkActionableItem? ctx.state ctx.snapshot (ctx.assessmentFor label)
-    ctx.usageMap ctx.reverseMap label node
+  mkActionableItem? ctx.state (ctx.assessmentFor label)
+    ctx.usageMap ctx.reverseMap label node (ctx.leanSummaryFor label).leanObjects
 
 private def SummaryBuildContext.childEntries (ctx : SummaryBuildContext) (children : Array Name) :
     Array (Name × Realizations.Node) :=
@@ -330,9 +327,9 @@ private structure MetadataAudit where
   untaggedEntries : Array MetadataEntryItem := #[]
 
 private def MetadataAudit.addEntry (audit : MetadataAudit)
-    (state : Environment.State) (snapshot : Realizations.Capture.Snapshot)
-    (label : Name) (node : Realizations.Node) : MetadataAudit :=
-  let item := metadataEntryItem state snapshot label node
+    (state : Environment.State) (label : Name) (node : Realizations.Node)
+    (leanObjects : List Name) : MetadataAudit :=
+  let item := metadataEntryItem state label node leanObjects
   let audit :=
     if node.prUrl.isSome then
       { audit with linkedPrs := audit.linkedPrs.push item }
@@ -355,7 +352,7 @@ private def MetadataAudit.addEntry (audit : MetadataAudit)
 
 private def collectMetadataAudit (ctx : SummaryBuildContext) : MetadataAudit :=
   ctx.entries.foldl (init := ({} : MetadataAudit)) fun audit (label, node) =>
-    audit.addEntry ctx.state ctx.snapshot label node
+    audit.addEntry ctx.state label node (ctx.leanSummaryFor label).leanObjects
 
 private def MetadataAudit.sortedLinkedPrs (audit : MetadataAudit) : List MetadataEntryItem :=
   (sortMetadataEntryItems audit.linkedPrs).toList
@@ -419,7 +416,7 @@ private def collectSummaryOverview (ctx : SummaryBuildContext) : Summary :=
       realization.role == `proof && realizationHasAvailableSource ctx.snapshot realization
     let hasCode := assessment.hasNativeDeclarations
     let statusFlags := entryStatusFlags assessment
-    let leanSummary := nodeLeanSummary ctx.snapshot label node
+    let leanSummary := ctx.leanSummaryFor label
     let renderFailures := nodeRenderFailures ctx.state ctx.snapshot label node
     -- This is authored prose coverage inventory, not a validation requirement:
     -- prose can remain unassessed without erasing the fact that it is absent.
@@ -464,7 +461,7 @@ private def collectSummaryOverview (ctx : SummaryBuildContext) : Summary :=
 private def collectTheoremLikeByParent (ctx : SummaryBuildContext) : List ParentTheoremGroup :=
   let grouped := ctx.entries.foldl (init := ({} : NameMap (List IndexItem))) fun acc (label, node) =>
     if node.kind.isTheoremLike then
-      let leanObjects := nodeLeanObjects ctx.snapshot label
+      let leanObjects := (ctx.leanSummaryFor label).leanObjects
       match node.parent with
       | some parent =>
         let item : IndexItem := mkIndexItem label node.kind leanObjects
@@ -498,7 +495,7 @@ private def usageItem? (ctx : SummaryBuildContext) (label : Name) (node : Realiz
       proofUses := usage.proofUses
       directUses := usage.directUses
       downstreamUses := ctx.downstreamUses label
-      leanObjects := nodeLeanObjects ctx.snapshot label
+      leanObjects := (ctx.leanSummaryFor label).leanObjects
     }
 
 private def collectUsageItems (ctx : SummaryBuildContext) : List UsageItem :=
@@ -599,7 +596,7 @@ private def collectDependencyLoadItems (ctx : SummaryBuildContext) : List Depend
         totalDeps
         directUses := usage.directUses
         downstreamUses := ctx.downstreamUses label
-        leanObjects := nodeLeanObjects ctx.snapshot label
+        leanObjects := (ctx.leanSummaryFor label).leanObjects
       }
   (sortDependencyLoadItems items).toList
 
@@ -607,7 +604,7 @@ private def collectIndexItems (ctx : SummaryBuildContext) (keep : Name → Reali
     List IndexItem :=
   ctx.entries.foldl (init := []) fun acc (label, node) =>
     if keep label node then
-      mkIndexItem label node.kind (nodeLeanObjects ctx.snapshot label) :: acc
+      mkIndexItem label node.kind (ctx.leanSummaryFor label).leanObjects :: acc
     else
       acc
   |>.reverse
@@ -618,9 +615,9 @@ private structure ProofDebtCounts where
   missingDecls : Nat := 0
 
 private def ProofDebtCounts.addNode (counts : ProofDebtCounts)
-    (snapshot : Realizations.Capture.Snapshot) (label : Name) : ProofDebtCounts :=
-  let incompleteDeclCount := nodeIncompleteLeanDeclCount snapshot label
-  let missingDeclCount := nodeMissingLeanDeclCount snapshot label
+    (summary : NodeLeanSummary) : ProofDebtCounts :=
+  let incompleteDeclCount := summary.incompleteDecls
+  let missingDeclCount := summary.missingLeanDecls.length
   let hasDebt := incompleteDeclCount > 0 || missingDeclCount > 0
   {
     affectedEntries := counts.affectedEntries + (if hasDebt then 1 else 0)
@@ -635,7 +632,7 @@ private def collectProofDebtHotspots (ctx : SummaryBuildContext) : List DebtHots
   let items := ctx.parentChildren.toArray.foldl (init := #[]) fun acc (parent, children) =>
     let counts :=
       children.foldl (init := ({} : ProofDebtCounts)) fun counts child =>
-        counts.addNode ctx.snapshot child
+        counts.addNode (ctx.leanSummaryFor child)
     let totalDebt := counts.totalDebt
     if totalDebt == 0 then
       acc

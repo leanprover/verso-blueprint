@@ -602,21 +602,11 @@ def ProofStatus.toText : ProofStatus → String
   | .formalized => proofStatusFormalizedText
   | .formalizedWithAncestors => proofStatusFormalizedAncestorsText
 
-def warningTooltipParts (_warnings : WarningFlags) : List String := []
-
-private def styleTokensForWarnings (_warnings : WarningFlags) : Array String :=
-  #["filled"]
-
-def mkStyledNode (kind : Data.NodeKind) (label : Name) (deps proofDeps : Array Name)
-    (parent? : Option Name)
+private def styledNodeVisual (kind : Data.NodeKind) (label : Name)
     (statement : StatementStatus) (proof : ProofStatus) (warnings : WarningFlags)
-    (ref? : Option Ref) (assessment? : Option Realizations.NodeAssessment := none) : GraphNode Ref :=
+    (assessment? : Option Realizations.NodeAssessment) : NodeVisual :=
   if warnings.unknownRef then
     {
-      label
-      deps
-      proofDeps
-      parent?
       shape := "box"
       style := "filled"
       fillcolor := unresolvedFillColor
@@ -626,13 +616,8 @@ def mkStyledNode (kind : Data.NodeKind) (label : Name) (deps proofDeps : Array N
       peripheries := 1
       gradientangle? := none
       tooltip? := some s!"Unknown reference: {label}"
-      ref?
     }
   else
-    let shape := kindShape kind
-    let baseFill := proofStatusFillColor kind proof
-    let styleTokens := styleTokensForWarnings warnings
-    let style := String.intercalate "," styleTokens.toList
     let requirementTooltip := match assessment? with
       | some assessment => if assessment.hasNativeDeclarations then
           [assessment.leanRequirementMessage, assessment.leanDependencyMessage]
@@ -641,25 +626,17 @@ def mkStyledNode (kind : Data.NodeKind) (label : Name) (deps proofDeps : Array N
     let proofText := if proof == .none && assessment?.any (!·.hasNativeBodyRequirement) then
       "no native body check" else proof.toText
     let tooltipParts :=
-      [s!"Statement: {statement.toText}", s!"Proof: {proofText}"] ++
-        requirementTooltip ++ warningTooltipParts warnings
-    let tooltip? :=
-      if tooltipParts.isEmpty then none else some (String.intercalate " | " tooltipParts)
+      [s!"Statement: {statement.toText}", s!"Proof: {proofText}"] ++ requirementTooltip
     {
-      label
-      deps
-      proofDeps
-      parent?
-      shape
-      style
-      fillcolor := baseFill
+      shape := kindShape kind
+      style := "filled"
+      fillcolor := proofStatusFillColor kind proof
       color := statementStatusBorderColor statement
       penwidth := "2.2"
       fontcolor := proofStatusFontColor proof
       peripheries := 1
       gradientangle? := none
-      tooltip?
-      ref?
+      tooltip? := some (String.intercalate " | " tooltipParts)
     }
 
 def capturedUses (snapshot : Realizations.Capture.Snapshot) (label role : Name) :
@@ -686,28 +663,6 @@ private def expandLabels (snapshot : Realizations.Capture.Snapshot) (roots : Arr
             queue := queue.push dep
             enqueued := enqueued.insert dep
     return queue
-
-def mkNode (snapshot : Realizations.Capture.Snapshot)
-    (resolveRef? : Name → Option Ref) (label : Name) : GraphNode Ref :=
-  match snapshot.registry.nodes.find? (·.label == label) with
-  | some node =>
-    let deps := (capturedUses snapshot label `statement).map (·.label)
-    let nodeProofDeps := (capturedUses snapshot label `proof).map (·.label)
-    let assessment := snapshot.assessmentFor label
-    let (statement, proof) := statusesForAssessment assessment
-    let warnings : WarningFlags := {}
-    let ref? := resolveRef? label
-    mkStyledNode node.kind label deps nodeProofDeps node.parent statement proof warnings ref?
-      (some assessment)
-  | none =>
-    let unresolvedWarnings : WarningFlags := { unknownRef := true }
-    mkStyledNode Data.NodeKind.definition label #[] #[] none .unassessed .unassessed unresolvedWarnings none
-
-def build (snapshot : Realizations.Capture.Snapshot) (roots : Array Name)
-    (resolveRef? : Name → Option Ref := fun _ => none) :
-    Graph Ref :=
-  let labels := expandLabels snapshot roots
-  labels.map (mkNode snapshot resolveRef?)
 
 private def edgeAxes (isStatement isProof : Bool) : Array EdgeAxis :=
   let axes := #[]
@@ -875,12 +830,11 @@ private def nodeTitle (resolveTitle? : Name → Option String) (label : Name) (f
     let fallback := fallback.trimAscii.toString
     if fallback.isEmpty then label.toString else fallback
 
-def nodeData
+private def capturedNodeData
     (snapshot : Realizations.Capture.Snapshot)
     (resolveHref? : Name → Option String)
     (resolveTitle? : Name → Option String)
-    (graphNode : GraphNode String) : NodeData :=
-  let label := graphNode.label
+    (label : Name) : NodeData :=
   match snapshot.registry.nodes.find? (·.label == label) with
   | some node =>
     let assessment := snapshot.assessmentFor label
@@ -901,13 +855,13 @@ def nodeData
       statementStatus := statement
       proofStatus := proof
       warnings := {}
-      visual := NodeVisual.ofGraphNode graphNode
+      visual := styledNodeVisual node.kind label statement proof {} (some assessment)
     }
   | none =>
     {
       label
       title := nodeTitle resolveTitle? label label.toString
-      displayLabel := graphNode.displayLabel
+      displayLabel := label.toString
       kind := none
       parent := none
       href := resolveHref? label
@@ -919,7 +873,7 @@ def nodeData
       statementStatus := .unassessed
       proofStatus := .unassessed
       warnings := { unknownRef := true }
-      visual := NodeVisual.ofGraphNode graphNode
+      visual := styledNodeVisual .definition label .unassessed .unassessed { unknownRef := true } none
     }
 
 def buildModel
@@ -928,9 +882,8 @@ def buildModel
     (resolveHref? : Name → Option String := fun _ => none)
     (resolveTitle? : Name → Option String := fun _ => none)
     (groupTitles : Array (Name × String) := #[]) : GraphModel :=
-  let graph := build snapshot roots resolveHref?
   {
-    nodes := graph.map (nodeData snapshot resolveHref? resolveTitle?)
+    nodes := (expandLabels snapshot roots).map (capturedNodeData snapshot resolveHref? resolveTitle?)
     groupMetadata := groupMetadataFromTitles groupTitles
   }
 

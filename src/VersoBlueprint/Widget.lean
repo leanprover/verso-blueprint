@@ -296,16 +296,6 @@ def BuildResult.renderPreviewHtml (result : BuildResult) :
     Lean.Elab.Term.TermElabM Verso.Output.Html :=
   PreviewSource.renderWidgetHtml (result.previewSelection?.map (·.preview)) result.snapshot?
 
-private def assessmentMessage (assessment : Informal.Realizations.NodeAssessment) : String :=
-  if !assessment.hasNativeDeclarations then assessment.leanRequirementMessage else
-  let statement := s!"Native statement: {if assessment.nativeStatementComplete then "complete" else "unfinished"}"
-  let body := if assessment.hasNativeBodyRequirement then
-    if assessment.nativeProofComplete then "complete" else "unfinished"
-    else "not required"
-  let classification := if assessment.hasAxiomLike then "Axiom-like declarations present. " else ""
-  s!"{classification}{statement}. Native body: {body}. " ++
-    s!"{assessment.leanRequirementMessage}. {assessment.leanDependencyMessage}."
-
 private def adoptedPreviewSelection? (env : Lean.Environment) (label : Name)
     (snapshot : Informal.Realizations.Capture.Snapshot) :
     Lean.Elab.Term.TermElabM (Option PreviewSource.Selection) := do
@@ -347,7 +337,7 @@ def buildFromCapture (label : Name)
     let assessment := snapshot.assessmentFor label
     pure {
       dot, previewSelection?, legend
-      validationMessage? := some (assessmentMessage assessment)
+      validationMessage? := some assessment.nativeStatusMessage
       snapshot? := some snapshot }
 
 def buildFor (label : Name) : Lean.Elab.Term.TermElabM BuildResult := do

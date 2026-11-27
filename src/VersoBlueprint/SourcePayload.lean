@@ -360,6 +360,10 @@ def ExternalRef.ofName (name : Name) (origin : ExternalOrigin := .directiveLean)
 def ExternalRef.observedStatus (ref : ExternalRef) : Option ProvedStatus :=
   if ref.present then ref.provedStatus else some .missing
 
+/-- Prefer the resolved declaration's link, then try the authored spelling. -/
+def ExternalRef.href? (ref : ExternalRef) (lookup : Name → Option String) : Option String :=
+  if ref.present then lookup ref.canonical <|> lookup ref.written else lookup ref.written
+
 /-- A reference awaiting capture contributes no evidence to a source-status merge. -/
 def ExternalRef.mergeStatus (previous next : Option ProvedStatus) : Option ProvedStatus :=
   match previous, next with
