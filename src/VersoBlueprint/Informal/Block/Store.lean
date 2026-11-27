@@ -248,10 +248,6 @@ def BlockData.displayTitle (data : BlockData) (st : TraverseState)
   let display := data.display st fallbackPrefix?
   if data.isProof then display.proofTitle else display.title
 
-def BlockData.displayProofTitle (data : BlockData) (st : TraverseState)
-    (fallbackPrefix? : Option String := none) : String :=
-  (data.display st fallbackPrefix?).proofTitle
-
 /--
 Save one traversed informal block in the semantic node index.
 

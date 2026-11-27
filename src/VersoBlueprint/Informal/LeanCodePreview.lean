@@ -83,13 +83,6 @@ def renderWithState
     let (html, hoverState) := Informal.ExternalCode.renderPreviewHtmlWithCacheHovers #[decl] hoverState
     pure { html, hoverState }
 
-def renderHtmlWithState
-    (entry : Entry)
-    (impls : Verso.Genre.Manual.ExtensionImpls)
-    (state : Verso.Genre.Manual.TraverseState)
-    (logError : String → IO Unit := fun _ => pure ()) : IO Verso.Output.Html := do
-  return (← renderWithState entry impls state (logError := logError)).html
-
 end Informal.LeanCodePreview
 
 namespace Informal.TraversalIndex.LeanCodePreviews

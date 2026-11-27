@@ -205,20 +205,12 @@ private def nodeStatusJson (manifest : ManifestFile) (row : NodeRow) : Json := I
         ("sourceSnapshotStatus", decl.provedStatus.reportJson)]
   let validation := match assessment? with
     | none => Json.mkObj [("captured", toJson false)]
-    | some assessment => Json.mkObj [
-        ("captured", toJson true),
-        ("hasNativeDeclarations", toJson assessment.hasNativeDeclarations),
-        ("hasAxiomLike", toJson assessment.hasAxiomLike),
-        ("nativeStatementComplete", toJson assessment.nativeStatementComplete),
-        ("hasNativeBodyRequirement", toJson assessment.hasNativeBodyRequirement),
-        ("proofRoleComplete", toJson assessment.proofRoleComplete),
-        ("nativeBodyComplete", toJson assessment.nativeBodyComplete),
-        ("requiredComplete", toJson assessment.requiredComplete),
-        ("statementDependenciesComplete", toJson assessment.statementDependenciesComplete),
-        ("proofDependenciesComplete", toJson assessment.proofDependenciesComplete),
-        ("selectedLeanUseCount", toJson assessment.selectedLeanUseCount),
-        ("externalDeclarationChecks", Json.arr nativeDeclarations),
-        ("details", assessment.details)]
+    | some assessment =>
+      let assessmentFields := match toJson assessment with
+        | .obj fields => fields.toList
+        | _ => []
+      Json.mkObj ([("captured", toJson true)] ++ assessmentFields ++
+        [("externalDeclarationChecks", Json.arr nativeDeclarations)])
   return responseJson [
     ("label", nameJson row.label),
     ("asOf", Json.str (if assessment?.isSome then "captured-build" else "uncaptured")),

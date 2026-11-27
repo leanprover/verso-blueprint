@@ -376,9 +376,6 @@ def append (left right : BlueprintAssetBundle) : BlueprintAssetBundle :=
 def withCss (assets : BlueprintAssetBundle) (extras : List String) : BlueprintAssetBundle :=
   { assets with css := assets.css ++ extras }
 
-def withJs (assets : BlueprintAssetBundle) (before after : List String) : BlueprintAssetBundle :=
-  { assets with js := before ++ assets.js ++ after }
-
 end BlueprintAssetBundle
 
 def blueprintCssAssetBundle (extras : List String := []) : BlueprintAssetBundle :=
