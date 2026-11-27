@@ -29,7 +29,34 @@ structure Owner where
   path : FilePath
   textHash : Lake.Hash
 
-private def ownerFromTrace? (env : Environment) (mod : Name) (pkg : String)
+private def matchesArtifact (region : CompactedRegion) (trace : FilePath) (ext artifact : String) :
+    IO Bool := do
+  let path := trace.withExtension ext
+  -- Cache-in-place regions carry the content-addressed name. Restored regions
+  -- carry the conventional file name and must also match that file's digest.
+  if region.filePath.fileName == some artifact then return true
+  if region.filePath.fileName != path.fileName then return false
+  try
+    let expected ← IO.FS.realPath path
+    if (← IO.FS.realPath region.filePath) != expected then return false
+    return s!"{← Lake.computeBinFileHash expected}.{ext}" == artifact
+  catch _ => return false
+
+/-- Check the public artifact and its own adjacent server region. Lean retains
+the .olean parts of each imported module consecutively in the header. A module's
+declaration ranges and docstrings can differ even when its public digest agrees. -/
+private def matchesArtifacts (env : Environment) (trace : FilePath) (publicArtifact : String)
+    (serverArtifact : Option String) : IO Bool := do
+  let mut precedingPublic := false
+  for region in env.header.regions do
+    if precedingPublic then
+      if let some server := serverArtifact then
+        if ← matchesArtifact region trace "olean.server" server then return true
+    precedingPublic ← matchesArtifact region trace "olean" publicArtifact
+    if precedingPublic && serverArtifact.isNone then return true
+  return false
+
+private def ownerFromTrace? (env : Environment) (mod : Name) (pkg : String) (isModule : Bool)
     (trace : FilePath) : IO (Option Owner) := do
   try
     let .ok metadata := Lake.BuildMetadata.parse (← IO.FS.readFile trace) | return none
@@ -38,17 +65,10 @@ private def ownerFromTrace? (env : Environment) (mod : Name) (pkg : String)
         inputs.any (·.1 == s!"Package.id?: (some {pkg})") do return none
     let some outputs := metadata.outputs? | return none
     let .ok artifacts := outputs.getObjValAs? (Array String) "o" | return none
-    let some artifact := artifacts[0]? | return none
-    let expectedPath ← IO.FS.realPath (trace.withExtension "olean") |>.catchExceptions
-      fun _ => pure (trace.withExtension "olean")
-    -- Cache-in-place regions carry their content-addressed filename. Restored
-    -- regions carry the conventional module filename alongside the trace.
-    let matched ← env.header.regions.anyM fun region => do
-      if region.filePath.fileName == some artifact then return true
-      if region.filePath.fileName != expectedPath.fileName then return false
-      if (← IO.FS.realPath region.filePath) != expectedPath then return false
-      return s!"{← Lake.computeBinFileHash expectedPath}.olean" == artifact
-    unless matched do return none
+    let some publicArtifact := artifacts[0]?.filter (·.endsWith ".olean") | return none
+    let serverArtifact := artifacts[1]?.filter (·.endsWith ".olean.server")
+    unless isModule == serverArtifact.isSome &&
+        (← matchesArtifacts env trace publicArtifact serverArtifact) do return none
     let #[(path, digest)] := inputs.filter (fun (k, _) => (FilePath.mk k).extension == some "lean")
       | return none
     let .ok textHash := fromJson? (α := Lake.Hash) digest | return none
@@ -63,11 +83,12 @@ package and artifact can identify its owner. -/
 def find? (env : Environment) (idx : ModuleIdx) : IO (Option Owner) := do
   let some mod := moduleNameAt? env idx | return none
   let some pkg := env.getModulePackageByIdx? idx | return none
+  let some data := env.header.moduleData[idx.toNat]? | return none
   let mut selected : Option Owner := none
   for root in ← searchPathRef.get do
     let trace := modToFilePath root mod "trace"
     if ← trace.pathExists then
-      if let some owner ← ownerFromTrace? env mod pkg trace then
+      if let some owner ← ownerFromTrace? env mod pkg data.isModule trace then
         if let some prior := selected then
           if prior.path != owner.path || prior.textHash != owner.textHash then return none
         selected := some owner
