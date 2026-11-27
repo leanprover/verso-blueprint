@@ -126,4 +126,47 @@ run_cmd liftTermElabM do
   ensure (summary.coverageSplit.nativeCompleteRequirementsPending == localCompletePendingRequirements)
     "The summary bucket must count unfinished ordinary native requirements"
 
+/--
+warning: Label «summary.forwardAxiom»: external Lean name 'Verso.VersoBlueprintTests.BlueprintSummaryStatus.declaredLaterAxiom' could not be resolved in current namespace/open declarations; keeping parsed name
+-/
+#guard_msgs in
+#docs (Verso.Genre.Manual) forwardAxiomDoc "Forward axiom attachment" :=
+:::::::
+:::theorem "summary.forwardAxiom" (lean := "Verso.VersoBlueprintTests.BlueprintSummaryStatus.declaredLaterAxiom")
+The declaration is still missing when this attachment is registered.
+:::
+:::::::
+
+axiom declaredLaterAxiom : True
+
+#docs (Verso.Genre.Manual) resolvedAxiomDoc "Resolved axiom attachment" :=
+:::::::
+:::theorem "summary.resolvedAxiom" (lean := "declaredLaterAxiom")
+This attachment resolves the axiom when registered.
+:::
+:::::::
+
+run_cmd liftTermElabM do
+  let forward := Name.mkSimple "summary.forwardAxiom"
+  let resolved := Name.mkSimple "summary.resolvedAxiom"
+  let declaration := ``declaredLaterAxiom
+  let state := Environment.informalExt.getState (← getEnv)
+  let attached (label : Name) (present : Bool) := (state.inventory.get? label).any fun node =>
+    (node.nativeRefsOn `statement).any fun ref => ref.canonical == declaration && ref.present == present
+  ensure (attached forward false && attached resolved true)
+    "The two attachment controls must share a canonical name but differ in registration-time resolution"
+
+  let snapshot ← obtain (← Capture.capture)
+  let forwardAssessment := snapshot.assessmentFor forward
+  let resolvedAssessment := snapshot.assessmentFor resolved
+  ensure (resolvedAssessment.hasAxiomLike && !resolvedAssessment.requiredComplete)
+    "The resolved attachment must retain its checked axiom status"
+  ensure (forwardAssessment.hasNativeDeclarations && !forwardAssessment.hasAxiomLike &&
+      !forwardAssessment.requiredComplete)
+    "The forward attachment borrowed the resolved attachment's axiom status"
+  let summary ← liftM (m := CoreM) (Commands.buildSummary snapshot)
+  ensure ((summary.axiomIndex.filter (·.leanObjects.contains declaration)).map (·.label) == [resolved] &&
+      summary.missingLeanDecls.any (fun item => item.label == forward && item.canonical == declaration))
+    "The summary must list the resolved axiom once and report the unresolved attachment as missing"
+
 end Verso.VersoBlueprintTests.BlueprintSummaryStatus

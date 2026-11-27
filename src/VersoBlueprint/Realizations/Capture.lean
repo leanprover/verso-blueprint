@@ -132,7 +132,8 @@ fallbacks, new checker invocation or second dependency evaluator occur here. -/
 def Snapshot.assessmentFor (snapshot : Snapshot) (label : Name) : NodeAssessment := Id.run do
   let registry := snapshot.registry
   let nativeModels := snapshot.nativeRealizationsFor label
-  let objects := canonical (nativeModels.flatMap fun model => model.declarations.map (·.object))
+  let declarations := nativeModels.flatMap (·.declarations)
+  let objects := canonical (declarations.map (·.object))
   let checks := nativeModels.flatMap fun model => model.declarations.map fun declaration =>
     let key : RequirementKey := ⟨.declaration model.key declaration.object, model.role⟩
     let contract := (registry.requirement? key).filter fun value =>
@@ -177,7 +178,11 @@ def Snapshot.assessmentFor (snapshot : Snapshot) (label : Name) : NodeAssessment
     documentDiagnostics)
   return {
     hasNativeDeclarations := !objects.isEmpty
-    hasAxiomLike := snapshot.nativeChecks.any (fun checked => objects.contains checked.declaration && checked.status.isAxiomLike)
+    -- Native checks share object identities across labels. The selected
+    -- declaration must also have an available source at this label.
+    hasAxiomLike := snapshot.nativeChecks.any fun checked =>
+      checked.status.isAxiomLike && declarations.any (fun declaration =>
+        declaration.object == checked.declaration && declaration.sourceIssues.isEmpty)
     nativeStatementComplete := statementComplete
     hasNativeBodyRequirement := !bodyChecks.isEmpty
     nativeBodyComplete := bodyComplete
