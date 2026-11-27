@@ -155,11 +155,14 @@ def Snapshot.assessmentFor (snapshot : Snapshot) (label : Name) : NodeAssessment
   let requiredComplete := coversDeclarations &&
     checks.all fun (_, key) => key.any fun key => (registry.resultForRequirement key).complete
   let uses := snapshot.uses.filter (·.source == label)
-  let selected := uses.filter fun use => nativeModels.any fun model =>
+  let selects (use : SelectedUse) (model : Realization) :=
     use.context == some model.context &&
       useSelectsRealization use.source use.realization use.role model
-  let dependenciesComplete (statementOnly : Bool) :=
-    (selected.filter fun use => !statementOnly || use.role == `statement).all fun use =>
+  let selected := uses.filter fun use => nativeModels.any (selects use)
+  -- Both use axes constrain a computational definition's implementation.
+  let statementOwners := nativeModels.filter (·.role != `proof)
+  let dependenciesComplete (edges : Array SelectedUse) :=
+    edges.all fun use =>
       match use.selected with
       | .error _ => false
       | .ok keys => !keys.isEmpty && keys.all (fun key => (registry.resultForRequirement key).complete)
@@ -176,13 +179,13 @@ def Snapshot.assessmentFor (snapshot : Snapshot) (label : Name) : NodeAssessment
     hasNativeDeclarations := !objects.isEmpty
     hasAxiomLike := snapshot.nativeChecks.any (fun checked => objects.contains checked.declaration && checked.status.isAxiomLike)
     nativeStatementComplete := statementComplete
-    hasNativeBodyRequirement := bodyChecks.any (·.2.isSome)
+    hasNativeBodyRequirement := !bodyChecks.isEmpty
     nativeBodyComplete := bodyComplete
     proofRoleComplete
     requiredComplete
     selectedLeanUseCount := selected.size
-    statementDependenciesComplete := dependenciesComplete true
-    proofDependenciesComplete := dependenciesComplete false
+    statementDependenciesComplete := dependenciesComplete (selected.filter fun use => statementOwners.any (selects use))
+    proofDependenciesComplete := dependenciesComplete selected
     details := Json.mkObj [
       ("assessment", Report.ofNode registry label),
       ("nativeLocalSummary", Json.mkObj [
@@ -930,7 +933,7 @@ private def selectTarget (collected : Collected) (context : Context) (axis : Nam
           statementModel.declarations.any (·.object == object)
       unless hasStatement do
         return ← fail "invalid-native-contract" "A proof role must depend on its selected proposition type"
-    required := required ++ declaration.required ++ model.required
+    required := required.push key
   return canonical required
 
 private def selectUses (collected : Collected) : Array SelectedUse := Id.run do
@@ -980,40 +983,40 @@ private def connectUses (collected : Collected) (uses : Array SelectedUse) : Col
         | _ => out
       else out
   let mut collected := collected
+  let mut additions : Std.HashMap RequirementKey (Array RequirementKey) := {}
   for model in collected.input.realizations.map (·.value) do
     if model.context.language != `lean ||
         (model.role != `statement && model.role != `proof && model.role != `implementation) then continue
     let relevant := uses.filter fun use => use.context == some model.context &&
       useSelectsRealization use.source use.realization use.role model
+    if relevant.isEmpty then continue
     for declaration in model.declarations do
       let subject := Subject.declaration model.key declaration.object
       let name := model.role
       let validator := nativeValidator name
       let key : RequirementKey := ⟨subject, name⟩
       unless nativeContracts[key]? == some validator do continue
-      let edges := relevant
-      let mut prerequisites : Array RequirementKey := #[]
-      if !edges.isEmpty then
-        let selectionKey : RequirementKey := ⟨subject, name ++ `dependencySelection⟩
-        let failures := edges.filterMap fun edge => match edge.selected with
-          | .error diagnostic => some diagnostic | .ok _ => none
-        prerequisites := prerequisites.push selectionKey ++ edges.flatMap fun edge =>
-          match edge.selected with | .ok keys => keys | .error _ => #[]
-        collected := { collected with input := { collected.input with
-          requirements := collected.input.requirements.push (contribution `requirement (BindingEncoding.requirementKey selectionKey) {
-            key := selectionKey, expected := .check dependencySelectionValidator })
-          bindingInputs := collected.input.bindingInputs.push (contribution `dependencySelection (BindingEncoding.requirementKey selectionKey) {
-            subject, name := selectedUsesFor selectionKey
-            content := (toJson (edges.map SelectedUse.bindingData)).compress }) } }
-        collected := recordObservation collected selectionKey (.check {
-          validator := dependencySelectionValidator
-          outcome := if failures.isEmpty then .passed else .unavailable
-          explanation := if failures.isEmpty then "Every dependency selected its exact current native contract"
-            else (toJson failures).compress })
-      collected := { collected with input.requirements := collected.input.requirements.map fun contribution =>
-        if contribution.value.key != key then contribution else { contribution with value := {
-          contribution.value with prerequisites := canonical (contribution.value.prerequisites ++ prerequisites) } } }
-  return collected
+      let selectionKey : RequirementKey := ⟨subject, name ++ `dependencySelection⟩
+      let failures := relevant.filterMap fun edge => match edge.selected with
+        | .error diagnostic => some diagnostic | .ok _ => none
+      additions := additions.insert key (#[selectionKey] ++ relevant.flatMap fun edge =>
+        match edge.selected with | .ok keys => keys | .error _ => #[])
+      collected := { collected with input := { collected.input with
+        requirements := collected.input.requirements.push (contribution `requirement (BindingEncoding.requirementKey selectionKey) {
+          key := selectionKey, expected := .check dependencySelectionValidator })
+        bindingInputs := collected.input.bindingInputs.push (contribution `dependencySelection (BindingEncoding.requirementKey selectionKey) {
+          subject, name := selectedUsesFor selectionKey
+          content := (toJson (relevant.map SelectedUse.bindingData)).compress }) } }
+      collected := recordObservation collected selectionKey (.check {
+        validator := dependencySelectionValidator
+        outcome := if failures.isEmpty then .passed else .unavailable
+        explanation := if failures.isEmpty then "Every dependency selected its exact current native contract"
+          else (toJson failures).compress })
+  if additions.isEmpty then return collected
+  return { collected with input.requirements := collected.input.requirements.map fun record =>
+    match additions[record.value.key]? with
+    | none => record
+    | some keys => { record with value.prerequisites := canonical (record.value.prerequisites ++ keys) } }
 
 /-- Derive edge-local own-type observations from the real native declaration
 checks already run for this capture. This reuses only the underlying checked

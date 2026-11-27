@@ -27,8 +27,9 @@ private def selectedProof (snapshot : Capture.Snapshot) (consumer target : Strin
   let some use := snapshot.uses.find? fun use => use.source == Name.mkSimple consumer &&
       use.role == `proof && use.reference.label == Name.mkSimple target
     | throwError "Missing captured dependency {consumer} -> {target}"
-  let some key := (← obtain use.selected).find? (·.name == `proof)
-    | throwError "Dependency {consumer} -> {target} selected no native proof contract"
+  let #[key] := ← obtain use.selected
+    | throwError "Dependency {consumer} -> {target} must select exactly one contract"
+  ensure (key.name == `proof) "Expected the target's native proof contract"
   return key
 
 private def unassessedProofKey : RealizationKey :=
@@ -245,6 +246,9 @@ run_cmd liftTermElabM do
       (fun record => record.origin.moduleName == env.mainModule)).size == 2)
     "Consumer/Owner prefix site collided or query persisted observations"
 
+@[blueprint "authoring.dependsOnlyOnNative" (proofUses := ["authoring.nativeDependent"])]
+theorem dependsOnlyOnNative : True := True.intro
+
 -- This combined command runs many complete current-source admissions. Its
 -- budget is local to these regression controls, not a production query setting.
 set_option maxHeartbeats 800000 in
@@ -252,13 +256,20 @@ run_cmd liftTermElabM do
   isolated do
     Realizations.Authoring.expectNative `wrongIndependentGoal (Name.mkSimple "authoring.nativeDependent")
       `VersoBlueprintTests.BlueprintRealizationAuthoring.wrongExpected
-    let snapshot ← obtain (← querySnapshot)
-    let r := snapshot.registry
-    let key ← selectedProof snapshot "authoring.admittedDependent" "authoring.nativeDependent"
-    let expected := { key with name := `expectedProof }
-    ensure ((r.resultForRequirement key).complete && !(r.resultForRequirement expected).complete &&
-      (r.localResult key).complete)
-      "Wrong independently expected goal must not erase native validity or change native prerequisite selection"
+    let plan := Capture.plan (Capture.Raw.ofState (Environment.informalExt.getState (← getEnv)))
+    for unreadable in #[false, true] do
+      let read (path : System.FilePath) : IO String := do
+        if unreadable && path.toString.endsWith "/BlueprintRealizationAuthoring.lean" then
+          throw (IO.userError "unavailable independent specification")
+        IO.FS.readFile path
+      let snapshot ← obtain (Capture.evaluate plan (← obtain (← Capture.observe plan read)))
+      let key ← selectedProof snapshot "authoring.dependsOnlyOnNative" "authoring.nativeDependent"
+      let expected := { key with name := `expectedProof }
+      let downstream := snapshot.assessmentFor (Name.mkSimple "authoring.dependsOnlyOnNative")
+      ensure ((snapshot.registry.resultForRequirement key).complete &&
+        !(snapshot.registry.resultForRequirement expected).complete &&
+        downstream.proofDependenciesComplete && downstream.requiredComplete)
+        "A failed or unavailable independent goal must not gate a downstream native proof use"
   isolated do
     Realizations.Authoring.expectNative `secondConsumerSpec (Name.mkSimple "authoring.unassessed")
       `VersoBlueprintTests.BlueprintRealizationAuthoring.expectedTrue
