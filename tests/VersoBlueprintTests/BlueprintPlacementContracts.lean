@@ -3,6 +3,7 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
+import VersoBlueprint.Vbp
 import VersoBlueprintTests.BlueprintAttributeRendering
 import VersoBlueprintTests.BlueprintNumbering.ChapterA
 import VersoBlueprintTests.BlueprintNumbering.ChapterB
@@ -236,6 +237,11 @@ private partial def proseParagraphs : Doc.Block Genre.Manual → Array (Doc.Bloc
           | throw <| IO.userError "External witness removed the standard statement key"
         let some _ := files.htmlCache.findHtml? node.key
           | throw <| IO.userError "External witness removed the standard statement body"
+        let alternateKey := PreviewSource.externalMarkupKey label
+        unless entry.targetKind == .block && entry.defaultPreview &&
+            (files.manifest.findEntry? alternateKey).isNone &&
+            (files.htmlCache.findHtml? alternateKey).isNone do
+          throw <| IO.userError "A placed witness must publish only the standard statement"
         let hasWitnessBody := (ExternalMarkupRender.previewBody? { mode }
           (witness.toArray)).isSome
         unless entry.codeOnlyPreview == !hasWitnessBody do
@@ -249,6 +255,135 @@ private partial def proseParagraphs : Doc.Block Genre.Manual → Array (Doc.Bloc
         if mode == .markdown then
           unless hasSubstr direct.asString "Witness marker" == hasSubstr cached.asString "Witness marker" do
             throw <| IO.userError "Direct and exported witness body availability disagree"
+
+-- Register the theorem here so the selected document can include only its proof.
+#docs (Genre.Manual) omittedStatement "Omitted statement facet" :=
+:::::::
+:::theorem "site_node_proof_only" (parent := "site_node_group")
+This statement is outside the selected document.
+:::
+:::::::
+
+#docs (Genre.Manual) siteNodeDoc "Per-label preview resources" :=
+:::::::
+:::group "site_node_group"
+Site node members
+:::
+
+:::Informal.proof "site_node_proof_only"
+A proof with no statement occurrence on this site.
+:::
+
+:::theorem "site_node_bodyless" (parent := "site_node_group")
+:::
+
+:::theorem "site_node_inline" (parent := "site_node_group")
+:::
+
+```lean "site_node_inline"
+theorem siteNodeInlineWitness : True := by trivial
+```
+
+:::theorem "site_node_prose_priority" (parent := "site_node_group")
+:::
+
+:::Informal.proof "site_node_prose_priority"
+This prose proof takes precedence for ordinary previews.
+:::
+
+```md "site_node_prose_priority" (slot := statement)
+Attached statement witness.
+```
+
+```md "site_node_standalone" (slot := statement)
+Standalone statement witness.
+```
+:::::::
+
+#eval show IO Unit from IO.FS.withTempDir fun output => do
+  let model : RenderModel := blueprint_render_model%
+  let config : RenderConfig := {
+    features := {}
+    destination := output
+    emitHtmlSingle := .immediately
+    emitHtmlMulti := .no }
+  let (messages, code) ← IO.FS.withIsolatedStreams <|
+    PreviewManifest.blueprintMainWithPreviewData siteNodeDoc.toPart [] impls (config := config) (model := model)
+  unless code == 0 do
+    throw <| IO.userError s!"Site node generation failed: {messages}"
+  let path := output / "html-single" / "-verso-data"
+  let files : PreviewManifest.PersistedFiles := {
+    manifest := ← PreviewManifest.readFile (path / PreviewManifest.manifestFilename)
+    htmlCache := ← PreviewManifest.HtmlCache.readFile (path / PreviewManifest.htmlCacheFilename) }
+  let errors := VersoBlueprint.Vbp.checkGeneratedData files
+  unless errors.isEmpty do
+    throw <| IO.userError s!"Generated site node joins failed vbp check: {errors}"
+
+  let inlineKey := PreviewCache.statementKey `site_node_inline
+  let proofKey := PreviewCache.proofKey `site_node_proof_only
+  let priorityKey := PreviewCache.proofKey `site_node_prose_priority
+  let attachedKey := PreviewCache.statementKey `site_node_prose_priority
+  let standaloneKey := PreviewSource.externalMarkupKey `site_node_standalone
+  let index := files.manifest.index
+  let resources := PreviewManifest.PreviewArtifactIndex.ofPersistedFiles files
+  let some inlineEntry := index.findEntry? inlineKey
+    | throw <| IO.userError "Bodyless theorem lost its inline Lean statement preview"
+  let #[codeEntry] := index.codeEntries inlineEntry
+    | throw <| IO.userError "Bodyless theorem did not export exactly one included code fragment"
+  unless inlineEntry.codeOnlyPreview && inlineEntry.defaultPreview &&
+      codeEntry.targetKind == .inlineLeanCode && codeEntry.matchesCode "siteNodeInlineWitness" &&
+      resources.resolves codeEntry.key do
+    throw <| IO.userError "Inline-only statement lost its declaration, code fragment, or default"
+
+  let parent := `site_node_group
+  let some group := index.findGroup? parent | throw <| IO.userError "Missing site node group"
+  let expected : Array (Name × Option String × Option String) := #[
+    (`site_node_proof_only, some proofKey, some proofKey),
+    (`site_node_bodyless, none, none),
+    (`site_node_inline, some inlineKey, some inlineKey),
+    (`site_node_prose_priority, some attachedKey, some priorityKey)]
+  unless group.entries.map (·.label) == expected.map (·.1) do
+    throw <| IO.userError "Group must retain each occurrence once in traversal order"
+  for (label, primary, defaultKey) in expected do
+    let some row := files.manifest.findNodeRow? label.toString
+      | throw <| IO.userError s!"Missing site node row for {label}"
+    let some metadata := index.nodeMetadata? row
+      | throw <| IO.userError s!"Missing occurrence metadata for {label}"
+    let actual := group.entries.find? (·.label == label)
+    unless row.primaryKey == primary && row.bodyless.isSome == primary.isNone &&
+        metadata.parent == some parent && metadata.parentTitle == some group.title &&
+        actual.any (fun member => member.previewKey.map (·.value) == defaultKey) do
+      throw <| IO.userError s!"Wrong primary resource, group, or default for {label}"
+  unless (index.findEntry? (PreviewCache.statementKey `site_node_proof_only)).isNone &&
+      (index.findEntry? (PreviewCache.statementKey `site_node_bodyless)).isNone &&
+      (index.findEntry? (PreviewCache.proofKey `site_node_bodyless)).isNone do
+    throw <| IO.userError "An absent site facet acquired a preview"
+
+  let some attached := index.findEntry? attachedKey
+    | throw <| IO.userError "Attached witness lost the statement facet"
+  let some standalone := index.findEntry? standaloneKey
+    | throw <| IO.userError "Standalone witness lost its external markup resource"
+  unless attached.targetKind == .block && !attached.defaultPreview && !attached.codeOnlyPreview &&
+      (index.findEntry? priorityKey).any (·.defaultPreview) &&
+      (index.findEntry? (PreviewSource.externalMarkupKey `site_node_prose_priority)).isNone &&
+      (files.htmlCache.findHtml? attachedKey).any (hasSubstr · "Attached statement witness.") &&
+      standalone.targetKind == .externalMarkup && standalone.defaultPreview &&
+      (index.findEntry? (PreviewCache.statementKey `site_node_standalone)).isNone &&
+      (files.htmlCache.findHtml? standaloneKey).any (hasSubstr · "Standalone statement witness.") &&
+      resources.facetKey? `site_node_standalone .statement == PreviewKey.ofString? standaloneKey do
+    throw <| IO.userError "Witness fallback displaced prose or published duplicate statements"
+
+-- Apply the same blank-text rule when joining persisted Lean fragments.
+#eval show IO Unit from do
+  let blank := String.ofList [Char.ofNat 0x00A0, Char.ofNat 0x2003, Char.ofNat 0xFEFF]
+  let cache : PreviewManifest.HtmlCache.File := { entries := #[
+    { key := "blank", html := blank },
+    { key := "visible", html := blank ++ "<code>True</code>" }] }
+  let statement : PreviewManifest.Entry := {
+    label := `site_node_inline, key := PreviewCache.statementKey `site_node_inline, title := "Lean statement"
+    targetKind := .block, facet := .statement, leanCodePreviewKeys := #["blank", "visible"] }
+  unless cache.index.codeHtmlEntries statement == #[("visible", blank ++ "<code>True</code>")] do
+    throw <| IO.userError "The cache treated Unicode whitespace as a rendered Lean fragment"
 
 -- Persisted Manual blocks round-trip structurally, including an explicitly
 -- empty body. Invalid serialized bodies are rejected at elaboration.
