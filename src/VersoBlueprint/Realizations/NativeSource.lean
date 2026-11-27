@@ -517,12 +517,10 @@ def selectDocumented (request : Request) (sourcePath : String)
     try return .ok (← readSource sourcePath) catch _ =>
       return .error <| issue "source-unavailable" request.canonical "Cannot read canonical source at owning association path") parse
 
-/-- Prepare a checked declaration together with its selected own source comment. -/
-def prepareDocumented (request : Request) (sourcePath : String)
-    (readSource : System.FilePath → IO String := IO.FS.readFile)
-    (semantics : NativeLean.SemanticContext := NativeLean.semanticContext)
-    (parse : SourceParser := parseOwningSource) : CoreM (Except Diagnostic Documented) := do
-  let selection ← match ← selectDocumentedWith request sourcePath (owningSource request sourcePath readSource) parse with
+private def prepareDocumentedFrom (request : Request) (sourcePath : String)
+    (source : CoreM (Except Diagnostic String)) (semantics : NativeLean.SemanticContext)
+    (parse : SourceParser) : CoreM (Except Diagnostic Documented) := do
+  let selection ← match ← selectDocumentedWith request sourcePath source parse with
     | .ok selection => pure selection
     | .error diagnostic => return .error diagnostic
   let ranges := selection.ranges
@@ -532,6 +530,33 @@ def prepareDocumented (request : Request) (sourcePath : String)
   return .ok {
     toPrepared := prepared, document := selection.document
     format := selection.format, rawDocstring := selection.rawDocstring }
+
+/-- Prepare an own comment using the loaded module's verified build input. -/
+def prepareDocumented (request : Request) (sourcePath : String)
+    (readSource : System.FilePath → IO String := IO.FS.readFile)
+    (semantics : NativeLean.SemanticContext := NativeLean.semanticContext)
+    (parse : SourceParser := parseOwningSource) : CoreM (Except Diagnostic Documented) :=
+  prepareDocumentedFrom request sourcePath (owningSource request sourcePath readSource) semantics parse
+
+/-- An owning attribute registration retains its compiler input even when Lake
+restores the module with a synthetic trace. Capture supplies the document from
+that declaration's exact producer. Check both its physical file and its bytes. -/
+def prepareAttributeDocstring (request : Request) (registered : Document) (nativePath : String)
+    (readSource : System.FilePath → IO String) (semantics : NativeLean.SemanticContext)
+    (parse : SourceParser) : CoreM (Except Diagnostic Documented) :=
+  prepareDocumentedFrom request registered.key.path (do
+    try
+      let physical ← IO.FS.realPath registered.key.path
+      unless physical == (← IO.FS.realPath nativePath) do
+        return .error <| issue "source-selection-unavailable" request.canonical
+          "The attribute and native association select different physical files"
+      let text ← readSource physical
+      unless text == registered.text do
+        return .error <| issue "source-selection-unavailable" request.canonical
+          "The attribute's owning file differs from its compiled source buffer"
+      return .ok text
+    catch _ =>
+      return .error <| issue "source-unavailable" request.canonical "Cannot read the attribute's owning source") semantics parse
 
 /-- Source contributions for the caller-supplied node. The caller merges them
 into the complete batch for admission. Validation requirements and observations

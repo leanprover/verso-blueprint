@@ -238,9 +238,8 @@ structure NativeRequest where
   present : Bool := true
   moduleName? : Option Name := none
   sourcePath? : Option String := none
-  /-- The attribute's own prose selection may spell the same physical file
-  differently from the native association. -/
-  prosePath? : Option String := none
+  /-- Only an exact attribute producer can supply its original compiler buffer. -/
+  attributeSource? : Option Document := none
   /-- An adopted source must still be owned by this imported Lake package. -/
   package? : Option String := none
   range? : Option DeclarationRange := none
@@ -431,8 +430,12 @@ def plan (raw : Raw) : Plan := Id.run do
               association.context == ⟨`lean, source.context.project⟩
           match selected.toList.eraseDups.toArray with
           | #[association] =>
-            documented := some (.ok { NativeRequest.ofAssociation association.context association with
-              prosePath? := some source.document.path })
+            documented := some <| match source.proseBuffer? with
+              | some text => .ok { NativeRequest.ofAssociation association.context association with
+                  attributeSource? := some { key := source.document, text } }
+              | none => .error {
+                  code := "source-selection-unavailable", subject := owner.canonical.toString
+                  message := "The attribute's original source buffer is unavailable" }
           | _ =>
             documented := some (.error {
               code := "ambiguous-docstring", subject := label.toString,
@@ -1200,7 +1203,7 @@ def evaluate (p : Plan) (observations : Observations) : Except (Array Diagnostic
       answerFor "documented" request.name.toString documented request
         (whenOk fun value => associatedMatches request value.toPrepared &&
           value.document.key.context == ⟨`lean, request.context.project⟩ &&
-          (request.prosePath? <|> request.sourcePath?).all (· == value.document.key.path))
+          ((request.attributeSource?.map (·.key.path)) <|> request.sourcePath?).all (· == value.document.key.path))
     check := fun request =>
       answerFor "check" request.witness.native checks request (whenOk fun value =>
         value.declaration == request.witness && value.rolesAgree)
@@ -1286,14 +1289,10 @@ def observe (p : Plan) (readFile : System.FilePath → IO String := IO.FS.readFi
           match ← sourcePath job request with
           | .error issue => pure (.error issue)
           | .ok path =>
-            if let some selected := job.prosePath? then
-              if selected != path then
-                let sameFile ← try pure ((← IO.FS.realPath selected) == (← IO.FS.realPath path))
-                  catch _ => pure false
-                unless sameFile do return .error {
-                  code := "source-selection-unavailable", subject := job.name.toString
-                  message := "The attribute and native association select different physical files" }
-            NativeSource.prepareDocumented request (job.prosePath?.getD path) reader semantics parse
+            if let some registered := job.attributeSource? then
+              NativeSource.prepareAttributeDocstring request registered path reader semantics parse
+            else
+              NativeSource.prepareDocumented request path reader semantics parse
       check := fun job => answerOnce checks job do
         unless ← preparedBatch.get do
           NativeLean.prepareDeclarations inspection p.scheduledChecks

@@ -250,7 +250,8 @@ run_cmd liftTermElabM do
   let some (_, node) := raw.nodes.find? (·.1 == label) | throwError "Missing attribute fixture"
   let some source := node.sources.find? (·.ownDocstring.isSome) | throwError "Missing owned source"
   let physical ← IO.FS.realPath source.document.path
-  let check (spelling : String) (available : Bool) := do
+  let check (spelling : String) (available : Bool)
+      (reader : System.FilePath → IO String := IO.FS.readFile) := do
     let relocation (loc : Data.SourceLocation) := { loc with path := spelling }
     let moved := { source with document.path := spelling, source.location := source.source.location.map relocation }
     let node := { node with sources := #[moved] }
@@ -259,7 +260,7 @@ run_cmd liftTermElabM do
       facts := raw.facts.map fun fact =>
         if fact.label == label && fact.id.producer == `blueprint.attribute then
           { fact with source := fact.source.map relocation } else fact }
-    let .ok observed ← Realizations.Capture.observe plan | throwError "Source observation aborted"
+    let .ok observed ← Realizations.Capture.observe plan reader | throwError "Source observation aborted"
     let .ok snap := Realizations.Capture.evaluate plan observed | throwError "Source replay aborted"
     let doc := snap.registry.documents.find? (·.key == moved.selectedDocumentKey)
     unless (doc.any (fun value => value.text.contains "Exported theorem")) == available &&
@@ -268,7 +269,15 @@ run_cmd liftTermElabM do
   let cwd ← IO.FS.realPath (← IO.currentDir)
   let relative := (physical.toString.dropPrefix (cwd.toString ++ "/")).toString
   unless relative != physical.toString do throwError "Expected a project-local source"
-  check ("./" ++ relative) true
+  -- A restored module can lack Lake trace inputs. The compiler registration
+  -- still authenticates the exact bytes, including material outside the comment.
+  let roots ← Lean.searchPathRef.get
+  try
+    Lean.searchPathRef.set []
+    check ("./" ++ relative) true
+    check physical.toString false fun path => return (← IO.FS.readFile path) ++ "\n-- edited after compilation"
+  finally
+    Lean.searchPathRef.set roots
   IO.FS.withTempDir fun tmp => do
     let other := tmp / "copy.lean"
     IO.FS.writeFile other (← IO.FS.readFile physical)

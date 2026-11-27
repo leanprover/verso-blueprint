@@ -556,7 +556,10 @@ enabled, standard structural content such as paragraphs, emphasis, lists,
 links, code, math, quotations, and section content is converted into Manual
 blocks. The same structural content is rendered inside the attached “Lean code
 for…” declaration panel. If no docstring is available, the node is still
-registered, but there is no imported informal statement body.
+registered, but there is no imported informal statement body. Capture checks an
+attribute-owned comment against the source file and original compiler input
+retained by its registration. This also works when Lake restores the owning
+module from its artifact cache.
 
 For authored realization endpoints, use the `markdown` base name with role
 `statement` for a default Markdown docstring. A `doc.verso` docstring uses the
@@ -998,7 +1001,8 @@ supply independently authored proof prose. An explicit statement body conflicts
 with adoption. A declaration list still selects exactly one docstring.
 
 This requires readable source and a normal owning Lake build with a source input
-and matching loaded artifact. Lake verifies text with normalized line endings.
+and matching loaded artifact. For module-system imports, both the public artifact
+and its server companion must match. Lake verifies text with normalized line endings.
 The consumer also records the exact UTF-8 source digest at registration, which
 capture checks before publishing the selected comment. Rebuild the consuming
 chapter after an upstream source edit. Missing, empty, inherited or ambiguous
