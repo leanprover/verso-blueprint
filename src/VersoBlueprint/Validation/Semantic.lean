@@ -34,6 +34,27 @@ private partial def levelDigest (level : Level) : StateM Expressions String := d
   modify fun state => { state with levels := state.levels.insert level digest }
   return digest
 
+private def binderTag : BinderInfo → String
+  | .default => "default"
+  | .implicit => "implicit"
+  | .strictImplicit => "strict-implicit"
+  | .instImplicit => "inst-implicit"
+
+private def literalDigest : Literal → String
+  | .natVal value => SHA256.tagged "lean.lit.nat.v1" #[toString value]
+  | .strVal value => SHA256.tagged "lean.lit.str.v1" #[value]
+
+private def safetyTag : DefinitionSafety → String
+  | .unsafe => "unsafe"
+  | .safe => "safe"
+  | .partial => "partial"
+
+private def boolTag (value : Bool) : String :=
+  if value then "true" else "false"
+
+private def namesDigest (tag : String) (names : List Name) : String :=
+  SHA256.tagged tag (names.toArray.map Vir.nameKey)
+
 private partial def expressionDigest (expression : Expr) : StateM Expressions String := do
   if let some digest := (← get).expressions[(⟨expression⟩ : Meta.Sym.ExprPtr)]? then return digest
   let digest ← match expression with
@@ -48,13 +69,13 @@ private partial def expressionDigest (expression : Expr) : StateM Expressions St
         | .sort level => pure ("sort", #[← levelDigest level])
         | .const name levels => pure ("const", #[Vir.nameKey name] ++ (← levels.toArray.mapM levelDigest))
         | .app fn arg => pure ("app", #[← expressionDigest fn, ← expressionDigest arg])
-        | .lam name type body binder => pure ("lam", #[Vir.nameKey name, reprStr binder,
+        | .lam name type body binder => pure ("lam", #[Vir.nameKey name, binderTag binder,
             ← expressionDigest type, ← expressionDigest body])
-        | .forallE name type body binder => pure ("forall", #[Vir.nameKey name, reprStr binder,
+        | .forallE name type body binder => pure ("forall", #[Vir.nameKey name, binderTag binder,
             ← expressionDigest type, ← expressionDigest body])
-        | .letE name type value body nondep => pure ("let", #[Vir.nameKey name, toString nondep,
+        | .letE name type value body nondep => pure ("let", #[Vir.nameKey name, boolTag nondep,
             ← expressionDigest type, ← expressionDigest value, ← expressionDigest body])
-        | .lit value => pure ("literal", #[reprStr value])
+        | .lit value => pure ("literal", #[literalDigest value])
         | .proj name index body => pure ("projection", #[Vir.nameKey name, toString index, ← expressionDigest body])
         | .mdata _ _ => unreachable!
       pure <| SHA256.tagged ("lean.expr.v1." ++ tag) parts
@@ -70,25 +91,29 @@ def fingerprint (expression : Expr) : String :=
 private def shape (info : ConstantInfo) : StateM Expressions (String × Array Name) := do
   let (tag, parts, extra) ← match info with
     | .axiomInfo _ => pure ("axiom", #[], #[])
-    | .thmInfo value => pure ("theorem", #[reprStr (value.all.map Vir.nameKey)], value.all.toArray)
-    | .opaqueInfo value => pure ("opaque", #[reprStr (value.all.map Vir.nameKey)], value.all.toArray)
+    | .thmInfo value => pure ("theorem", #[namesDigest "lean.names.all.v1" value.all], value.all.toArray)
+    | .opaqueInfo value => pure ("opaque", #[namesDigest "lean.names.all.v1" value.all], value.all.toArray)
     | .defnInfo value =>
       let hints := match value.hints with
         | .abbrev => "abbrev"
         | .opaque => "opaque"
         | .regular height => "regular:" ++ toString height
-      pure ("definition", #[hints, reprStr value.safety, reprStr (value.all.map Vir.nameKey)], value.all.toArray)
-    | .inductInfo value => pure ("inductive", #[reprStr (value.all.map Vir.nameKey), reprStr (value.ctors.map Vir.nameKey),
-        reprStr (value.numParams, value.numIndices, value.numNested, value.isRec, value.isReflexive)],
+      pure ("definition", #[hints, safetyTag value.safety, namesDigest "lean.names.all.v1" value.all], value.all.toArray)
+    | .inductInfo value => pure ("inductive", #[
+        namesDigest "lean.names.all.v1" value.all,
+        namesDigest "lean.names.ctors.v1" value.ctors,
+        toString value.numParams, toString value.numIndices, toString value.numNested,
+        boolTag value.isRec, boolTag value.isReflexive],
         value.all.toArray ++ value.ctors.toArray)
     | .ctorInfo value => pure ("constructor", #[Vir.nameKey value.induct,
-        reprStr (value.cidx, value.numParams, value.numFields)], #[value.induct])
+        toString value.cidx, toString value.numParams, toString value.numFields], #[value.induct])
     | .recInfo value => do
       let rules ← value.rules.toArray.mapM fun rule => do
         pure <| SHA256.tagged "lean.recursor.rule.v1" #[Vir.nameKey rule.ctor, toString rule.nfields,
           ← expressionDigest rule.rhs]
-      pure ("recursor", #[reprStr (value.all.map Vir.nameKey),
-        reprStr (value.numParams, value.numIndices, value.numMotives, value.numMinors, value.k)] ++ rules,
+      pure ("recursor", #[namesDigest "lean.names.all.v1" value.all,
+        toString value.numParams, toString value.numIndices, toString value.numMotives,
+        toString value.numMinors, boolTag value.k] ++ rules,
         value.all.toArray ++ value.rules.toArray.flatMap (fun rule => #[rule.ctor] ++ rule.rhs.getUsedConstants))
     | .quotInfo value =>
       let kind := match value.kind with
@@ -188,7 +213,8 @@ private def Session.collectContext (session : Session) (project : Name) (roots :
         | some value => pure <| SHA256.tagged "lean.body.present.v1" #[← expressionDigest value]
         | none => pure <| SHA256.tagged "lean.body.absent.v1" #[]
       return (SHA256.tagged "lean.statement.v2"
-        #[Vir.nameKey name, reprStr (info.levelParams.map Vir.nameKey), type, value, toString info.isUnsafe, kind], extra)
+        #[Vir.nameKey name, namesDigest "lean.names.levelParams.v1" info.levelParams,
+          type, value, boolTag info.isUnsafe, kind], extra)
     let ((payload, extra), updatedExpressions) := encode.run expressions
     expressions := updatedExpressions
     let dependencies := info.type.getUsedConstants ++

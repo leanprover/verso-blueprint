@@ -59,6 +59,8 @@ run_cmd liftCoreM do
       .lam `y (.const `Nat []) (.bvar 0) .default),
     ("lambda binder info", .lam `x (.const `Nat []) (.bvar 0) .default,
       .lam `x (.const `Nat []) (.bvar 0) .implicit),
+    ("lambda strict vs inst binder info", .lam `x (.const `Nat []) (.bvar 0) .strictImplicit,
+      .lam `x (.const `Nat []) (.bvar 0) .instImplicit),
     ("forall binder info", .forallE `x (.const `Nat []) (.const `True []) .default,
       .forallE `x (.const `Nat []) (.const `True []) .implicit),
     ("let value", .letE `x (.const `Nat []) (.lit (.natVal 1)) (.bvar 0) false,
@@ -67,6 +69,7 @@ run_cmd liftCoreM do
       .letE `x (.const `Nat []) (.lit (.natVal 1)) (.bvar 0) true),
     ("natural literal", .lit (.natVal 1), .lit (.natVal 2)),
     ("string literal", .lit (.strVal "left"), .lit (.strVal "right")),
+    ("natural vs string literal", .lit (.natVal 1), .lit (.strVal "1")),
     ("projection structure", .proj `Prod 0 (.const `pair []), .proj `Prod 1 (.const `pair [])),
     ("projection type", .proj `Prod 0 (.const `pair []), .proj `Sigma 0 (.const `pair [])),
     ("projection target", .proj `Prod 0 (.const `left []), .proj `Prod 0 (.const `right []))]
