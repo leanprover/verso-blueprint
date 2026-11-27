@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 import Lean
+import Verso.Instances.Deriving
 
 namespace Informal.Realizations
 
@@ -81,3 +82,62 @@ instance : Lean.Quote NodeAssessment where
     #[Lean.quote (Lean.toJson value).compress]
 
 end Informal.Realizations
+
+namespace Informal.Graph
+
+open Lean
+
+/-- Upstream-aligned statement-track status (node border). -/
+inductive StatementStatus where
+  | unassessed
+  | blocked
+  | ready
+  | formalized
+  | mathlib
+deriving Inhabited, Repr, DecidableEq, ToJson, FromJson, Quote
+
+/-- Upstream-aligned background status (proof-track for theorem-like nodes). -/
+inductive ProofStatus where
+  | unassessed
+  | none
+  | ready
+  | incomplete
+  | formalized
+  | formalizedWithAncestors
+deriving Inhabited, Repr, DecidableEq, ToJson, FromJson, Quote
+
+/-- Project native checks and their selected prerequisites onto the compact graph
+statuses. Actionability is exported independently of proof status. -/
+def statusesForAssessment (assessment : Realizations.NodeAssessment) :
+    StatementStatus × ProofStatus := Id.run do
+  if !assessment.hasNativeDeclarations then
+    return (.unassessed, .unassessed)
+  let statement :=
+    if assessment.nativeStatementComplete then .formalized
+    else if assessment.statementDependenciesComplete then .ready
+    else .blocked
+  let proof :=
+    if assessment.proofRoleComplete == some false then
+      .incomplete
+    else if assessment.nativeProofComplete then
+      if assessment.statementDependenciesComplete && assessment.proofDependenciesComplete then
+        .formalizedWithAncestors
+      else
+        .formalized
+    else
+      .none
+  return (statement, proof)
+
+/-- A next step is available only after its captured prerequisites are complete.
+Prose/cross-language realizations without an authored native check remain
+unassessed and do not create an automatic task. -/
+def actionableStageForAssessment? (assessment : Realizations.NodeAssessment) : Option String :=
+  if !assessment.hasNativeDeclarations then none
+  else if !assessment.nativeStatementComplete then
+    if assessment.statementDependenciesComplete then some "statement" else none
+  else if assessment.hasNativeBodyRequirement && !assessment.nativeProofComplete then
+    if assessment.proofDependenciesComplete then some "proof" else none
+  else
+    none
+
+end Informal.Graph

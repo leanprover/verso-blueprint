@@ -21,25 +21,6 @@ See `doc/DESIGN_RATIONALE.md` for the human-readable graph
 status/completion and warning/color mapping rationale.
 -/
 
-/-- Upstream-aligned statement-track status (node border). -/
-inductive StatementStatus where
-  | unassessed
-  | blocked
-  | ready
-  | formalized
-  | mathlib
-deriving Inhabited, Repr, DecidableEq, ToJson, FromJson, Quote
-
-/-- Upstream-aligned background status (proof-track for theorem-like nodes). -/
-inductive ProofStatus where
-  | unassessed
-  | none
-  | ready
-  | incomplete
-  | formalized
-  | formalizedWithAncestors
-deriving Inhabited, Repr, DecidableEq, ToJson, FromJson, Quote
-
 structure WarningFlags where
   unknownRef : Bool := false
 deriving Inhabited, Repr, DecidableEq, ToJson, FromJson, Quote
@@ -294,7 +275,34 @@ structure GraphModel where
   groupMetadata : Array GroupMetadata := #[]
 deriving Inhabited, Repr, ToJson, FromJson, Quote
 
-private def graphDataSchemaVersion : Nat := 6
+private def graphDataSchemaVersion : Nat := 7
+
+structure LegendSwatch where
+  background : String := "#ffffff"
+  borderColor : String := "#6b7280"
+  borderWidth : Nat := 1
+  borderStyle : String := "solid"
+  borderRadius : String := "0.2rem"
+deriving Inhabited, Repr, DecidableEq, ToJson, FromJson
+
+structure LegendItem where
+  label : String
+  swatch? : Option LegendSwatch := none
+deriving Inhabited, Repr, DecidableEq, ToJson, FromJson
+
+structure LegendGroup where
+  key : String
+  title : String
+  summary? : Option String := none
+  items : Array LegendItem
+deriving Inhabited, Repr, DecidableEq, ToJson, FromJson
+
+/-- Legend content for a full or grouped graph view. -/
+structure Legend where
+  kind : String
+  note : String
+  groups : Array LegendGroup
+deriving Repr, DecidableEq, ToJson, FromJson
 
 /--
 Finished graph data shared by Lean, generated manifests, and browser clients.
@@ -318,6 +326,8 @@ structure GraphData where
   nodes : Array NodeData := #[]
   edges : Array EdgeData := #[]
   groups : Array GroupData := #[]
+  /-- Lean-selected legend sections for the full graph and, when present, its group view. -/
+  legends : Array Legend := #[]
   /--
   Precomputed DOT render variants for the bundled browser graph renderer.
 
@@ -369,26 +379,6 @@ def GraphData.toModel (data : GraphData) : GraphModel := {
     declared := group.declared
   }
 }
-
-structure LegendSwatch where
-  background : String := "#ffffff"
-  borderColor : String := "#6b7280"
-  borderWidth : Nat := 1
-  borderStyle : String := "solid"
-  borderRadius : String := "0.2rem"
-deriving Inhabited, Repr, ToJson, FromJson
-
-structure LegendItem where
-  label : String
-  swatch? : Option LegendSwatch := none
-deriving Inhabited, Repr, ToJson, FromJson
-
-structure LegendGroup where
-  key : String
-  title : String
-  summary? : Option String := none
-  items : Array LegendItem
-deriving Inhabited, Repr, ToJson, FromJson
 
 def LegendSwatch.inlineStyle (swatch : LegendSwatch) : String :=
   String.intercalate "; " [
@@ -530,39 +520,17 @@ def groupGraphLegendGroups : Array LegendGroup :=
     }
   ]
 
-/-- Project native checks and their selected prerequisites onto the compact graph
-statuses. Actionability is exported independently of proof status. -/
-def statusesForAssessment (assessment : Realizations.NodeAssessment) :
-    StatementStatus × ProofStatus := Id.run do
-  if !assessment.hasNativeDeclarations then
-    return (.unassessed, .unassessed)
-  let statement :=
-    if assessment.nativeStatementComplete then .formalized
-    else if assessment.statementDependenciesComplete then .ready
-    else .blocked
-  let proof :=
-    if assessment.proofRoleComplete == some false then
-      .incomplete
-    else if assessment.nativeProofComplete then
-      if assessment.statementDependenciesComplete && assessment.proofDependenciesComplete then
-        .formalizedWithAncestors
-      else
-        .formalized
-    else
-      .none
-  return (statement, proof)
+/-- The editor and the finalized browser graph select this legend from the
+typed statement status. -/
+def GraphModel.fullLegend (model : GraphModel) : Legend := {
+  kind := "full"
+  note := graphLegendFullViewNote
+  groups := graphLegendGroups (model.nodes.any (·.statementStatus == .mathlib)) }
 
-/-- A next step is available only after its captured prerequisites are complete.
-Prose/cross-language realizations without an authored native check remain
-unassessed and do not create an automatic task. -/
-def actionableStageForAssessment? (assessment : Realizations.NodeAssessment) : Option String :=
-  if !assessment.hasNativeDeclarations then none
-  else if !assessment.nativeStatementComplete then
-    if assessment.statementDependenciesComplete then some "statement" else none
-  else if assessment.hasNativeBodyRequirement && !assessment.nativeProofComplete then
-    if assessment.proofDependenciesComplete then some "proof" else none
-  else
-    none
+private def groupLegend : Legend := {
+  kind := "group"
+  note := graphLegendGroupViewNote
+  groups := groupGraphLegendGroups }
 
 def statementStatusBorderColor : StatementStatus → String
   | .unassessed => statementBorderUnassessedColor
@@ -1392,13 +1360,17 @@ def GraphModel.finish (model : GraphModel) (key : String) (options : GraphOption
     match node.previewKey with
     | some key => acc.insert node.label key
     | none => acc
+  let variants := mkGraphVariants graph options groupTitles previewKeys.get?
+  let legends := #[model.fullLegend]
+  let legends := if variants.any (·.key == groupVariantKey) then legends.push groupLegend else legends
   {
     schemaVersion := graphDataSchemaVersion
     key
     nodes := model.nodes
     edges := edgesForGraph graph
     groups
-    variants := mkGraphVariants graph options groupTitles previewKeys.get?
+    legends
+    variants
   }
 
 /--
@@ -1427,6 +1399,7 @@ private structure GraphDataJson where
   nodes : Array NodeData
   edges : Array EdgeData
   groups : Array GroupData
+  legends : Array Legend
   variants : Array GraphRenderVariant
 deriving FromJson
 
@@ -1450,6 +1423,14 @@ instance : FromJson GraphData where
       node.statementUses == normalized.statementUses && node.proofUses == normalized.proofUses
     if !dependenciesAreCanonical then
       throw "finalized graph contains duplicate dependency refs"
+    for node in decoded.nodes do
+      if let some stage := node.actionableStage then
+        unless stage == "statement" || stage == "proof" do
+          throw s!"graph node {node.label}: invalid actionable stage {stage}"
+      if let some assessment := node.assessment then
+        if (node.statementStatus, node.proofStatus) != statusesForAssessment assessment ||
+            node.actionableStage != actionableStageForAssessment? assessment then
+          throw s!"graph node {node.label}: statuses or actionable stage disagree with the captured assessment"
     let some firstVariant := decoded.variants[0]?
       | throw "finalized graph contains no render variants"
     let expected := model.finish decoded.key firstVariant.options
@@ -1457,6 +1438,8 @@ instance : FromJson GraphData where
       throw "finalized graph edges disagree with node dependencies"
     if decoded.groups != expected.groups then
       throw "finalized graph group children disagree with node parents"
+    if decoded.legends != expected.legends then
+      throw "finalized graph legends disagree with its nodes or variants"
     if decoded.variants != expected.variants then
       throw "finalized graph variants disagree with node topology or preview references"
     pure {
@@ -1465,6 +1448,7 @@ instance : FromJson GraphData where
       nodes := decoded.nodes
       edges := decoded.edges
       groups := decoded.groups
+      legends := decoded.legends
       variants := decoded.variants
     }
 

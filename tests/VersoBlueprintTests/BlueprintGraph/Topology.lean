@@ -32,6 +32,24 @@ private def topologyNode
   visual := { fillcolor := "#ffffff" }
 }
 
+/-- info: true -/
+#guard_msgs in
+#eval
+  let assessment : Realizations.NodeAssessment := {
+    hasNativeDeclarations := true, nativeStatementComplete := true, hasNativeBodyRequirement := true
+    proofRoleComplete := some false, proofDependenciesComplete := true }
+  let (statementStatus, proofStatus) := statusesForAssessment assessment
+  let node := { topologyNode `checked with assessment := some assessment, statementStatus, proofStatus
+    actionableStage := actionableStageForAssessment? assessment }
+  let graph := ({ nodes := #[node] } : GraphModel).finish "captured-work" {}
+  let decode (wireNode : NodeData) := fromJson? (α := GraphData) <|
+    (toJson graph).setObjVal! "nodes" (toJson #[wireNode])
+  (decode node).isOk &&
+    (decode { node with proofStatus := .formalized }).isError &&
+    (decode { node with statementStatus := .ready }).isError &&
+    (decode { node with actionableStage := some "statement" }).isError &&
+    (decode { node with assessment := none, actionableStage := some "spurious" }).isError
+
 /- A wire edge cannot introduce a dependency absent from its target node. -/
 /-- info: true -/
 #guard_msgs in
@@ -312,7 +330,7 @@ private def nestedGroupModel : GraphModel := {
   let finalized := nestedGroupModel.finish "strict-schema" {}
   let obsoleteSchema := (toJson finalized).setObjVal! "schemaVersion" (toJson 4)
   let noVariants := (toJson finalized).setObjVal! "variants" (toJson (#[] : Array GraphRenderVariant))
-  finalized.schemaVersion == 6 &&
+  finalized.schemaVersion == 7 &&
   (match fromJson? (α := GraphData) obsoleteSchema with
     | .error _ => true
     | .ok _ => false) &&
