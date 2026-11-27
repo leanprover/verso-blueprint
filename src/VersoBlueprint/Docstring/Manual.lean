@@ -106,14 +106,12 @@ def statementBlocks (internalDoc : String ⊕ Lean.VersoDocString) :
   | .inl doc => do
     let doc := doc.trimAscii.toString
     if doc.isEmpty then return (#[], #[], `markdown)
-    let some ast := MD4Lean.parse doc
-      | return (#[.para #[.text doc]], #[], `markdown)
-    let blocks ← ast.blocks.mapM fun block =>
-      match Verso.Genre.Manual.Markdown.blockFromMarkdown' block
-        (handleHeaders := Verso.Genre.Manual.Markdown.strongEmphHeaders') with
-      | .ok block => pure block
-      | .error message => throwError "{message}"
-    return (blocks, #[], `markdown)
+    let fallback : Array ManualBlock := #[.para #[.text doc]]
+    let some ast := MD4Lean.parse doc | return (fallback, #[], `markdown)
+    let blocks := ast.blocks.mapM fun block =>
+      Verso.Genre.Manual.Markdown.blockFromMarkdown' block
+        (handleHeaders := Verso.Genre.Manual.Markdown.strongEmphHeaders')
+    return (blocks.toOption.getD fallback, #[], `markdown)
   | .inr doc => do
     let (blocks, deps) ← versoDocstringToManualBlocks doc
     return (blocks, deps, `verso)

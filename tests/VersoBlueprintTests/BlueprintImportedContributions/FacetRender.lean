@@ -13,6 +13,20 @@ open Verso.VersoBlueprintTests.Blueprint.Support
 def facetBlueprint : BlueprintDocument := .capture
   (%doc VersoBlueprintTests.BlueprintImportedContributions.FacetDoc)
 
+open Lean Elab Command in
+run_cmd liftTermElabM do
+  let .ok snapshot ← Realizations.Capture.capture
+    | throwError "Could not capture the filled placeholder"
+  let prose : Realizations.RealizationKey := ⟨`filled_facet, `verso⟩
+  for (role, text) in #[(`statement, "A completed statement from page one."),
+      (`proof, "A completed proof from page two.")] do
+    let some realization := snapshot.registry.realization? (prose.forRole role)
+      | throwError "Missing filled {role} realization"
+    let #[document] := realization.documents
+      | throwError "Empty placeholder occurrences polluted the selected {role} documents"
+    unless (snapshot.registry.document? document).any (fun doc => doc.text.contains text) do
+      throwError "The selected {role} document lost its completed body"
+
 -- Each chapter order must select the same bodies and facet provenance, including
 -- across the traversal fixed point and a saved-state round trip.
 #eval show IO Unit from do

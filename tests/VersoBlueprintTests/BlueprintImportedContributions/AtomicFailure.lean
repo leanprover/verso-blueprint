@@ -353,3 +353,22 @@ run_cmd discard <| Environment.contribute `attr_authorities {
 #check_blueprint_atomic
 run_cmd discard <| Environment.contribute `manual_authorities {
   uses := SourceData.usesFor `manual_authorities (some `lean) `statement #[{ label := `atomic_type, origin := .automatic, intent := .technical }] }
+
+-- A failed standalone fence leaves all Blueprint stores as they were, even
+-- when an earlier recovered Lean command ran the Blueprint attribute.
+/-- error: Unknown identifier `atomicFenceMissing` -/
+#guard_msgs in
+#check_blueprint_atomic
+#docs (Manual) failedStandaloneFence "Failed standalone fence" :=
+:::::::
+```lean "atomic_failed_fence"
+@[blueprint "atomic_attr_in_fence"]
+theorem atomicFenceGood : True := True.intro
+
+theorem atomicFenceBad : True := atomicFenceMissing
+```
+:::::::
+
+run_cmd
+  unless (← getEnv).contains `atomicFenceGood do
+    throwError "A rejected fence discarded the recovered Lean environment"

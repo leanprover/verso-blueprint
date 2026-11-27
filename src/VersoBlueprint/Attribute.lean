@@ -131,7 +131,7 @@ private def elabBlueprintConfig (decl : Name) : Syntax → CoreM BlueprintAttrCo
 private def statementFromDocstring? (decl : Name) (ref : Syntax) :
     CoreM (Option (Data.InformalBody × Array Data.UseRef × Name)) := do
   let env ← getEnv
-  let some internalDoc ← liftM <| findInternalDocString? env decl | return none
+  let .ok internalDoc := Informal.Docstring.directCompiled env decl | return none
   let (blocks, deps, format) ← Informal.Docstring.statementBlocks internalDoc
   if blocks.isEmpty then
     pure none

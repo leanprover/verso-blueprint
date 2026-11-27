@@ -497,7 +497,7 @@ def checkLabelAndNesting (label : Label) (kind : Data.InProgressKind) : m Bool :
     if node.hasProofBody then
       logError m!"Label {label} already has a proof"
       return false
-    else if (node.defaultProseView `statement).isNone then
+    else if !node.kindIsExplicit && (node.defaultProseView `statement).isNone then
       logError m!"Cannot add proof for {label}: statement/dependencies are missing"
       return false
     else
@@ -513,11 +513,12 @@ private def DirectiveDraft.toRegistration (current : DirectiveDraft) (count : Na
     (blocks : Array (Verso.Doc.Block Verso.Genre.Manual)) : CoreM SourceData.Registration := do
   let format := current.adoption.map (·.2) |>.getD `verso
   let origin := current.adoption.map (fun (selection, _) => SourceData.ProseOrigin.adopted selection) |>.getD .authored
-  let source ← sourceAt current.label format (some current.role) format
-    (.prose { stx := ref, blocks } origin) ref
+  let sources ← if blocks.isEmpty && current.adoption.isNone then pure #[] else
+    pure #[← sourceAt current.label format (some current.role) format
+      (.prose { stx := ref, blocks } origin) ref]
   return {
     toNodeContribution := { current.toNodeContribution with count := if current.kind.isSome then count else 0 }
-    sources := #[source]
+    sources
     uses := current.uses }
 
 private def DirectiveDraft.selectedFact? (current : DirectiveDraft) (ref : Syntax) : CoreM (Option Record) := do
@@ -546,16 +547,28 @@ private def DirectiveDraft.selectedFact? (current : DirectiveDraft) (ref : Synta
     priority := current.priority
     source }
 
-private def withDirectiveTransaction [MonadExceptOf Exception m] [MonadLiftT CoreM m]
+private def withRegistrationTransaction [MonadExceptOf Exception m] [MonadLiftT CoreM m]
     (action : m (Option α)) : m (Option α) := do
   let before := informalExt.getState (← getEnv)
   let result ← try action catch exception =>
     modify fun _ => before
     throw exception
-  match result with
-  | some _ => modify fun state => { state with activeDirective := before.activeDirective }
-  | none => modify fun _ => before
+  if result.isNone then modify fun _ => before
   return result
+
+/-- Publish an elaborated Lean fence only after its recovered command state has
+reported no errors. Roll back every Blueprint registration from the fence on
+failure while retaining the Lean messages and recovered environment. -/
+def withCodeRegistration [MonadExceptOf Exception m] [MonadLiftT CoreM m]
+    (elaborate : m α) (register : α → m (Option β)) : m (Option β) := do
+  reportImportedConflicts
+  withRegistrationTransaction do
+    let messageCount := (← liftM Core.getMessageLog).reportedPlusUnreported.size
+    let value ← elaborate
+    if ← hasErrorsSince messageCount then return none
+    let result ← register value
+    if ← hasErrorsSince messageCount then return none
+    return result
 
 /--
 Elaborate and register one directive as a scoped Blueprint-state transaction.
@@ -567,7 +580,7 @@ def withDirective [MonadExceptOf Exception m] [MonadLiftT CoreM m]
     (prepare : m DirectiveDraft) (ref : Syntax)
     (body : m (α × Array (Verso.Doc.Block Verso.Genre.Manual))) : m (Option (α × Nat)) := do
   reportImportedConflicts
-  withDirectiveTransaction do
+  withRegistrationTransaction do
     let messageCount := (← liftM Core.getMessageLog).reportedPlusUnreported.size
     let frame ← prepare
     let kind := frame.kind.map InProgressKind.statement |>.getD .proof
@@ -580,8 +593,9 @@ def withDirective [MonadExceptOf Exception m] [MonadLiftT CoreM m]
       | logError "Internal error: Blueprint directive scope was closed during elaboration"; return none
     let contribution ← liftM <| current.toRegistration state.nextCount ref blocks
     let fact? ← liftM <| current.selectedFact? ref
-    let node? ← commitContribution frame.label contribution fact?.toList
-    return node?.map fun node => (value, node.count)
+    let some node ← commitContribution frame.label contribution fact?.toList | return none
+    modify fun state => { state with activeDirective := none }
+    return some (value, node.count)
 
 def addUse (stx : Syntax) (useRef : UseRef) : m Unit := do
   match (informalExt.getState (← getEnv)).activeDirective with

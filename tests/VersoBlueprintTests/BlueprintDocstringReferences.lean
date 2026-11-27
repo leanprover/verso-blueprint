@@ -137,4 +137,54 @@ set_option doc.verso true in
 /-- {bpref "attr.doc.target" (intent := "technical")}[] -/
 def rejectedLinkMetadata : Nat := 0
 
+#eval show CoreM Unit from do
+  let some _ ← findInternalDocString? (← getEnv) ``BlueprintAttribute.DocstringProvider.inherited
+    | throwError "Expected Lean to resolve the inherited documentation"
+  let some inherited ← Informal.Environment.getNodeInventory? (Name.mkSimple "attr.doc.inherited")
+    | throwError "Inherited documentation prevented native registration"
+  unless (inherited.defaultProseView `statement).isNone && inherited.uses.isEmpty &&
+      (inherited.nativeRefsOn `statement).size == 1 do
+    throwError "The attribute must not claim inherited prose or its dependencies"
+  let some fallback ← Informal.Environment.getNodeInventory? (Name.mkSimple "attr.doc.markdownFallback")
+    | throwError "Unsupported Markdown prevented native registration"
+  let some body := fallback.proseView `markdown `statement | throwError "Missing Markdown fallback"
+  let #[.para #[.text text]] := body.blocks | throwError "Expected a plain-text fallback"
+  unless text.contains "Before the Markdown separator.\n\n---\n\nAfter the Markdown separator." &&
+      (fallback.nativeRefsOn `statement).size == 1 do
+    throwError "The Markdown fallback lost comment text or native attachment"
+
+#docs (Genre.Manual) adoptedDoc "Adopted statement dependencies" :=
+:::::::
+:::definition "attr.doc.inherited"
+A statement authored for the declaration with inherited documentation.
+:::
+
+:::definition "attr.doc.adopted" (lean := "Verso.VersoBlueprintTests.BlueprintAttribute.DocstringProvider.untagged") (leanDocstring := "Verso.VersoBlueprintTests.BlueprintAttribute.DocstringProvider.untagged")
+:::
+:::::::
+
+open Lean.Elab.Command in
+run_cmd liftTermElabM do
+  let inherited := Name.mkSimple "attr.doc.inherited"
+  let some inheritedNode ← Informal.Environment.getNodeInventory? inherited
+    | throwError "Missing explicit statement for inherited-doc declaration"
+  unless inheritedNode.hasStatementBody && inheritedNode.uses.isEmpty do
+    throwError "The inherited documentation interfered with an explicit replacement statement"
+  let adopted := Name.mkSimple "attr.doc.adopted"
+  let target := Name.mkSimple "attr.doc.target"
+  let expected : Informal.Data.UseRef := { label := target, intent := .technical }
+  let some adoptedNode ← Informal.Environment.getNodeInventory? adopted
+    | throwError "Missing adopted docstring node"
+  let .ok snapshot ← Informal.Realizations.Capture.capture
+    | throwError "Could not capture the adopted docstring and its dependencies"
+  let #[use] := snapshot.uses.filter (·.source == adopted)
+    | throwError "Expected one dependency from the adopted docstring"
+  let graph := (Informal.Graph.buildModel snapshot #[adopted]).finish "adopted-docstring" {}
+  unless adoptedNode.usesOn `statement == #[expected] && use.role == `statement &&
+      use.reference == expected && use.selected.isOk &&
+      graph.edges.any (fun edge => edge.source == target && edge.target == adopted &&
+        edge.axes == #[Informal.Graph.EdgeAxis.statement]) &&
+      !(graph.nodes.any (·.label == Name.mkSimple "attr.doc.link")) do
+    throwError "The adopted Verso uses must reach capture and the graph, with its intent and axis"
+
 end Verso.VersoBlueprintTests.BlueprintDocstringReferences

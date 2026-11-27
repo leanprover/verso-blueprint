@@ -263,9 +263,10 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
           | some raw => do
             let env ← getEnv
             let name := raw.trimAscii.toString.toName
-            let blocks ← match Docstring.directCompiled env name with
-              | .ok doc => pure (← liftM <| Docstring.statementBlocks doc).1
-              | .error _ => pure #[]
+            let .ok doc := Docstring.directCompiled env name | pure (#[], ← `(#[]))
+            let (blocks, deps, _) ← liftM <| Docstring.statementBlocks doc
+            for dependency in deps do
+              Environment.addUse blockRef dependency
             let terms ← liftM <| Docstring.persistedManualBlockTerms blocks
             pure (blocks, ← `(#[$terms,*]))
         pure ((retainedContents, parsedContents.sourceRef?), blocks)

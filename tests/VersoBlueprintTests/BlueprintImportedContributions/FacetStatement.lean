@@ -7,6 +7,16 @@ import VersoBlueprintTests.BlueprintImportedContributions.FacetPlaceholder
 
 open Verso.Genre Informal
 
+open Lean Elab Command in
+run_cmd liftTermElabM do
+  let .ok snapshot ← Realizations.Capture.capture
+    | throwError "Could not capture the imported empty placeholder"
+  let prose : Realizations.RealizationKey := ⟨`filled_facet, `verso⟩
+  let native : Realizations.RealizationKey := ⟨`filled_facet, `lean⟩
+  unless (snapshot.registry.realization? (prose.forRole `statement)).isNone &&
+      (snapshot.registry.realization? (native.forRole `statement)).isSome do
+    throwError "Empty statement placeholder must retain the native selection without a prose document"
+
 #doc (Manual) "Filled statement chapter" =>
 
 :::theorem "filled_facet"

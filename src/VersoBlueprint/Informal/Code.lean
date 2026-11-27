@@ -316,34 +316,34 @@ private def leanImpl : CodeBlockExpanderOf CodeConfig
       | throwError "Blueprint code blocks require a source position"
     let blockId := Name.num (Name.str (← getEnv).mainModule "blueprintCode") position.byteIdx
     let leanCfg : Lean.LeanBlockConfig := { Lean.defaultConfig with name := some cfg.leanLabel }
-    let res ← Lean.elabCommands leanCfg contents
-    let codeBlock := res.block
-    let definedDefs ← res.definedDefs.mapM fun decl => do
-      let sourceLocation ← inlineDeclSourceLocation decl.name decl.commandStx
-      pure <| CodeDeclData.ofLiterateDef decl sourceLocation
-    let definedTheorems ← res.definedTheorems.mapM fun decl => do
-      let sourceLocation ← inlineDeclSourceLocation decl.name decl.commandStx
-      pure <| CodeDeclData.ofLiterateThm decl sourceLocation
-    let inferredUses ←
-      if DependencyAnalysis.enabled (← getOptions) cfg.autoDeps then
-        let decls := (res.definedDefs.map (·.name)) ++ (res.definedTheorems.map (·.name))
-        liftM <| DependencyAnalysis.inferDeclUses cfg.label decls
-      else pure #[]
-    let source ← liftM <| Environment.sourceAt cfg.label `lean none `lean
-      (.leanInline { stx := codeRef, definedDefs := res.definedDefs, definedTheorems := res.definedTheorems }) codeRef
-    let some _ ← Environment.contribute cfg.label {
-      sources := #[source]
-      uses := inferredUses }
+    let some block ← Environment.withCodeRegistration (Lean.elabCommands leanCfg contents) fun res => do
+      let codeBlock := res.block
+      let definedDefs ← res.definedDefs.mapM fun decl => do
+        let sourceLocation ← inlineDeclSourceLocation decl.name decl.commandStx
+        pure <| CodeDeclData.ofLiterateDef decl sourceLocation
+      let definedTheorems ← res.definedTheorems.mapM fun decl => do
+        let sourceLocation ← inlineDeclSourceLocation decl.name decl.commandStx
+        pure <| CodeDeclData.ofLiterateThm decl sourceLocation
+      let inferredUses ←
+        if DependencyAnalysis.enabled (← getOptions) cfg.autoDeps then
+          let decls := (res.definedDefs.map (·.name)) ++ (res.definedTheorems.map (·.name))
+          liftM <| DependencyAnalysis.inferDeclUses cfg.label decls
+        else pure #[]
+      let source ← liftM <| Environment.sourceAt cfg.label `lean none `lean
+        (.leanInline { stx := codeRef, definedDefs := res.definedDefs, definedTheorems := res.definedTheorems }) codeRef
+      let some _ ← Environment.contribute cfg.label { sources := #[source], uses := inferredUses }
+        | return none
+      let data : InlineCodeData := {
+        blockId
+        label := cfg.label
+        definedDefs
+        definedTheorems
+        foldCodeBlock := verso.blueprint.foldCodeBlocks.get (← getOptions)
+        foldProofs := verso.blueprint.foldProofs.get (← getOptions)
+      }
+      return some (← ``(Block.other (Block.informalCode $(quote data)) #[$codeBlock]))
       | ``(Block.concat #[])
-    let data : InlineCodeData := {
-      blockId
-      label := cfg.label
-      definedDefs
-      definedTheorems
-      foldCodeBlock := verso.blueprint.foldCodeBlocks.get (← getOptions)
-      foldProofs := verso.blueprint.foldProofs.get (← getOptions)
-    }
-    ``(Block.other (Block.informalCode $(quote data)) #[$codeBlock])
+    pure block
 
 @[code_block]
 def lean : CodeBlockExpanderOf CodeConfig
