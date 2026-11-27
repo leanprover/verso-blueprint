@@ -142,21 +142,24 @@ run_cmd liftTermElabM do
   let some proofAnswer := observations.checks.find? (·.request.witness.native == (``complete).toString)
     | throwError "Missing checked theorem for malformed role controls"
   let .ok proofValue := proofAnswer.result | throwError "Expected a real theorem observation"
+  let some classification := proofValue.classification | throwError "Expected a classified theorem"
   let rejectCheck (value : NativeLean.CheckedDeclaration) := rejects "mismatched-observation"
     { observations with checks := observations.checks.map fun entry =>
         if entry.request == proofAnswer.request then { entry with result := .ok value } else entry }
   ensure (proofValue.body.proposition && proofValue.roles == #[`statement, `proof] &&
     proofValue.statement.outcome == .passed && proofValue.body.outcome == .passed)
     "The role controls must start from a genuinely checked proof"
-  rejectCheck { proofValue with roles := proofValue.roles.push `unexpected }
-  rejectCheck { proofValue with roles := proofValue.roles.push `implementation }
-  rejectCheck { proofValue with roles := #[`statement] }
-  rejectCheck { proofValue with roles := #[`proof] }
-  rejectCheck { proofValue with body := { proofValue.body with proposition := false } }
+  let rejectRoles (roles : Array Name) :=
+    rejectCheck { proofValue with classification := some { classification with roles } }
+  rejectRoles (proofValue.roles.push `unexpected)
+  rejectRoles (proofValue.roles.push `implementation)
+  rejectRoles #[`proof]
+  rejectCheck { proofValue with classification := some { classification with statementKind := .definition } }
   let unknown := NativeLean.CheckedDeclaration.ofClassification proofValue.declaration none
     proofValue.status proofValue.assumptions
-  rejectCheck { unknown with statement := proofValue.statement }
-  rejectCheck { unknown with body := { proofValue.body with proposition := false } }
+  ensure (unknown.roles.isEmpty && unknown.statement.outcome == .unavailable &&
+    unknown.body.outcome == .unavailable && !unknown.body.proposition)
+    "An unavailable classification cannot derive any passing check even from a complete inspection"
   logInfo m!"ordinary capture: {snapshot.registry.nodes.size} nodes in {elapsed} ms"
   let registry := snapshot.registry
   -- Public consumer projections retain native validity separately from Blueprint
@@ -318,9 +321,9 @@ run_cmd liftTermElabM do
     node.realizations.flatMap (·.sources)
   let some leftStep := docSourceSteps.find? (·.source.selectedDocumentKey == leftSelectionKey)
     | throwError "Missing planned source step for the first typed docstring owner"
-  let some (.ok leftHandle) := leftStep.documented
+  let some (.ok leftRequest) := leftStep.documented
     | throwError "Expected a current documented-provider request for the first owner"
-  let some leftProvider := docObservations.documented.find? (·.request == docPlan.documented[leftHandle]!)
+  let some leftProvider := docObservations.documented.find? (·.request == leftRequest)
     | throwError "Missing native docstring provider observation"
   let expectedDocText ← match leftProvider.result with
     | .ok documented => pure documented.rawDocstring
@@ -357,8 +360,8 @@ run_cmd liftTermElabM do
         | some _, _ =>
           let key := sourceStep.source.document
           obtain (sourceStep.source.selectedFenceText { key, text := ← IO.FS.readFile key.path })
-        | none, some (.ok handle) =>
-          let some provider := observations.documented.find? (·.request == plan.documented[handle]!)
+        | none, some (.ok request) =>
+          let some provider := observations.documented.find? (·.request == request)
             | throwError "Selected native docstring lost its provider observation"
           match provider.result with
           | .ok documented => pure documented.rawDocstring
@@ -570,6 +573,23 @@ run_cmd liftTermElabM do
   ensure (checks unreadable == checks real && completion unreadable == completion real &&
     bindings unreadable == bindings real && unreadable.diagnostics == real.diagnostics)
     "A plain native declaration must keep its checks, completion and bindings when no source file can be read"
+  let mirror := Name.mkSimple "capture.plainMirror"
+  let mirrorNode := { registered with
+    sources := #[], uses := #[]
+    nativeAssociations := registered.nativeAssociations.map fun association => { association with
+      realization := { association.realization with node := mirror }
+      reference := { association.reference with
+        provenance := .inWorkspace `WrongMirrorOwner "definitely-missing.lean" } } }
+  let duplicate := Capture.plan { raw with
+    nodes := raw.nodes.push (mirror, mirrorNode), registered := raw.registered.insert mirror }
+  let duplicateObservations ← obtain (← Capture.observe duplicate)
+  let duplicateSnapshot ← obtain (Capture.evaluate duplicate duplicateObservations)
+  ensure (duplicate.checks.size == 2 && duplicateObservations.checks.size == 1 &&
+    duplicateSnapshot.nativeChecks.size == 1 &&
+    (duplicateSnapshot.assessmentFor label).requiredComplete &&
+    !(duplicateSnapshot.assessmentFor mirror).requiredComplete &&
+    duplicateSnapshot.sourceDiagnostics.nodes.any (·.1 == mirror))
+    "One shared native check must retain owner-specific source availability and completion"
 
 -- A plain native declaration never asks for its owning source path, so a
 -- dependency whose module source is not on the source search path is still
@@ -857,7 +877,7 @@ run_cmd liftTermElabM do
   let plan := Capture.plan (Capture.Raw.ofState (Environment.informalExt.getState (← getEnv)))
   let some goal := plan.expected.find? (·.node == target)
     | throwError "Missing authored expectation"
-  let spec := plan.documents[plan.specifications[goal.specification]!.document]!
+  let spec := goal.specification.document
   let sourcePath ← IO.FS.realPath spec.path
   let observe (readSpec : IO String) := Capture.observe plan fun path =>
     if path == sourcePath then readSpec else IO.FS.readFile path

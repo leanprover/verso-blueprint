@@ -473,8 +473,7 @@ run_cmd liftTermElabM do
     let some expectedResult := observations.expected.find? fun entry =>
         entry.request.project == expectedRequest.project && entry.request.expected == expectedRequest.expected
       | throwError "Expected-goal observation disappeared"
-    let specification := plan.specifications[expectedRequest.specification]!
-    let specificationDocument := plan.documents[specification.document]!
+    let specificationDocument := expectedRequest.specification.document
     -- A plain native declaration is prepared from the environment, so its
     -- unreadable owning file does not make it unavailable.
     ensure (observations.native.any fun result => result.request.name.toString == witness.native &&

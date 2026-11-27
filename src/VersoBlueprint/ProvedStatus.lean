@@ -81,11 +81,18 @@ def ProvedStatus.hasUnverifiedType (status : ProvedStatus) : Bool :=
 def ProvedStatus.hasUnverifiedProof (status : ProvedStatus) : Bool :=
   status.verificationGaps.any fun gap => gap.location == .proof || gap.location == .unknown
 
+/-- A known hole blocks a theorem's statement if it affects the type or could
+not be localized. A definition's statement also depends on its body. -/
+def ProvedStatus.hasStatementGap (status : ProvedStatus) (kind : NodeKind) : Bool :=
+  status.hasUnlocalizedSorry || status.hasTypeGap || (kind == .definition && status.hasProofGap)
+
+def ProvedStatus.hasUnverifiedStatement (status : ProvedStatus) (kind : NodeKind) : Bool :=
+  status.hasUnverifiedType || (kind == .definition && status.hasUnverifiedProof)
+
 /-- Theorem statements require a verified statement closure. Definitions also
 require a verified body closure. Unlocalized holes block both tracks. -/
 def ProvedStatus.blocksStatementCompletion (status : ProvedStatus) (kind : NodeKind) : Bool :=
-  status.hasUnlocalizedSorry || status.hasTypeGap || status.hasUnverifiedType ||
-    (kind == .definition && (status.hasProofGap || status.hasUnverifiedProof))
+  status.hasStatementGap kind || status.hasUnverifiedStatement kind
 
 def ProvedStatus.blocksProofCompletion (status : ProvedStatus) : Bool :=
   status.isIncomplete

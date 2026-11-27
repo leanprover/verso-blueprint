@@ -202,7 +202,7 @@ private structure Collected where
   observations : Array (Origin × RequirementKey × Observation) := #[]
   sourceDiagnostics : SourceDiagnostics := {}
   uses : Array UseDeclaration := #[]
-  nativeChecks : Array NativeLean.CheckedDeclaration := #[]
+  nativeChecks : Std.HashMap ObjectKey NativeLean.CheckedDeclaration := {}
 
 private def recordObservation (collected : Collected) (key : RequirementKey) (observation : Observation) : Collected :=
   { collected with observations := collected.observations.push ((contribution `observation (BindingEncoding.requirementKey key) ()).origin, key, observation) }
@@ -257,14 +257,16 @@ structure InlineRequest where
 instance : Hashable InlineRequest := ⟨fun request => hash request.native⟩
 
 structure CheckRequest where
-  project : Name
   witness : ObjectKey
   deriving Inhabited, BEq, Hashable
+
+def CheckRequest.project (request : CheckRequest) : Name :=
+  request.witness.context.project
 
 structure SpecificationRequest where
   expected : Name
   origin : Origin
-  document : Nat
+  document : DocumentKey
   deriving Inhabited
 
 /-- What a specification answer answers, including the bytes the recipe read. -/
@@ -281,11 +283,15 @@ earlier observations of its witness; a native declaration's observation carries
 none. The recipe resolves them at this exact record position. -/
 structure ExpectedRequest where
   node : Name
-  expected : Name
   project : Name
-  origin : Origin
-  specification : Nat
+  specification : SpecificationRequest
   deriving Inhabited
+
+def ExpectedRequest.expected (request : ExpectedRequest) : Name :=
+  request.specification.expected
+
+def ExpectedRequest.origin (request : ExpectedRequest) : Origin :=
+  request.specification.origin
 
 /-- What an expected-goal answer answers. The recipe resolves its witness and
 documents from earlier results, so they belong to its identity. -/
@@ -299,15 +305,15 @@ structure ExpectedKey where
 /-- Prose takes its text from the stored syntax and requests no document. -/
 structure SourceStep where
   source : SourceSelection
-  document : Option Nat := none
-  documented : Option (Except Diagnostic Nat) := none
+  document : Option DocumentKey := none
+  documented : Option (Except Diagnostic NativeRequest) := none
   deriving Inhabited
 
 structure DeclarationStep where
   name : Name
-  native : Array Nat := #[]
-  inline : Array Nat := #[]
-  check : Nat
+  native : Array NativeRequest := #[]
+  inline : Array (Except Diagnostic InlineRequest) := #[]
+  check : CheckRequest
   deriving Inhabited
 
 private structure NativeDeclarationResult where
@@ -329,27 +335,45 @@ structure NodeStep where
 
 structure AuthoredStep where
   record : Environment.AuthoringRecord
-  goals : Array Nat
-  documents : Array Nat
+  goals : Array ExpectedRequest
 
-/-- Typed request inventories and an ordered assembly recipe. The recipe refers
-to its requests by local array position; positions identify neither producers
-nor answers. Structural errors are deliberately checked by the recipe, not
-eagerly returned ahead of earlier provider failures. -/
+/-- The ordered assembly recipe owns its typed requests. Structural errors are
+checked by the recipe at the position where they arise. -/
 structure Plan where
   raw : Raw
-  documents : Array DocumentKey := #[]
-  native : Array NativeRequest := #[]
-  inline : Array (Except Diagnostic InlineRequest) := #[]
-  documented : Array NativeRequest := #[]
-  checks : Array CheckRequest := #[]
-  specifications : Array SpecificationRequest := #[]
-  expected : Array ExpectedRequest := #[]
   ordinary : Array NodeStep := #[]
   authored : Array AuthoredStep := #[]
 
+private def Plan.realizations (p : Plan) : Array RealizationStep :=
+  p.ordinary.flatMap (·.realizations)
+
+private def Plan.sources (p : Plan) : Array SourceStep :=
+  p.realizations.flatMap (·.sources)
+
+private def Plan.declarations (p : Plan) : Array DeclarationStep :=
+  p.realizations.flatMap (·.declarations)
+
+def Plan.documents (p : Plan) : Array DocumentKey :=
+  p.sources.filterMap (·.document) ++ p.authored.flatMap (fun step =>
+    step.goals.map (·.specification.document) ++ step.record.authored.sources)
+
+def Plan.native (p : Plan) : Array NativeRequest :=
+  p.declarations.flatMap (·.native)
+
+def Plan.inline (p : Plan) : Array (Except Diagnostic InlineRequest) :=
+  p.declarations.flatMap (·.inline)
+
+def Plan.documented (p : Plan) : Array NativeRequest :=
+  p.sources.filterMap (fun step => step.documented.bind Except.toOption)
+
+def Plan.checks (p : Plan) : Array CheckRequest :=
+  p.declarations.map (·.check)
+
+def Plan.expected (p : Plan) : Array ExpectedRequest :=
+  p.authored.flatMap (·.goals)
+
 def plan (raw : Raw) : Plan := Id.run do
-  let mut result : Plan := { raw }
+  let mut ordinary := #[]
   for (label, accepted) in raw.nodes do
     let records := raw.facts.reverse.toArray.filter (·.label == label)
     let mut realizations := #[]
@@ -360,11 +384,8 @@ def plan (raw : Raw) : Plan := Id.run do
       let context := (canonical (sources.map (·.context) ++ associations.map (·.context)))[0]?.getD default
       let mut sourceSteps := #[]
       for source in sources do
-        let mut document := none
-        unless source.payload matches .prose _ do
-          document := some result.documents.size
-          result := { result with documents := result.documents.push source.document }
-        let mut documented : Option (Except Diagnostic Nat) := none
+        let document := if source.payload matches .prose _ then none else some source.document
+        let mut documented : Option (Except Diagnostic NativeRequest) := none
         if let some adoption := source.adoption then
           let owners := records.filter fun record =>
             record.id.producer == `blueprint.directive && record.id.moduleName == adoption.consumerModule &&
@@ -382,10 +403,8 @@ def plan (raw : Raw) : Plan := Id.run do
                 code := "source-association-unavailable", subject := label.toString
                 message := "Adopted docstring and native attachment disagree on the owning module" })
             else
-              documented := some (.ok result.documented.size)
-              let job := { NativeRequest.ofAssociation association.context association with
-                sourcePath? := some path, package? := some pkg }
-              result := { result with documented := result.documented.push job }
+              documented := some (.ok { NativeRequest.ofAssociation association.context association with
+                sourcePath? := some path, package? := some pkg })
           | _, _, _ => documented := some (.error {
               code := "ambiguous-docstring", subject := label.toString
               message := "An adopted docstring requires its own directive's unique selected native attachment" })
@@ -399,9 +418,7 @@ def plan (raw : Raw) : Plan := Id.run do
               association.context == ⟨`lean, source.context.project⟩
           match selected.toList.eraseDups.toArray with
           | #[association] =>
-            documented := some (.ok result.documented.size)
-            let request := NativeRequest.ofAssociation association.context association
-            result := { result with documented := result.documented.push request }
+            documented := some (.ok (NativeRequest.ofAssociation association.context association))
           | _ =>
             documented := some (.error {
               code := "ambiguous-docstring", subject := label.toString,
@@ -409,40 +426,30 @@ def plan (raw : Raw) : Plan := Id.run do
         sourceSteps := sourceSteps.push { source, document, documented }
       let mut declarations := #[]
       for name in nativeNames associations sources do
-        let mut native := #[]
+        let native := (associations.filter (·.reference.canonical == name)).map
+          (NativeRequest.ofAssociation context)
         let mut inline := #[]
-        for association in associations.filter (·.reference.canonical == name) do
-          native := native.push result.native.size
-          result := { result with native := result.native.push (NativeRequest.ofAssociation context association) }
         for source in sources do
           if let .leanInline code := source.payload then
             if (code.definedDefs.map (·.name) ++ code.definedTheorems.map (·.name)).contains name then
-              inline := inline.push result.inline.size
               let job := (NativeSource.selectInline name code (source.source.location.map (·.range))).map fun block => {
                 native := { context, name, sourcePath? := some source.document.path }, block : InlineRequest }
-              result := { result with inline := result.inline.push job }
-        declarations := declarations.push { name, native, inline, check := result.checks.size }
-        result := { result with checks := result.checks.push { project := context.project, witness := ⟨context, name.toString⟩ } }
+              inline := inline.push job
+        declarations := declarations.push {
+          name, native, inline, check := { witness := ⟨context, name.toString⟩ } }
       realizations := realizations.push { key, sources := sourceSteps, associations, declarations }
-    result := { result with ordinary := result.ordinary.push { label, accepted, realizations } }
+    ordinary := ordinary.push { label, accepted, realizations }
   let records := raw.authored.foldl (fun out record =>
     if out.any (fun previous => decide (previous = record)) then out else out.push record) #[]
-  for record in records do
-    let mut goals := #[]
-    for (node, expected) in record.nativeGoals do
-      let document := result.documents.size
-      result := { result with documents := result.documents.push ⟨⟨`lean, record.project⟩, record.origin.source⟩ }
-      let specification := result.specifications.size
-      result := { result with specifications := result.specifications.push { expected, origin := record.origin, document } }
-      goals := goals.push result.expected.size
-      result := { result with expected := result.expected.push {
-        node, expected, project := record.project, origin := record.origin, specification } }
-    let mut documents := #[]
-    for document in record.authored.sources do
-      documents := documents.push result.documents.size
-      result := { result with documents := result.documents.push document }
-    result := { result with authored := result.authored.push { record, goals, documents } }
-  return result
+  let authored := records.map fun record => {
+    record
+    goals := record.nativeGoals.map fun (node, expected) => {
+      node, project := record.project
+      specification := {
+        expected, origin := record.origin
+        document := ⟨⟨`lean, record.project⟩, record.origin.source⟩ } }
+    : AuthoredStep }
+  return { raw, ordinary, authored }
 
 /-- An answer owns the identity of the request it answers. -/
 structure ResultEntry (request : Type) (α : Type) where
@@ -525,17 +532,17 @@ private def sourcePath (job : NativeRequest) (request : NativeSource.Request) : 
         message := "Owning module source path is unavailable" }
   return .ok path.toString
 
-private def prepareNative [Monad m] (providers : Providers m) (p : Plan) (step : DeclarationStep) :
+private def prepareNative [Monad m] (providers : Providers m) (step : DeclarationStep) :
     ExceptT (Array Diagnostic) m (Except (Array Diagnostic) NativeSource.Prepared) := do
   let name := step.name
   let mut prepared := #[]
   let mut issues := #[]
-  for handle in step.native do
-    match ← providers.native p.native[handle]! with
+  for job in step.native do
+    match ← providers.native job with
     | .error issue => issues := issues.push issue
     | .ok value => prepared := prepared.push value
-  for handle in step.inline do
-    let result ← match p.inline[handle]! with
+  for request in step.inline do
+    let result ← match request with
       | .error issue => pure (.error issue)
       | .ok job => providers.inline job
     match result with
@@ -573,8 +580,7 @@ private def Plan.scheduledChecks (p : Plan) : Array (Name × ObjectKey) := Id.ru
     for step in node.realizations do
       unless (realizationContext node.label step).isOk do return requests
       for declaration in step.declarations do
-        if let some check := p.checks[declaration.check]? then
-          requests := requests.push (check.project, check.witness)
+        requests := requests.push (declaration.check.project, declaration.check.witness)
   return requests
 
 private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : ExceptT (Array Diagnostic) m Collected := do
@@ -598,10 +604,10 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
       let object (name : Name) : ObjectKey := ⟨context, name.toString⟩
       let mut declarationResults : Array NativeDeclarationResult := #[]
       for declarationStep in step.declarations do
-        let prepared ← prepareNative providers p declarationStep
-        let checked ← providers.check p.checks[declarationStep.check]!
+        let prepared ← prepareNative providers declarationStep
+        let checked ← providers.check declarationStep.check
         if let .ok checked := checked then
-          collected := { collected with nativeChecks := collected.nativeChecks.push checked }
+          collected := { collected with nativeChecks := collected.nativeChecks.insert checked.declaration checked }
         if let (.ok prepared, .ok checked) := (prepared, checked) then
           if prepared.roles != checked.roles then
             collected := { collected with sourceDiagnostics := collected.sourceDiagnostics.addNode label #[{
@@ -624,8 +630,8 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
       let mut sourceDocs : Array (Name × DocumentKey) := #[]
       for sourceStep in step.sources do
         let source := sourceStep.source
-        if let some handle := sourceStep.document then
-          let (document, readIssues) ← providers.document p.documents[handle]!
+        if let some key := sourceStep.document then
+          let (document, readIssues) ← providers.document key
           let (document, readIssues) := if source.fence.isSome then
               let key := source.selectedDocumentKey
               if !readIssues.isEmpty then ({ key, text := "" }, readIssues) else
@@ -647,8 +653,8 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
             | none => pure source.selectedText
             | some (.error diagnostic) =>
               pure (.error diagnostic)
-            | some (.ok handle) => do
-              match ← providers.documented p.documented[handle]! with
+            | some (.ok request) => do
+              match ← providers.documented request with
               | .error diagnostic =>
                 pure (.error diagnostic)
               | .ok documented =>
@@ -803,8 +809,8 @@ private def collectAuthored [Monad m] (providers : Providers m) (p : Plan)
   let mut collected := collected
   for step in p.authored do
     let record := step.record
-    for index in [:record.nativeGoals.size] do
-      let (node, _) := record.nativeGoals[index]!
+    for (goalRequest, index) in step.goals.zipIdx do
+      let node := goalRequest.node
       let key : RealizationKey := ⟨node, `lean⟩
       let key := key.forRole `proof
       let models := (ordinaryNativeRealizations collected.input node).filter (·.key == key)
@@ -816,9 +822,8 @@ private def collectAuthored [Monad m] (providers : Providers m) (p : Plan)
       let witness := declaration.object
       let expectedKey : RequirementKey := ⟨.declaration key witness, `expectedProof⟩
       let some updated := model.attachDeclarationRequirement? expectedKey | noOwner
-      let goalRequest := p.expected[step.goals[index]!]!
-      let specification := p.specifications[goalRequest.specification]!
-      let (specDoc, issues) ← providers.document p.documents[specification.document]!
+      let specification := goalRequest.specification
+      let (specDoc, issues) ← providers.document specification.document
       full (← providers.specification {
         expected := specification.expected, origin := specification.origin, document := specDoc })
       let documents := canonical ((collected.input.objects.filter (·.value.key == witness)).filterMap (·.value.document) |>.push specDoc.key)
@@ -848,8 +853,8 @@ private def collectAuthored [Monad m] (providers : Providers m) (p : Plan)
         observations := collected.observations.push ((authoredContribution record.origin `expectedObservation index ()).origin,
           expectedKey, .proof observation) }
     let batch := record.authored
-    for index in [:batch.sources.size] do
-      let (document, issues) ← providers.document p.documents[step.documents[index]!]!
+    for (key, index) in batch.sources.zipIdx do
+      let (document, issues) ← providers.document key
       collected := { collected with
         input.documents := collected.input.documents.push (authoredContribution record.origin `document index document)
         sourceDiagnostics := { collected.sourceDiagnostics with
@@ -896,7 +901,7 @@ private def selectTarget (collected : Collected) (context : Context) (axis : Nam
     exactNativeOwners candidates context role (some object)
   let mut required := #[]
   for object in objects do
-    let some checked := collected.nativeChecks.find? (·.declaration == object)
+    let some checked := collected.nativeChecks[object]?
       | return ← fail "unavailable-native-contract" s!"No current checked classification for '{object.native}'"
     if checked.status.isMissing then
       return ← fail "missing-declaration" s!"'{object.native}' is absent from the current checked environment"
@@ -1015,7 +1020,7 @@ private def attachOwnTypeObservations (collected : Collected) : Collected := Id.
   let mut collected := collected
   for requirement in collected.input.requirements do
     let .proves witness := requirement.value.expected | continue
-    let observation := match collected.nativeChecks.find? (·.declaration == witness) with
+    let observation := match collected.nativeChecks[witness]? with
       | some checked =>
         .check { checked.body with validator := NativeLean.ownTypeValidator }
       | none =>
@@ -1080,7 +1085,7 @@ private def finish (collected : Collected) : Except (Array Diagnostic) Snapshot 
     sourceDiagnostics := {
       nodes := canonicalDiagnostics collected.sourceDiagnostics.nodes
       documents := canonicalDiagnostics collected.sourceDiagnostics.documents }
-    nativeChecks := collected.nativeChecks }
+    nativeChecks := (collected.nativeChecks.toArray.qsort fun a b => compare a.1 b.1 == .lt).map (·.2) }
 
 private def batchIssue (code family subject : String) : Array Diagnostic := #[{
   code, subject := s!"{family}:{subject}", message := "Malformed capture observation batch" }]
@@ -1143,10 +1148,7 @@ def evaluate (p : Plan) (observations : Observations) : Except (Array Diagnostic
           request.sourcePath?.all (· == value.document.key.path))
     check := fun request =>
       answerFor "check" request.witness.native checks request (whenOk fun value =>
-        value.declaration == request.witness &&
-          value.statement.declaration == some request.witness && value.body.declaration == some request.witness &&
-          value.statement.validator == NativeLean.statementValidator && value.body.validator == NativeLean.bodyValidator &&
-          value.rolesAgree)
+        value.declaration == request.witness && value.rolesAgree)
     specification := fun request =>
       answerFor "specification" request.expected.toString specifications request
     expected := fun request =>

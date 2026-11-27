@@ -50,30 +50,55 @@ statement content; native checking remains fresh on each capture. -/
 def semanticContext (scope : ContentScope) (project : Name) (roots : Array Name) : CoreM (Except Diagnostic String) := do
   (← newSemanticContext) scope project roots
 
-/-- Current native checking of a declaration's own statement/body. These are
-named checks, not proof observations for an independently specified proposition
-or an assessment of correspondence with prose. The caller supplies canonical
-source association and binds these observations to the complete current model. -/
-structure CheckedDeclaration where
-  declaration : ObjectKey
-  /-- Current checked declaration kind, when classification is available. -/
-  kind : Option Data.NodeKind := none
-  /-- Direct content roles derived from the checked declaration type. A theorem
-  or proof-valued definition supplies a statement and proof; a definition whose
-  value is itself a proposition supplies a statement; computational definitions
-  supply only an implementation. -/
-  roles : Array Name := #[]
-  statement : CheckObservation
-  body : CheckObservation
-  status : Data.ProvedStatus
-
-def CheckedDeclaration.assumptions (checked : CheckedDeclaration) : Array String :=
-  checked.body.assumptions
-
 /-- Intrinsic content and the policy used to check the declaration's statement. -/
 structure DeclarationClassification where
   statementKind : Data.NodeKind
   roles : Array Name
+
+/-- Facts from current native checking. The declaration's own named checks are
+derived from these facts when the caller binds them to an owned source selection. -/
+structure CheckedDeclaration where
+  declaration : ObjectKey
+  classification : Option DeclarationClassification
+  status : Data.ProvedStatus
+  assumptions : Array String
+
+def CheckedDeclaration.kind (checked : CheckedDeclaration) : Option Data.NodeKind :=
+  checked.classification.map (·.statementKind)
+
+def CheckedDeclaration.roles (checked : CheckedDeclaration) : Array Name :=
+  (checked.classification.map (·.roles)).getD #[]
+
+private def statementDisposition (status : Data.ProvedStatus) (kind : Data.NodeKind) :
+    Outcome × Coverage :=
+  let unknown := status.hasUnverifiedStatement kind
+  let outcome := if status.hasStatementGap kind then Outcome.failed
+    else if unknown then .unavailable else .passed
+  (outcome, if unknown then .subject else .dependencyClosure)
+
+private def bodyDisposition (status : Data.ProvedStatus) : Outcome × Coverage :=
+  let outcome := if status.isProved then Outcome.passed
+    else if status.isUnverified then .unavailable else .failed
+  (outcome, if status.hasUnverifiedCoverage then .subject else .dependencyClosure)
+
+private def CheckedDeclaration.observation (checked : CheckedDeclaration) (validator : Name)
+    (proposition : Bool) (disposition : Option (Outcome × Coverage)) : CheckObservation :=
+  let (outcome, coverage, explanation) := match disposition with
+    | some (outcome, coverage) => (outcome, coverage, checked.status.reportJson.compress)
+    | none =>
+      let reason := if checked.status.isMissing then "missing-declaration: no current checked declaration"
+        else "unknown-declaration-kind: original declaration kind unavailable"
+      (.unavailable, .subject, reason)
+  { validator, declaration := some checked.declaration, proposition, assumptions := checked.assumptions
+    outcome, coverage, explanation }
+
+/-- An unclassified declaration cannot supply a passing statement check. -/
+def CheckedDeclaration.statement (checked : CheckedDeclaration) : CheckObservation :=
+  checked.observation statementValidator false (checked.kind.map (statementDisposition checked.status))
+
+def CheckedDeclaration.body (checked : CheckedDeclaration) : CheckObservation :=
+  checked.observation bodyValidator (checked.roles.contains `proof)
+    (checked.classification.map fun _ => bodyDisposition checked.status)
 
 def classifyDeclarationKind (originalKind : Option ConstantKind) (proofValued propositionValued : Bool) :
     Option DeclarationClassification := do
@@ -106,10 +131,10 @@ def declarationRoles (info : ConstantInfo) : CoreM (Array Name) := do
 /-- Check the role inventory before a native answer can supply contracts to the evaluator. -/
 def CheckedDeclaration.rolesAgree (value : CheckedDeclaration) : Bool :=
   match value.kind, value.roles with
-  | none, #[] => !value.body.proposition && value.statement.outcome != .passed && value.body.outcome != .passed
-  | some .theorem, #[`statement, `proof] => value.body.proposition
+  | none, #[]
+  | some .theorem, #[`statement, `proof]
   | some .theorem, #[`statement] | some .definition, #[`statement]
-  | some .definition, #[`implementation] => !value.body.proposition
+  | some .definition, #[`implementation] => true
   | _, _ => false
 
 /-- Prepare shared closure coverage for trusted native candidates. Request
@@ -134,37 +159,8 @@ def prepareDeclarations (session : Data.SorryInspectionSession)
 /-- An unclassified declaration cannot supply a passing observation, even if a
 body inspection succeeded. Keep its inspection and assumptions for diagnostics. -/
 def CheckedDeclaration.ofClassification (witness : ObjectKey) (classification : Option DeclarationClassification)
-    (status : Data.ProvedStatus) (assumptions : Array String) : CheckedDeclaration := Id.run do
-  let some classification := classification | do
-    let reason := if status.isMissing then "missing-declaration: no current checked declaration"
-      else "unknown-declaration-kind: original declaration kind unavailable"
-    let statement : CheckObservation := {
-      validator := statementValidator, declaration := some witness, assumptions
-      outcome := .unavailable, explanation := reason }
-    return { declaration := witness, statement, body := { statement with validator := bodyValidator }, status }
-  let kind := classification.statementKind
-  let statementUnknown := status.hasUnverifiedType || (kind == .definition && status.hasUnverifiedProof)
-  let statementGap := status.hasTypeGap || status.hasUnlocalizedSorry ||
-    (kind == .definition && status.hasProofGap)
-  return {
-    declaration := witness, kind := some kind, roles := classification.roles
-    statement := {
-      validator := statementValidator
-      declaration := some witness
-      assumptions
-      outcome := if !status.blocksStatementCompletion kind then .passed
-        else if statementUnknown && !statementGap then .unavailable else .failed
-      coverage := if statementUnknown then .subject else .dependencyClosure
-      explanation := status.reportJson.compress }
-    body := {
-      validator := bodyValidator
-      declaration := some witness
-      proposition := classification.roles.contains `proof
-      assumptions
-      outcome := if status.isProved then .passed else if status.isUnverified then .unavailable else .failed
-      coverage := if status.hasUnverifiedCoverage then .subject else .dependencyClosure
-      explanation := status.reportJson.compress }
-    status }
+    (status : Data.ProvedStatus) (assumptions : Array String) : CheckedDeclaration :=
+  { declaration := witness, classification, status, assumptions }
 
 /-- Check the original checked environment, including declaration universes and
 conservative reachable-body coverage. No expected goal is synthesized from the
@@ -261,14 +257,14 @@ def check (project : Name) (witness : ObjectKey) (expected : Syntax)
     checkWithKernel <| mkApp (mkLambda `w BinderInfo.default proposition (mkConst ``True.intro)) constant
     let status ← liftM (session.analyzeDeclaration info.name)
     let assumptions ← collectAxioms info.name
+    let (outcome, coverage) := bodyDisposition status
     return .ok {
       goal, status := some status, semanticContext := context, statementContext, semanticDiagnostics
       observation := {
         witness
         -- Normalize to the expected descriptor ONLY after actual Lean defeq.
         actualType := some goal
-        outcome := if status.isProved then .passed else if status.isUnverified then .unavailable else .failed
-        coverage := if status.hasUnverifiedCoverage then .subject else .dependencyClosure
+        outcome, coverage
         assumptions := assumptions.map Name.toString
         explanation := status.reportJson.compress } }
   catch ex =>
