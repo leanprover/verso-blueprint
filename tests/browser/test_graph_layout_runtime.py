@@ -115,15 +115,38 @@ def assert_graph_has_zoom_handlers(page: Page):
 
 
 def assert_graph_can_be_dragged(page: Page):
+    svg = page.locator(".bp_graph_canvas svg").first
+    svg.scroll_into_view_if_needed()
+    drag_x, drag_y = 90, 36
+    # Group nodes can open a hover preview over the canvas. Start the drag
+    # over the SVG background so the SVG receives the mouse press.
+    start = svg.evaluate(
+        """(svg, [dx, dy]) => {
+            const rect = svg.getBoundingClientRect();
+            const background = svg.querySelector("g.graph > polygon");
+            const left = Math.max(0, rect.left);
+            const right = Math.min(window.innerWidth, rect.right) - dx;
+            const top = Math.max(0, rect.top);
+            const bottom = Math.min(window.innerHeight, rect.bottom) - dy;
+            for (const row of [0.3, 0.5, 0.7, 0.1, 0.9]) {
+                for (const column of [0.25, 0.5, 0.75, 0.1, 0.9]) {
+                    const x = left + (right - left) * column;
+                    const y = top + (bottom - top) * row;
+                    const hit = document.elementFromPoint(x, y);
+                    if (hit === svg || (background && hit === background)) return [x, y];
+                }
+            }
+            return null;
+        }""",
+        [drag_x, drag_y],
+    )
+    assert start is not None, "Expected an unobstructed graph background for panning"
+    start_x, start_y = start
+    page.mouse.move(start_x, start_y)
     before = graph_transform(page)
     assert before is not None
-    canvas_box = page.locator(".bp_graph_canvas").first.bounding_box()
-    assert canvas_box is not None
-    center_x = canvas_box["x"] + canvas_box["width"] / 2
-    center_y = canvas_box["y"] + canvas_box["height"] / 2
-    page.mouse.move(center_x, center_y)
     page.mouse.down()
-    page.mouse.move(center_x + 90, center_y + 36, steps=6)
+    page.mouse.move(start_x + drag_x, start_y + drag_y, steps=6)
     page.mouse.up()
     page.wait_for_function(
         """(previousTransform) => {
