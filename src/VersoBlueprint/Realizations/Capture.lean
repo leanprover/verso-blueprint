@@ -115,8 +115,8 @@ private def exactNativeOwners (models : Array Realization) (context : Context) (
       | none => match model.declarations with
         | #[declaration] => some declaration
         | _ => none
-    let projection := if role == `statement then ContentScope.statement else .implementation
-    guard (declaration.object.context == context && declaration.projection == projection)
+    let some spec := NativeLean.roleSpec? role | failure
+    guard (declaration.object.context == context && declaration.projection == spec.projection)
     return (model, declaration)
 
 /-- The ordinary source producer's native models, derived from the admitted
@@ -125,7 +125,7 @@ def Snapshot.nativeRealizationsFor (snapshot : Snapshot) (label : Name) : Array 
   ordinaryNativeRealizations snapshot.registry.contributions label
 
 private def nativeValidator (role : Name) : Name :=
-  if role == `statement then NativeLean.statementValidator else NativeLean.bodyValidator
+  (NativeLean.roleSpec? role).map (·.validator) |>.getD NativeLean.bodyValidator
 
 /-- Derive a consumer view from the same admitted snapshot. No source/status
 fallbacks, new checker invocation or second dependency evaluator occur here. -/
@@ -412,15 +412,17 @@ def plan (raw : Raw) : Plan := Id.run do
       for source in sources do
         let document := if source.payload matches .prose .. then none else some source.document
         let mut documented : Option (Except Diagnostic NativeRequest) := none
+        let selectedStatementAssociations (owners : Array Contributions.Record) (canonical : Name) :
+            Array NativeAssociation :=
+          ((owners.flatMap (·.nativeAssociations)).filter fun association =>
+            association.reference.canonical == canonical && association.placement == `statement &&
+              association.realization == ⟨label, `lean⟩ &&
+              association.context == ⟨`lean, source.context.project⟩).toList.eraseDups.toArray
         if let some adoption := source.adoption then
           let owners := records.filter fun record =>
             record.id.producer == `blueprint.directive && record.id.moduleName == adoption.consumerModule &&
               record.source.isSome && record.source == source.source.location
-          let selected := (owners.flatMap (·.nativeAssociations)).filter fun association =>
-            association.reference.canonical == adoption.canonical && association.placement == `statement &&
-              association.realization == ⟨label, `lean⟩ &&
-              association.context == ⟨`lean, source.context.project⟩
-          let selected := selected.toList.eraseDups.toArray
+          let selected := selectedStatementAssociations owners adoption.canonical
           match adoption.owner, selected, adoption.package with
           | .error diagnostic, _, _ => documented := some (.error diagnostic)
           | .ok (path, _), #[association], some pkg =>
@@ -438,11 +440,7 @@ def plan (raw : Raw) : Plan := Id.run do
           let owners := records.filter fun record => record.id.producer == `blueprint.attribute &&
             record.id.moduleName == owner.moduleName && record.id.subject == owner.canonical &&
             record.source.isSome && record.source == source.source.location
-          let selected : Array NativeAssociation := (owners.flatMap (·.nativeAssociations)).filter fun association =>
-            association.reference.canonical == owner.canonical && association.placement == `statement &&
-              association.realization == ⟨label, `lean⟩ &&
-              association.context == ⟨`lean, source.context.project⟩
-          match selected.toList.eraseDups.toArray with
+          match selectedStatementAssociations owners owner.canonical with
           | #[association] =>
             documented := some <| match source.proseBuffer? with
               | some text => .ok { NativeRequest.ofAssociation association.context association with
@@ -761,7 +759,7 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
           let required := if selected then #[requirement] else #[]
           return some {
             object := witness,
-            projection := if role == `statement then .statement else .implementation,
+            projection := (NativeLean.roleSpec? role).map (·.projection) |>.getD .implementation,
             required, sourceIssues := match result.prepared with
               | .error issues => issues
               | .ok _ => #[] }
@@ -785,15 +783,14 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
             collected := { collected with
               sourceDiagnostics := collected.sourceDiagnostics.addNode label prepared.semanticDiagnostics
               input.bindingInputs := collected.input.bindingInputs ++ nativeRoles.flatMap fun role =>
-                if role == `statement then
-                  prepared.statementContext.toArray.map fun content => contribution `nativeStatementContext
-                    (BindingEncoding.subject (Subject.declaration (base.forRole role) witness)) {
-                      subject := .declaration (base.forRole role) witness,
-                      name := NativeLean.statementContext, content }
-                else prepared.semanticContext.toArray.map fun content => contribution `nativeContext
+                let spec := (NativeLean.roleSpec? role).getD ⟨.implementation, NativeLean.bodyValidator, NativeLean.sourceContext⟩
+                let (slot, content?) := match spec.projection with
+                  | .statement => (`nativeStatementContext, prepared.statementContext)
+                  | .implementation => (`nativeContext, prepared.semanticContext)
+                content?.toArray.map fun content => contribution slot
                   (BindingEncoding.subject (Subject.declaration (base.forRole role) witness)) {
                     subject := .declaration (base.forRole role) witness,
-                    name := NativeLean.sourceContext, content } }
+                    name := spec.contextName, content } }
             pure (.ok ())
         -- Any successful association resolves the shared object. The owned
         -- selection keeps its own failure even if a sibling succeeds.
@@ -1054,19 +1051,16 @@ private def connectUses (collected : Collected) (uses : Array SelectedUse) : Col
   let nativeContracts := collected.input.requirements.foldl
     (init := ({} : Std.HashMap RequirementKey Name)) fun out record =>
       if record.value.coverage == .dependencyClosure &&
+          record.value.expected.isNativeDeclarationCheck &&
           record.origin == (contribution `requirement (BindingEncoding.requirementKey record.value.key) ()).origin then
         match record.value.expected with
-        | .check validator =>
-          if validator == NativeLean.statementValidator || validator == NativeLean.bodyValidator then
-            out.insert record.value.key validator
-          else out
+        | .check validator => out.insert record.value.key validator
         | _ => out
       else out
   let mut collected := collected
   let mut additions : Std.HashMap RequirementKey (Array RequirementKey) := {}
   for model in collected.input.realizations.map (·.value) do
-    if model.context.language != `lean ||
-        (model.role != `statement && model.role != `proof && model.role != `implementation) then continue
+    if model.context.language != `lean || !NativeLean.isNativeRole model.role then continue
     let relevant := uses.filter fun use => use.context == some model.context &&
       useSelectsRealization use.source use.realization use.role model
     if relevant.isEmpty then continue

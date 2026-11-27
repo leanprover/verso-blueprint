@@ -5,6 +5,7 @@ Author: Emilio J. Gallego Arias
 -/
 import VersoBlueprint.SourcePayload
 import VersoBlueprint.Realizations
+import VersoBlueprint.Validation
 import VersoBlueprint.Util.SHA256
 import Vir.Package.Name
 
@@ -444,13 +445,14 @@ def nativeMembershipIssues (node : Name) (model : Realization)
   if model.context.language != `lean then
     issues := issues.push (issue "wrong-native-context" subject
       "Native membership checking requires an ordinary Lean realization")
-  let expectedProjection := if model.role == `statement then .statement else .implementation
-  if model.role != `statement && model.role != `proof && model.role != `implementation then
+  match Validation.NativeLean.roleSpec? model.role with
+  | none =>
     issues := issues.push (issue "unknown-native-role" subject
       "Lean declarations require a statement, proof, or implementation role")
-  if model.declarations.any (·.projection != expectedProjection) then
-    issues := issues.push (issue "native-role-projection" subject
-      "Each native declaration projection must agree with its direct realization role")
+  | some spec =>
+    if model.declarations.any (·.projection != spec.projection) then
+      issues := issues.push (issue "native-role-projection" subject
+        "Each native declaration projection must agree with its direct realization role")
   -- Keep the typed Name through collection; only a lossless supported spelling
   -- may cross the present pure model's ObjectKey boundary.
   let names := nativeNames associations sources

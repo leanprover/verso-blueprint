@@ -218,4 +218,32 @@ run_cmd liftTermElabM do
   ensure (!(siblingSnapshot.assessmentFor forward).hasAxiomLike)
     "Disagreeing attachment borrowed its agreeing sibling's axiom status"
 
+  -- An authored check using a native validator on an ordinary declaration must
+  -- not be miscounted as an incomplete generated native declaration in summary.
+  let completeLabel := Name.mkSimple "capture.complete"
+  let baseSnapshot ← obtain (← Capture.capture)
+  let some proofModel := (baseSnapshot.nativeRealizationsFor completeLabel).find? (·.role == `proof)
+    | throwError "Missing proof realization on capture.complete"
+  let some completeDecl := proofModel.declarations[0]?
+    | throwError "Missing declaration on capture.complete proof realization"
+  let authoredCheck : Validation.Requirement := {
+    key := ⟨.declaration proofModel.key completeDecl.object, `extraCompleteness⟩
+    expected := .check Validation.NativeLean.bodyValidator
+    coverage := .dependencyClosure }
+  let authoredRecord : Environment.AuthoringRecord := {
+    origin := {
+      id := `summaryAuthoredNativeCheck
+      moduleName := (← getEnv).mainModule
+      source := (← getFileName) }
+    project := completeDecl.object.context.project
+    authored := { requirements := #[authoredCheck] } }
+  let authoredPlan := Capture.plan { raw with authored := raw.authored.push authoredRecord }
+  let withAuthored ← obtain (Capture.evaluate authoredPlan (← obtain (← Capture.observe authoredPlan)))
+  ensure (withAuthored.registry.requirement? authoredCheck.key |>.isSome)
+    "Authored check using native validator must be admitted into the snapshot registry"
+  let baseSummary ← liftM (m := CoreM) (Commands.buildSummary baseSnapshot)
+  let withAuthoredSummary ← liftM (m := CoreM) (Commands.buildSummary withAuthored)
+  ensure (withAuthoredSummary.incompleteDecls == baseSummary.incompleteDecls)
+    "Authored check with native validator inflated ordinary summary incompleteDecls"
+
 end Verso.VersoBlueprintTests.BlueprintSummaryStatus

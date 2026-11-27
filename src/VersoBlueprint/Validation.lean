@@ -50,6 +50,23 @@ def statementContext : Name := `source.statementContext
 def expectedContext : Name := `lean.expectedContext
 def expectedContextFor (key : RequirementKey) : Name := expectedContext ++ key.name
 
+/-- Single source of truth for ordinary Lean declaration roles: which content
+scope they project, which native check validator they require, and which
+semantic context input they bind. -/
+structure RoleSpec where
+  projection : ContentScope
+  validator : Name
+  contextName : Name
+  deriving Repr, Inhabited, BEq, DecidableEq
+
+def roleSpec? : Name → Option RoleSpec
+  | `statement => some ⟨.statement, statementValidator, statementContext⟩
+  | `proof => some ⟨.implementation, bodyValidator, sourceContext⟩
+  | `implementation => some ⟨.implementation, bodyValidator, sourceContext⟩
+  | _ => none
+
+def isNativeRole (role : Name) : Bool := (roleSpec? role).isSome
+
 end NativeLean
 
 /-- The mechanical dependency-selection check and the descriptor of what it

@@ -53,6 +53,7 @@ def semanticContext (scope : ContentScope) (project : Name) (roots : Array Name)
 structure DeclarationClassification where
   statementKind : Data.NodeKind
   roles : Array Name
+  deriving BEq
 
 /-- Facts from current native checking. The declaration's own named checks are
 derived from these facts when the caller binds them to an owned source selection. -/
@@ -127,14 +128,17 @@ private def declarationClassification (info : ConstantInfo) : CoreM (Option Decl
 def declarationRoles (info : ConstantInfo) : CoreM (Array Name) := do
   return ((← declarationClassification info).map (·.roles)).getD #[]
 
+private def validClassifications : Array DeclarationClassification :=
+  #[.axiom, .defn, .thm].flatMap fun kind =>
+    #[true, false].flatMap fun proofValued =>
+      #[true, false].filterMap fun propValued =>
+        classifyDeclarationKind (some kind) proofValued propValued
+
 /-- Check the role inventory before a native answer can supply contracts to the evaluator. -/
 def CheckedDeclaration.rolesAgree (value : CheckedDeclaration) : Bool :=
-  match value.kind, value.roles with
-  | none, #[]
-  | some .theorem, #[`statement, `proof]
-  | some .theorem, #[`statement] | some .definition, #[`statement]
-  | some .definition, #[`implementation] => true
-  | _, _ => false
+  match value.kind with
+  | none => value.roles.isEmpty
+  | some kind => validClassifications.contains ⟨kind, value.roles⟩
 
 /-- Prepare shared closure coverage for trusted native candidates. Request
 identity, kernel checks, roles and assumptions are still checked separately

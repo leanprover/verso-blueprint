@@ -128,11 +128,14 @@ private def nodeLeanSummary (snapshot : Realizations.Capture.Snapshot) (label : 
       if acc.any (·.object == declaration.object) then acc else acc.push declaration
   let requiredNativeChecks := snapshot.registry.requirements.filter fun requirement =>
     match requirement.key.subject with
-    | .declaration key object => realizations.any (fun model => model.key == key &&
-        model.declarations.any (·.object == object)) &&
-      (match requirement.expected with
-      | .check validator => validator == NativeLean.statementValidator || validator == NativeLean.bodyValidator
-      | _ => false)
+    | .declaration key object =>
+      requirement.coverage == .dependencyClosure &&
+      realizations.any fun model =>
+        model.key == key &&
+        requirement.key.name == model.role &&
+        (NativeLean.roleSpec? model.role).any (fun spec => requirement.expected == .check spec.validator) &&
+        model.declarations.any fun declaration =>
+          declaration.object == object && declaration.required.contains requirement.key
     | _ => false
   let incompleteDecls := declarations.filter fun declaration =>
     requiredNativeChecks.any fun requirement =>
