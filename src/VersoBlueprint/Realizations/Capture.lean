@@ -833,6 +833,13 @@ private def ownedDefinition (name : Name) (origin : Origin) (source : Document) 
 private def collectAuthored [Monad m] (providers : Providers m) (p : Plan)
     (collected : Collected) : ExceptT (Array Diagnostic) m Collected := do
   let mut collected := collected
+  -- Independent producers of an ordinary expectation share its requirement.
+  -- Its provenance is the union of their source documents in this project.
+  let specificationDocuments := p.expected.foldl (init :=
+    ({} : Std.HashMap (Name × Name) (Array DocumentKey))) fun groups goal =>
+      let key := (goal.project, goal.node)
+      groups.insert key (pushUnique (groups[key]?.getD #[]) goal.specification.document)
+  let mut sourceFailures : Std.HashMap (Name × Name) (Option String) := {}
   for step in p.authored do
     let record := step.record
     for (goalRequest, index) in step.goals.zipIdx do
@@ -852,14 +859,33 @@ private def collectAuthored [Monad m] (providers : Providers m) (p : Plan)
       let (specDoc, issues) ← providers.document specification.document
       full (← providers.specification {
         expected := specification.expected, origin := specification.origin, document := specDoc })
-      let documents := canonical ((collected.input.objects.filter (·.value.key == witness)).filterMap (·.value.document) |>.push specDoc.key)
+      let group := (goalRequest.project, node)
+      let specDocuments := specificationDocuments[group]?.getD #[specDoc.key]
+      let documents := canonical (specDocuments ++
+        (collected.input.objects.filter (·.value.key == witness)).filterMap (·.value.document))
+      -- An unreadable co-owner's source makes this shared expectation
+      -- unavailable even if a sibling producer has a successful observation.
+      let failure ← match sourceFailures[group]? with
+        | some failure => pure failure
+        | none => do
+          let mut failure := none
+          for key in documents do
+            let (doc, errors) ← if key == specDoc.key then pure (specDoc, issues) else providers.document key
+            if let some reason := errors[0]? then
+              failure := some reason.message
+              break
+            if blank doc.text then
+              failure := some "Canonical source is empty"
+              break
+          pure failure
+      sourceFailures := sourceFailures.insert group failure
       let checked ← one (← providers.expected {
         project := goalRequest.project, expected := goalRequest.expected, witness, documents })
-      let unavailable := (issues[0]?.map (·.message)).getD "Canonical source is empty"
-      let observation := if issues.isEmpty && !blank specDoc.text then checked.observation else
-        { checked.observation with
-          outcome := .unavailable, coverage := .subject
-          explanation := s!"{unavailable} for expected proposition '{goalRequest.expected}'" }
+      let observation := match failure with
+        | none => checked.observation
+        | some reason => { checked.observation with
+            outcome := .unavailable, coverage := .subject
+            explanation := s!"{reason} for expected proposition '{goalRequest.expected}'" }
       let input := { collected.input with
         documents := collected.input.documents.push (authoredContribution record.origin `specification index specDoc)
         realizations := collected.input.realizations.map fun contribution =>
@@ -1275,7 +1301,7 @@ def observe (p : Plan) (readFile : System.FilePath → IO String := IO.FS.readFi
       specification := fun key => answerOnce specifications key
         (ownedDefinition key.expected key.origin key.document).run
       expected := fun key => answerOnce expected key
-        (NativeLean.check key.project key.witness (mkCIdent key.expected) key.documents semantics (some inspection)) }
+        (NativeLean.checkSpecification key.project key.witness key.expected key.documents semantics inspection) }
     -- Shared pure recipe resolves dependent arguments and ordered fatal checks.
     -- Its temporary input is not admitted and never escapes this boundary.
     match ← (assemble providers p).run with

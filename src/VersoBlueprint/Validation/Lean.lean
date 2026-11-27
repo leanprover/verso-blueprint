@@ -191,21 +191,15 @@ def checkDeclaration (project : Name) (witness : ObjectKey)
   finally
     saved.restore (restoreInfo := true)
 
-/-- Check in the current environment, without retaining elaborator/environment
-changes. Only closed, monomorphic expected propositions are supported here;
-universe-polymorphic contracts need an explicit later API. Binders *inside* a
-closed proposition and concrete universe/package instantiations are preserved.
-The logical project is selected by the caller, not inferred from module names. -/
-def check (project : Name) (witness : ObjectKey) (expected : Syntax)
-    (documents : Array DocumentKey := #[])
-    (semantics : SemanticContext := semanticContext)
-    (session : Option Data.SorryInspectionSession := none) : TermElabM (Except Diagnostic Checked) := do
+private def checkExpected (project : Name) (witness : ObjectKey) (expected : TermElabM Expr)
+    (documents : Array DocumentKey) (semantics : SemanticContext)
+    (session : Option Data.SorryInspectionSession) : TermElabM (Except Diagnostic Checked) := do
   let saved ← Term.saveState
   try
     let name ← match nativeName project witness with
       | .ok name => pure name
       | .error diagnostic => return .error diagnostic
-    let proposition ← withoutErrToSorry <| elabTermEnsuringType expected (some (mkSort .zero))
+    let proposition ← withoutErrToSorry expected
     synthesizeSyntheticMVarsNoPostponing
     let proposition ← instantiateMVars proposition
     -- Elaboration may introduce auxiliary declarations. This provider accepts
@@ -271,5 +265,30 @@ def check (project : Name) (witness : ObjectKey) (expected : Syntax)
     return .error <| issue "invalid-expectation-or-witness" witness (← ex.toMessageData.toString)
   finally
     saved.restore (restoreInfo := true)
+
+/-- Check in the current environment, without retaining elaborator/environment
+changes. Only closed, monomorphic expected propositions are supported here;
+universe-polymorphic contracts need an explicit later API. Binders *inside* a
+closed proposition and concrete universe/package instantiations are preserved.
+The logical project is selected by the caller, not inferred from module names. -/
+def check (project : Name) (witness : ObjectKey) (expected : Syntax)
+    (documents : Array DocumentKey := #[])
+    (semantics : SemanticContext := semanticContext)
+    (session : Option Data.SorryInspectionSession := none) : TermElabM (Except Diagnostic Checked) :=
+  checkExpected project witness (elabTermEnsuringType expected (some (mkSort .zero))) documents semantics session
+
+/-- A named specification selects the value of its checked Prop definition.
+Two owners can independently write the same proposition. Their checked bodies
+determine the goal, while their names and sources remain capture provenance. -/
+def checkSpecification (project : Name) (witness : ObjectKey) (specification : Name)
+    (documents : Array DocumentKey) (semantics : SemanticContext) (session : Data.SorryInspectionSession) :
+    TermElabM (Except Diagnostic Checked) :=
+  checkExpected project witness (do
+    let term ← elabTermEnsuringType (mkCIdent specification) (some (mkSort .zero))
+    let .const name levels := term.consumeMData | throwError "Expected a named proposition definition"
+    let some (.defnInfo info) := (← getEnv).checked.get.find? name
+      | throwError "Expected a checked proposition definition"
+    unless name == specification && info.safety == .safe do throwError "Expected a safe specification"
+    return info.value.instantiateLevelParams info.levelParams levels) documents semantics (some session)
 
 end Informal.Validation.NativeLean

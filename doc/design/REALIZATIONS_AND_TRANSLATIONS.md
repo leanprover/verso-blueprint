@@ -221,8 +221,15 @@ run_cmd liftCoreM <| Informal.Realizations.Authoring.configureProject `MyProject
 
 Configure each module that calls `Authoring.stage id batch`. Staging retains raw
 source records; it does not admit a fragment or mutate query state. `expectNative`
-names an independently authored proposition definition. Authored judgments preserve
-their recorded binding through staging/import; native evidence is generated only
+names a proposition definition owned by that specification module. If two modules
+state the same proposition for one ordinary proof, capture compares the checked
+definition bodies, retains both origins and includes both source documents in
+the shared expected-goal contract. Different structural goals conflict, and an
+unreadable specification leaves that contract unavailable. An ordinary proof
+dependency selects the target's native proof check regardless of the result of
+an independently authored expected goal.
+
+Authored judgments preserve their recorded binding through staging/import; native evidence is generated only
 for the current capture. Uses are validated after the complete ordinary and authored
 realization inventory is available, so forward/imported references are not rejected
 merely because their producer was collected later.

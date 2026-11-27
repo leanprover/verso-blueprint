@@ -246,6 +246,37 @@ run_cmd liftTermElabM do
       (fun record => record.origin.moduleName == env.mainModule)).size == 2)
     "Consumer/Owner prefix site collided or query persisted observations"
 
+-- A second module independently states the same target and owns its source.
+def expectedFlag : Prop := ∀ flag : RealizationAdapterFixture.Flag,
+  RealizationAdapterFixture.toggle (RealizationAdapterFixture.toggle flag) = flag
+
+run_cmd liftTermElabM do
+  isolated do
+    Realizations.Authoring.expectNative `secondFlagSpec Owner.node
+      `VersoBlueprintTests.BlueprintRealizationAuthoring.expectedFlag
+    let plan := Capture.plan (Capture.Raw.ofState (Environment.informalExt.getState (← getEnv)))
+    for missing in #[false, true] do
+      let observations ← obtain (← Capture.observe plan fun path => do
+        if missing && path.toString.endsWith "/BlueprintRealizationAuthoring/Owner.lean" then
+          throw (IO.userError "upstream specification unavailable")
+        IO.FS.readFile path)
+      let snapshot ← obtain (Capture.evaluate plan observations)
+      let r := snapshot.registry
+      let some req := r.requirement? Owner.expectedProof | throwError "Missing shared expectation"
+      let .proof goal _ := req.expected | throwError "Expected an independent proof requirement"
+      let specs := r.contributions.requirements.filter (·.value.key == Owner.expectedProof)
+      let evidence := r.evidence.filter (·.requirement == Owner.expectedProof)
+      ensure (specs.size == 2 && (canonical (specs.map (·.origin.moduleName))).size == 2 &&
+        goal.documents.size == 2 &&
+        goal.documents.any (·.path.endsWith "/BlueprintRealizationAuthoring.lean") &&
+        goal.documents.any (·.path.endsWith "/BlueprintRealizationAuthoring/Owner.lean") &&
+        evidence.size == 2 && evidence.all (fun item => match item.observation with
+          | .proof obs => obs.outcome == (if missing then .unavailable else .passed)
+          | _ => false) &&
+        (r.resultForRequirement Owner.expectedProof).complete == !missing &&
+        (snapshot.assessmentFor Owner.node).requiredComplete)
+        "Equivalent independent specifications must retain both owners and gate their shared contract"
+
 @[blueprint "authoring.dependsOnlyOnNative" (proofUses := ["authoring.nativeDependent"])]
 theorem dependsOnlyOnNative : True := True.intro
 
