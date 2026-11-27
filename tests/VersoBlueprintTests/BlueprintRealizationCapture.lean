@@ -393,7 +393,11 @@ run_cmd liftTermElabM do
       let expectedText ← match sourceStep.source.fence, sourceStep.documented with
         | some _, _ =>
           let key := sourceStep.source.document
-          obtain (sourceStep.source.selectedFenceText { key, text := ← IO.FS.readFile key.path })
+          let rawText ← IO.FS.readFile key.path
+          let expected ← obtain (sourceStep.source.selectedFenceText { key, text := rawText })
+          let crlf ← obtain (sourceStep.source.selectedFenceText { key, text := rawText.replace "\n" "\r\n" })
+          ensure (crlf == expected) "CRLF owning source broke fenced selection freshness check"
+          pure expected
         | none, some (.ok request) =>
           let some provider := observations.documented.find? (·.request == request)
             | throwError "Selected native docstring lost its provider observation"

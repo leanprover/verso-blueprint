@@ -194,10 +194,11 @@ def SourceSelection.selectedFenceText (source : SourceSelection) (document : Doc
     | throw (source.selectionIssue "Source has no recorded code block selection")
   let fence ← selection.mapError source.selectionIssue
   let location ← source.locationForSelection
-  let map := FileMap.ofString document.text
+  let normalized := document.text.crlfToLf
+  let map := FileMap.ofString normalized
   let range := map.lspRangeToUtf8Range location.range
   unless source.document == document.key && range.start.byteIdx <= range.stop.byteIdx &&
-      map.utf8RangeToLspRange range == location.range && extract document.text range == fence.original do
+      map.utf8RangeToLspRange range == location.range && extract normalized range == fence.original do
     throw (source.selectionIssue "Current source disagrees with the original code block at its owning location")
   return fence.text
 
