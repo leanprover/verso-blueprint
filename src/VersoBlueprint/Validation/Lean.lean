@@ -23,7 +23,6 @@ structure Checked where
   observation : ProofObservation
   status : Option Data.ProvedStatus := none
   semanticContext : Option String := none
-  statementContext : Option String := none
   semanticDiagnostics : Array Diagnostic := #[]
 
 private def issue (code : String) (witness : ObjectKey) (message : String) : Diagnostic :=
@@ -228,19 +227,15 @@ private def checkExpected (project : Name) (witness : ObjectKey) (expected : Ter
     let (context, semanticDiagnostics) := match semanticResult with
       | .ok context => (some context, #[])
       | .error diagnostic => (none, #[diagnostic])
-    let statementResult ← semantics .statement project (#[name] ++ dependencies)
-    let statementContext := statementResult.toOption
-    let semanticDiagnostics := (semanticDiagnostics ++ (match statementResult with
-      | .ok _ => #[] | .error diagnostic => #[diagnostic])).toList.eraseDups.toArray
     let some info := (← getEnv).checked.get.find? name
-      | return .ok { goal, semanticContext := context, statementContext, semanticDiagnostics, observation := {
+      | return .ok { goal, semanticContext := context, semanticDiagnostics, observation := {
           witness, outcome := .unavailable
           explanation := "missing-witness: declaration not in checked environment" } }
     let constant ← mkConstWithFreshMVarLevels name
     Meta.check constant
     let actualType ← inferType constant
     unless ← isDefEq actualType proposition do
-      return .ok { goal, semanticContext := context, statementContext, semanticDiagnostics, observation := {
+      return .ok { goal, semanticContext := context, semanticDiagnostics, observation := {
         witness, outcome := .failed
         explanation := "wrong-proposition: checked witness type is not definitionally equal to expectation" } }
     let constant ← instantiateMVars constant
@@ -253,7 +248,7 @@ private def checkExpected (project : Name) (witness : ObjectKey) (expected : Ter
     let assumptions ← collectAxioms info.name
     let (outcome, coverage) := bodyDisposition status
     return .ok {
-      goal, status := some status, semanticContext := context, statementContext, semanticDiagnostics
+      goal, status := some status, semanticContext := context, semanticDiagnostics
       observation := {
         witness
         -- Normalize to the expected descriptor ONLY after actual Lean defeq.

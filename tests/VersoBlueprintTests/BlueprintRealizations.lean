@@ -98,10 +98,7 @@ def fixture : Input := {
       name := NativeLean.sourceContext, content := "MOCK current Rocq semantic closure/provider context" },
     contribution `mockExpectedSemantics {
       subject := proofKey.subject, name := NativeLean.expectedContextFor proofKey
-      content := "MOCK independently expected proposition semantic closure/provider context" },
-    contribution `mockExpectedStatementSemantics {
-      subject := proofKey.subject, name := NativeLean.expectedStatementContextFor proofKey
-      content := "MOCK independently expected proposition statement semantics" }]
+      content := "MOCK independently expected proposition semantic closure/provider context" }]
 }
 
 /-- Explicit mock of a trusted language boundary. It does not check a Lean term. -/
@@ -120,13 +117,13 @@ def withMockEvidence (input : Input) (id : Name) (key : RequirementKey) (observa
   for record in input.requirements do
     if let .proof .. := record.value.expected then
       let proof := record.value.key
-      for tag in #[NativeLean.expectedContextFor proof] do
-        unless input.bindingInputs.any (fun record => record.value.subject == proof.subject &&
-            record.value.name == tag) do
-          let context := contribution (id ++ `mockExpectedContext ++ Name.num .anonymous input.bindingInputs.size) {
-            subject := proof.subject, name := tag
-            content := "MOCK expected-goal semantic context" }
-          input := { input with bindingInputs := input.bindingInputs.push context }
+      let tag := NativeLean.expectedContextFor proof
+      unless input.bindingInputs.any (fun record => record.value.subject == proof.subject &&
+          record.value.name == tag) do
+        let context := contribution (id ++ `mockExpectedContext ++ Name.num .anonymous input.bindingInputs.size) {
+          subject := proof.subject, name := tag
+          content := "MOCK expected-goal semantic context" }
+        input := { input with bindingInputs := input.bindingInputs.push context }
   for record in input.objects do
     let object := record.value.key
     if object.context.language == `lean then

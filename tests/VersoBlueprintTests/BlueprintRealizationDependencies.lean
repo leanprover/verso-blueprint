@@ -355,8 +355,7 @@ run_cmd liftTermElabM do
     ensure (subjectInputs.any (·.name == selectedUsesFor check.key))
       s!"The selection record of {repr check.key} is not attached under its check's name"
     let contractScoped := (registry.requirements.filter (·.key.subject == check.key.subject)).flatMap
-      fun requirement => #[NativeLean.expectedContextFor requirement.key,
-        NativeLean.expectedStatementContextFor requirement.key, selectedUsesFor requirement.key]
+      fun requirement => #[NativeLean.expectedContextFor requirement.key, selectedUsesFor requirement.key]
     ensure (subjectInputs.all fun input => input.name == NativeLean.sourceContext ||
         input.name == NativeLean.statementContext || contractScoped.contains input.name)
       s!"A declaration-wide binding input on {repr check.key.subject} may carry its selection record"

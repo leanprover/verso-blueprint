@@ -340,15 +340,13 @@ private def sourceTag (scope : ContentScope) : Name :=
 
 /-- Descriptors owned by one contract of the subject, not by the subject. -/
 private def contractInput (name : Name) : Bool :=
-  NativeLean.expectedContext.isPrefixOf name || NativeLean.expectedStatementContext.isPrefixOf name ||
-    selectedUses.isPrefixOf name
+  NativeLean.expectedContext.isPrefixOf name || selectedUses.isPrefixOf name
 
 /-- Only the native provider's two known content descriptors are scope-selected.
 Other supplied inputs remain conservative. Expected-goal and dependency-selection
 descriptors belong to individual contracts, never to every review of their
 containing realization: a proof binds its expected-goal semantic context and a
-selection check binds its selection record. No binding reads an expected-goal
-statement descriptor. -/
+selection check binds its selection record. -/
 private def selectedInput (scope : ContentScope) (native : Bool) (input : BindingInput) : Bool :=
   !contractInput input.name &&
     (!(native && (input.name == NativeLean.sourceContext || input.name == NativeLean.statementContext)) ||

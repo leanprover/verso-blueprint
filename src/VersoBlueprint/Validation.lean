@@ -48,9 +48,7 @@ def ownTypeValidator : Name := `lean.ownTypeProof
 def sourceContext : Name := `source.semanticContext
 def statementContext : Name := `source.statementContext
 def expectedContext : Name := `lean.expectedContext
-def expectedStatementContext : Name := `lean.expectedStatementContext
 def expectedContextFor (key : RequirementKey) : Name := expectedContext ++ key.name
-def expectedStatementContextFor (key : RequirementKey) : Name := expectedStatementContext ++ key.name
 
 end NativeLean
 

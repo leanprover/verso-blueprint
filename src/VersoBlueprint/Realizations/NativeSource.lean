@@ -669,9 +669,7 @@ def PreparedModel.prepareValidation (p : PreparedModel) (expected : Syntax)
       key, expected := .proof checked.goal p.witness
       coverage := .dependencyClosure }]
     bindingInputs := p.input.bindingInputs ++ checked.semanticContext.toArray.map (fun content =>
-      p.contribution `nativeExpectedContext { subject := key.subject, name := NativeLean.expectedContextFor key, content }) ++
-      checked.statementContext.toArray.map (fun content => p.contribution `nativeExpectedStatementContext {
-        subject := key.subject, name := NativeLean.expectedStatementContextFor key, content }) }
+      p.contribution `nativeExpectedContext { subject := key.subject, name := NativeLean.expectedContextFor key, content }) }
   return .ok (input, checked)
 
 /-- Attach a freshly checked proof requirement/evidence to the returned input.

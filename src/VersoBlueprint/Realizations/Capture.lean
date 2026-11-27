@@ -900,9 +900,7 @@ private def collectAuthored [Monad m] (providers : Providers m) (p : Plan)
           key := expectedKey, expected := .proof checked.goal witness, coverage := .dependencyClosure })
         bindingInputs := collected.input.bindingInputs ++ (checked.semanticContext.toArray.map fun content =>
           authoredContribution record.origin `expectedContext index {
-            subject := expectedKey.subject, name := NativeLean.expectedContextFor expectedKey, content }) ++
-          (checked.statementContext.toArray.map fun content => authoredContribution record.origin `expectedStatementContext index {
-            subject := expectedKey.subject, name := NativeLean.expectedStatementContextFor expectedKey, content }) }
+            subject := expectedKey.subject, name := NativeLean.expectedContextFor expectedKey, content }) }
       collected := { collected with
         input := input
         sourceDiagnostics := collected.sourceDiagnostics.addNode node (issues ++ checked.semanticDiagnostics)
