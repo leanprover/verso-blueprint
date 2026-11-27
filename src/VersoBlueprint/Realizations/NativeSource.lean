@@ -24,20 +24,29 @@ open Lean Validation Translations
 private def issue (code : String) (label : Name) (message : String) : Diagnostic :=
   { code, subject := label.toString, message }
 
-private def openParserNamespaces (context : Parser.ParserModuleContext) (decl : Syntax) :
-    Parser.ParserModuleContext :=
-  let ids := match decl.getKind with
-    | ``Parser.Command.openSimple => decl[0].getArgs
-    | ``Parser.Command.openScoped => decl[1].getArgs
-    | ``Parser.Command.openHiding => #[decl[0]]
-    | _ => #[]
-  ids.foldl (init := context) fun context id =>
-    let resolved := ResolveName.resolveNamespace context.env context.currNamespace [] (Syntax.getId id)
-    resolved.foldl (init := context) fun context ns =>
-      { context with env := Parser.parserExtension.activateScoped context.env ns }
+private structure ParserState where
+  context : Parser.ParserModuleContext
+  openDecls : List OpenDecl := []
 
-private def setParserOption (context : Parser.ParserModuleContext) (command : Syntax) :
-    Parser.ParserModuleContext :=
+private def openParserNamespaces (state : ParserState) (decl : Syntax) : ParserState :=
+  let openNamespace (state : ParserState) (id : Syntax) (recordOpen : Bool)
+      (except : List Name := []) : ParserState :=
+    let resolved := ResolveName.resolveNamespace state.context.env state.context.currNamespace
+      state.openDecls (Syntax.getId id)
+    resolved.foldl (init := state) fun state ns => {
+      context := { state.context with env := Parser.parserExtension.activateScoped state.context.env ns }
+      openDecls := if recordOpen then OpenDecl.simple ns except :: state.openDecls else state.openDecls }
+  match decl.getKind with
+  | ``Parser.Command.openSimple =>
+    decl[0].getArgs.foldl (init := state) fun state id => openNamespace state id true
+  | ``Parser.Command.openScoped =>
+    decl[1].getArgs.foldl (init := state) fun state id => openNamespace state id false
+  | ``Parser.Command.openHiding =>
+    let except := decl[2].getArgs.toList.map Syntax.getId
+    openNamespace state decl[0] true except
+  | _ => state
+
+private def setParserOption (state : ParserState) (command : Syntax) : ParserState :=
   let value := command[3]
   let optionValue : Option DataValue :=
     if let some s := value.isStrLit? then some (.ofString s)
@@ -45,39 +54,42 @@ private def setParserOption (context : Parser.ParserModuleContext) (command : Sy
     else if value.getAtomVal == "true" then some (.ofBool true)
     else if value.getAtomVal == "false" then some (.ofBool false)
     else none
-  optionValue.elim context fun v =>
-    { context with options := context.options.insert command[1].getId v }
+  optionValue.elim state fun v =>
+    { state with context := { state.context with options := state.context.options.insert command[1].getId v } }
 
--- Each entry saves the parser context before entering one component of a
--- section or namespace. Leaving that scope restores its options and scoped syntax.
-private abbrev ParserScopes := List Parser.ParserModuleContext
+-- Each entry saves the parser state before entering one component of a
+-- section or namespace. Leaving that scope restores its options, opens and scoped syntax.
+private abbrev ParserScopes := List ParserState
 
-private def enterParserScopes (context : Parser.ParserModuleContext) (scopes : ParserScopes)
-    (name : Name) (namespaceScope : Bool) : Parser.ParserModuleContext × ParserScopes :=
+private def enterParserScopes (state : ParserState) (scopes : ParserScopes)
+    (name : Name) (namespaceScope : Bool) : ParserState × ParserScopes :=
   match name with
-  | .anonymous => (context, scopes)
+  | .anonymous => (state, scopes)
   | .str parent component =>
-    let (context, scopes) := enterParserScopes context scopes parent namespaceScope
+    let (state, scopes) := enterParserScopes state scopes parent namespaceScope
     let next := if namespaceScope then
-      let ns := Name.str context.currNamespace component
-      { context with currNamespace := ns, env := Parser.parserExtension.activateScoped context.env ns }
-    else context
-    (next, context :: scopes)
-  | .num .. => (context, scopes)
+      let ns := Name.str state.context.currNamespace component
+      { state with
+        context := { state.context with
+          currNamespace := ns
+          env := Parser.parserExtension.activateScoped state.context.env ns } }
+    else state
+    (next, state :: scopes)
+  | .num .. => (state, scopes)
 
-private def advanceParserContext (context : Parser.ParserModuleContext) (scopes : ParserScopes)
-    (command : Syntax) : Parser.ParserModuleContext × ParserScopes :=
+private def advanceParserContext (state : ParserState) (scopes : ParserScopes)
+    (command : Syntax) : ParserState × ParserScopes :=
   match command.getKind with
-  | ``Parser.Command.open => (openParserNamespaces context command[1], scopes)
-  | ``Parser.Command.set_option => (setParserOption context command, scopes)
-  | ``Parser.Command.namespace => enterParserScopes context scopes command[1].getId true
+  | ``Parser.Command.open => (openParserNamespaces state command[1], scopes)
+  | ``Parser.Command.set_option => (setParserOption state command, scopes)
+  | ``Parser.Command.namespace => enterParserScopes state scopes command[1].getId true
   | ``Parser.Command.section =>
-    if command[2][0].isIdent then enterParserScopes context scopes command[2][0].getId false
-    else (context, context :: scopes)
+    if command[2][0].isIdent then enterParserScopes state scopes command[2][0].getId false
+    else (state, state :: scopes)
   | ``Parser.Command.end =>
     let count := max 1 command[1][0].getId.getNumParts
-    (scopes[count - 1]?.getD context, scopes.drop count)
-  | _ => (context, scopes)
+    (scopes[count - 1]?.getD state, scopes.drop count)
+  | _ => (state, scopes)
 
 private partial def hasInheritance (stx : Syntax) : Bool :=
   (match stx with
@@ -113,11 +125,11 @@ private def parseSourceWith (env : Environment) (path text : String) : CoreM Par
     let (_, state, messages) ← liftM <| Parser.parseHeader input
     if messages.hasErrors then return { commands := #[], failure? := some (parserFailure messages) }
     let rec loop (fuel : Nat) (state : Parser.ModuleParserState)
-        (context : Parser.ParserModuleContext) (scopes : ParserScopes) (parsed : ParsedSource) : ParsedSource :=
+        (parserState : ParserState) (scopes : ParserScopes) (parsed : ParsedSource) : ParsedSource :=
       match fuel with
       | 0 => { parsed with failure? := parsed.failure?.or (some "Owning source parser exhausted its progress bound") }
       | fuel + 1 => Id.run do
-        let (command, next, messages) := Parser.parseCommand input context state {}
+        let (command, next, messages) := Parser.parseCommand input parserState.context state {}
         let parsed := if messages.hasErrors && parsed.failure?.isNone then
           { parsed with failure? := some (parserFailure messages) }
         else parsed
@@ -127,16 +139,16 @@ private def parseSourceWith (env : Environment) (path text : String) : CoreM Par
         -- Keep only independently parsed commands. The first syntax returned
         -- during recovery can start inside the damaged command.
         if state.recovering || next.recovering || messages.hasErrors then
-          return loop fuel next context scopes parsed
+          return loop fuel next parserState scopes parsed
         if command.isOfKind `Verso.Doc.Concrete.replaceDoc then
           let parsed := { parsed with commands := parsed.commands.push command }
-          return match parseIncrementalDocument input context command with
+          return match parseIncrementalDocument input parserState.context command with
           | .ok document => { parsed with incrementalDocument? := some document }
           | .error failure => { parsed with failure? := parsed.failure?.or (some failure) }
-        let (context, scopes) := advanceParserContext context scopes command
-        return loop fuel next context scopes { parsed with
+        let (parserState, scopes) := advanceParserContext parserState scopes command
+        return loop fuel next parserState scopes { parsed with
           commands := parsed.commands.push command }
-    return loop (text.utf8ByteSize + 1) state { env, options := {} } [] { commands := #[] }
+    return loop (text.utf8ByteSize + 1) state { context := { env, options := {} } } [] { commands := #[] }
   catch _ =>
     return { commands := #[], failure? := some "Owning source parser failed" }
 
@@ -313,35 +325,37 @@ private def checkOwner (request : Request) : CoreM (Except Diagnostic Unit) := d
     return .error <| issue "source-association-unavailable" name "Source module disagrees with current declaration owner"
   return .ok ()
 
-private def versoDocStringKey (doc : Lean.VersoDocString) : String :=
-  toString (repr doc.text) ++ "\n" ++ toString (repr doc.subsections)
-
--- Read direct compiled metadata and compare against Lean's effective internal
--- docstring (`findInternalDocString?`, which resolves private `inheritDocStringExt`
--- first). This lets Lean's real elaborator establish docstring inheritance without
--- re-simulating name resolution from source syntax.
+-- Read direct compiled metadata and verify via Lean's `findInternalDocString?`
+-- (which consults private `inheritDocStringExt` first) that the effective
+-- docstring is the declaration's own entry rather than an inherited one.
+-- Pointer identity (`unsafe ptrEq`) distinguishes distinct `VersoDocString`
+-- entries even when `Repr` elides `ElabInline.custom`/`ElabBlock.custom`
+-- `Dynamic` payloads (such as `{name}` links to different constants). Identical
+-- content deduplicated during `.olean` compaction still requires Lean to expose
+-- `Lean.getInheritedDocStringTarget?` (see UPC-0022).
 private def ownDocstringMetadata (name : Name) : CoreM (Except Diagnostic (Option String)) := do
   let env ← getEnv
-  let direct := Docstring.directCompiled env name
+  let direct ← match Docstring.directCompiled env name with
+    | .ok direct => pure direct
+    | .error .missing =>
+      return .error <| issue "unsupported-docstring" name "No direct own native docstring metadata"
+    | .error .ambiguous =>
+      return .error <| issue "ambiguous-docstring" name "Conflicting own native docstring formats"
   let effective? ← liftM <| Lean.findInternalDocString? env name (includeBuiltin := false)
   match direct, effective? with
-  | .ok (.inl markdown), some (.inl effective) =>
-    if markdown == effective then return .ok (some markdown)
+  | .inl markdown, some (.inl effective) =>
+    if unsafe ptrEq markdown effective && markdown == effective then return .ok (some markdown)
     else
       return .error <| issue "inherited-docstring" name
         "Compiled docstring is inherited from another declaration"
-  | .ok (.inr verso), some (.inr effective) =>
-    if versoDocStringKey verso == versoDocStringKey effective then return .ok none
+  | .inr verso, some (.inr effective) =>
+    if unsafe ptrEq verso effective then return .ok none
     else
       return .error <| issue "inherited-docstring" name
         "Compiled Verso docstring is inherited from another declaration"
-  | .ok _, _ =>
+  | _, _ =>
     return .error <| issue "inherited-docstring" name
       "Compiled docstring is inherited from another declaration"
-  | .error .missing, _ =>
-    return .error <| issue "unsupported-docstring" name "No direct own native docstring metadata"
-  | .error .ambiguous, _ =>
-    return .error <| issue "ambiguous-docstring" name "Conflicting own native docstring formats"
 
 private def preparedAt (request : Request) (ranges : DeclarationRanges)
     (semantics : NativeLean.SemanticContext) :

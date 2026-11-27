@@ -889,6 +889,7 @@ class TestPreviewRuntimeRegressions:
                                         sourceLocation: unavailableSourceLocation
                                     }
                                 ],
+                                nodes: [],
                                 groups: []
                             });
                         }
@@ -1357,6 +1358,7 @@ class TestPreviewRuntimeRegressions:
                                         title: "Missing source location"
                                     }
                                 ],
+                                nodes: [],
                                 groups: [],
                                 graphs: []
                             });
@@ -1489,6 +1491,9 @@ class TestPreviewRuntimeRegressions:
                     bodylessMember: manifest([], [group], [bodylessNodeRow]),
                     unbackedBodylessMember: manifest([], [group], []),
                     missingNodeRow: manifest([entry], [group], []),
+                    omittedNodes: { previews: [entry], groups: [group], graphs: [] },
+                    nullNodes: { nodes: null, previews: [entry], groups: [group], graphs: [] },
+                    objectNodes: { nodes: {}, previews: [entry], groups: [group], graphs: [] },
                     mismatchedBodylessTitle: manifest([], [group], [{
                         ...bodylessNodeRow,
                         bodyless: { ...bodylessNodeRow.bodyless, parentTitle: "Stale group title" }
@@ -1542,6 +1547,9 @@ class TestPreviewRuntimeRegressions:
             "group sample_group member group_member has no matching manifest entry"
             in result["missingNodeRow"]["message"]
         )
+        for bad_nodes_key in ("omittedNodes", "nullNodes", "objectNodes"):
+            assert result[bad_nodes_key]["state"] == "error"
+            assert "missing nodes array" in result[bad_nodes_key]["message"]
         assert result["mismatchedBodylessTitle"]["state"] == "error"
         assert (
             "bodyless node group_member has inconsistent parentTitle"
@@ -1985,6 +1993,7 @@ class TestPreviewRuntimeRegressions:
                             ]
                         }
                     ],
+                    nodes: [],
                     groups: [],
                     graphs: []
                 };
@@ -2236,6 +2245,7 @@ class TestPreviewRuntimeRegressions:
                             ]
                         }
                     ],
+                    nodes: [],
                     groups: [],
                     graphs: []
                 };
@@ -2532,6 +2542,7 @@ class TestPreviewRuntimeRegressions:
                             sources: []
                         }
                     ],
+                    nodes: [],
                     groups: [],
                     graphs: []
                 };

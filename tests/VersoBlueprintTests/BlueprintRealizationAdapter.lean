@@ -1043,10 +1043,18 @@ run_cmd liftTermElabM do
   let untouchedExportSibling := ``RealizationParserFixture.ExportShadow.Other.target
   discard <| obtain (← select selected text)
   discard <| obtain (← select untouchedExportSibling text)
+  let versoDirect ← obtain (← select ``RealizationParserFixture.versoLinkDirect text)
+  ensure (versoDirect.format == `verso && versoDirect.rawDocstring == " {name (full := Int.add)}`add` ")
+    "Direct uninherited Verso link docstring should select cleanly"
+  let openedScoped ← obtain (← select ``openedThenScoped text)
+  ensure (openedScoped.format == `markdown &&
+      openedScoped.rawDocstring == " A preceding open participates in resolving a subsequent open scoped. ")
+    "Preceding open should participate in resolving a subsequent open scoped"
   for inheritedName in #[
       ``RealizationParserFixture.standaloneInherited,
       ``RealizationParserFixture.renamedInherited,
-      ``RealizationParserFixture.ExportShadow.Before.target] do
+      ``RealizationParserFixture.ExportShadow.Before.target,
+      ``RealizationParserFixture.versoLinkInherited] do
     match ← select inheritedName text with
     | .error diagnostic =>
       ensure (diagnostic.code == "inherited-docstring" && diagnostic.subject == inheritedName.toString)

@@ -802,18 +802,18 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
       }
       matchedMembers.add(label);
     }
-    const hasNodesArray = Array.isArray(nodes);
-    const nodeLabels = new Set();
-    if (hasNodesArray) {
-      nodes.forEach(function (row) {
-        if (!row || typeof row !== "object") return;
-        const label = typeof row.label === "string" ? row.label.trim() : "";
-        if (label) nodeLabels.add(label);
-        if (row.bodyless && typeof row.bodyless === "object") {
-          checkJoin("bodyless node " + label, row.label, row.bodyless.parent, row.bodyless.parentTitle);
-        }
-      });
+    if (!Array.isArray(nodes)) {
+      throw new Error("Blueprint manifest is missing nodes array");
     }
+    const nodeLabels = new Set();
+    nodes.forEach(function (row) {
+      if (!row || typeof row !== "object") return;
+      const label = typeof row.label === "string" ? row.label.trim() : "";
+      if (label) nodeLabels.add(label);
+      if (row.bodyless && typeof row.bodyless === "object") {
+        checkJoin("bodyless node " + label, row.label, row.bodyless.parent, row.bodyless.parentTitle);
+      }
+    });
     previews.forEach(function (entry) {
       if (!entry || (entry.targetKind !== "block" && entry.targetKind !== "externalMarkup")) {
         return;
@@ -821,11 +821,11 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
       checkJoin("entry " + entry.key, entry.label, entry.parent, entry.parentTitle);
     });
     // Every group member joins to a preview facet or to the metadata of its bodyless node,
-    // and when `nodes` is present, must have an included node row.
+    // and must have an included node row.
     groupData.groups.forEach(function (group) {
       group.entries.forEach(function (member) {
         const memberLabel = member.label.trim();
-        if (!matchedMembers.has(memberLabel) || (hasNodesArray && !nodeLabels.has(memberLabel))) {
+        if (!matchedMembers.has(memberLabel) || !nodeLabels.has(memberLabel)) {
           throw new Error(
             "Blueprint manifest group " + group.label.trim() + " member " + memberLabel +
               " has no matching manifest entry"

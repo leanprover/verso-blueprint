@@ -102,4 +102,27 @@ export Other (target)
 end Local
 end ExportShadow
 
+section
+set_option doc.verso true
+
+/-- {name (full := Nat.add)}`add` -/
+theorem versoLinkNat : True := True.intro
+
+/-- {name (full := Int.add)}`add` -/
+theorem versoLinkDirect : True := True.intro
+
+/-- {name (full := Int.add)}`add` -/
+theorem versoLinkInherited : True := True.intro
+
+attribute [inherit_doc versoLinkNat] versoLinkInherited
+end
+
 end RealizationParserFixture
+
+section
+open RealizationParserFixture
+open scoped Tokens
+
+/-- A preceding open participates in resolving a subsequent open scoped. -/
+theorem openedThenScoped : ⦉ True ⦊ := True.intro
+end

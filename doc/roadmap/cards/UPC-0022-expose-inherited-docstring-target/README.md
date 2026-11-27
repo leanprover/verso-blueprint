@@ -74,8 +74,10 @@ the degenerate case where a declaration has both an own doc comment and
 ## Current Workaround
 
 `NativeSource.ownDocstringMetadata` compares `Docstring.directCompiled env name`
-against `Lean.findInternalDocString? env name (includeBuiltin := false)` and
-rejects any declaration whose effective docstring differs from its direct
-compiled docstring (plus checks `@[inherit_doc]` in the declaration's own
-modifiers). Once `getInheritedDocStringTarget?` is available in Lean, replace
-the effective-vs-direct comparison with a direct `Option.isSome` check.
+against `Lean.findInternalDocString? env name (includeBuiltin := false)` using
+pointer identity (`unsafe ptrEq`). That catches differing Markdown docstrings
+as well as differing `Lean.VersoDocString` custom `Dynamic` payloads elided by
+`Repr` (such as `{name}` links to different constants), while identical content
+deduplicated during `.olean` compaction remains indistinguishable without
+exposing `inheritDocStringExt`. Once `getInheritedDocStringTarget?` is available
+in Lean, replace this workaround with a direct `Option.isSome` check.
