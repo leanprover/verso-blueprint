@@ -20,6 +20,9 @@ abbrev GroupRelation := Informal.PreviewManifest.GroupRelation
 abbrev PreviewArtifactIndex := Informal.PreviewManifest.PreviewArtifactIndex
 abbrev PersistedGeneratedData := Informal.PreviewManifest.PersistedFiles
 abbrev WorkQueueItem := Informal.PreviewManifest.WorkQueueItem
+abbrev NodeRow := Informal.PreviewManifest.NodeRow
+abbrev NodeOccurrenceMetadata := Informal.PreviewManifest.NodeOccurrenceMetadata
+abbrev ManifestIndex := Informal.PreviewManifest.Index
 
 def defaultSite : FilePath := "_out" / "site"
 
@@ -87,37 +90,43 @@ private def groupRelationJson (group : GroupRelation) : Json :=
     ("entries", Json.arr (group.entries.map relatedEntryJson))
   ]
 
-private def entrySummaryFields (entry : Entry) : List (String × Json) := [
-    ("key", Json.str entry.key),
-    ("label", nameJson entry.label),
-    ("authoredLabel", Json.str entry.authoredLabel),
-    ("title", Json.str entry.title),
-    ("kind", toJson entry.kind),
-    ("facet", toJson entry.facet),
-    ("href", optionStringJson entry.href),
-    ("parent", optionNameJson entry.parent),
-    ("parentTitle", optionStringJson entry.parentTitle),
-    ("ownerDisplayName", optionStringJson entry.ownerDisplayName),
-    ("tags", stringArrayJson entry.tags),
-    ("priority", optionStringJson entry.priority),
-    ("effort", optionStringJson entry.effort),
-    ("leanCodePreviewKeys", stringArrayJson entry.leanCodePreviewKeys)
+private def nodeSummaryFields (node : NodeOccurrenceMetadata) (entry : Option Entry) :
+    List (String × Json) := [
+    ("key", optionStringJson (entry.map (·.key))),
+    ("label", nameJson node.label),
+    ("authoredLabel", Json.str node.authoredLabel),
+    ("title", Json.str node.title),
+    ("kind", toJson node.kind),
+    ("facet", toJson (entry.map (·.facet))),
+    ("href", optionStringJson node.href),
+    ("parent", optionNameJson node.parent),
+    ("parentTitle", optionStringJson node.parentTitle),
+    ("ownerDisplayName", optionStringJson node.ownerDisplayName),
+    ("tags", stringArrayJson node.tags),
+    ("priority", optionStringJson node.priority),
+    ("effort", optionStringJson node.effort),
+    ("leanCodePreviewKeys", stringArrayJson ((entry.map (·.leanCodePreviewKeys)).getD #[]))
   ]
 
-private def entrySummaryJson (entry : Entry) : Json :=
-  Json.mkObj (entrySummaryFields entry)
+private def nodeSummaries (manifest : ManifestFile)
+    (includeNode : NodeOccurrenceMetadata → Option Entry → Bool := fun _ _ => true) : Array Json :=
+  let index := manifest.index
+  manifest.nodes.filterMap fun row => do
+    let node ← index.nodeMetadata? row
+    let entry := index.primaryEntry? row
+    guard (includeNode node entry)
+    return Json.mkObj (nodeSummaryFields node entry)
 
-private def workQueueItemJson (item : WorkQueueItem) : Json :=
-  Json.mkObj <| entrySummaryFields item.entry ++ [
+private def workQueueItemJson (index : ManifestIndex) (item : WorkQueueItem) : Option Json := do
+  let node ← index.nodeMetadata? item.node
+  return Json.mkObj <| nodeSummaryFields node (index.primaryEntry? item.node) ++ [
     ("nextStep", Json.str item.nextStep),
-    ("statementStatus", Json.str item.graphNode.statementStatus.toText),
-    ("proofStatus", Json.str item.graphNode.proofStatus.toText)
+    ("statementStatus", Json.str item.statementStatus.toText),
+    ("proofStatus", Json.str item.proofStatus.toText)
   ]
 
-private def entryGroupJson (manifest : ManifestFile) (entry : Entry) : Json :=
-  match manifest.groupForEntry? entry with
-  | none => Json.null
-  | some group => groupRelationJson group
+private def nodeGroupJson (manifest : ManifestFile) (node : NodeOccurrenceMetadata) : Json :=
+  ((manifest.index.groupForNode? node).map groupRelationJson).getD Json.null
 
 private def entryDetailFields
     (entry : Entry)
@@ -154,11 +163,25 @@ private def entryResponseJson (manifest : ManifestFile) (entry : Entry) : Json :
     ("proof", proof?.map (fun proof => Json.mkObj (entryDetailFields proof)) |>.getD Json.null)
   ]
 
+private def bodylessResponseJson (manifest : ManifestFile) (node : NodeOccurrenceMetadata) : Json :=
+  responseJson <| nodeSummaryFields node none ++ [
+    ("targetKind", Json.null),
+    ("displayCaption", Json.null),
+    ("displayLabel", Json.null),
+    ("statementUses", Json.arr (node.statementUses.map useRefJson)),
+    ("proofUses", Json.arr (node.proofUses.map useRefJson)),
+    ("codeData", Json.null),
+    ("uses", Json.arr (node.uses.map relatedEntryJson)),
+    ("usedBy", Json.arr (node.usedBy.map relatedEntryJson)),
+    ("group", nodeGroupJson manifest node),
+    ("proof", Json.null)
+  ]
+
 /-- Read captured checks and node assessment alongside the per-facet declaration
 inventory observed at registration. -/
-private def entryStatusJson (manifest : ManifestFile) (entry : Entry) : Json := Id.run do
-  let facets := manifest.findBlockEntriesByLabel entry.authoredLabel
-  let assessment? := entry.assessment <|> facets.findSome? (·.assessment)
+private def nodeStatusJson (manifest : ManifestFile) (row : NodeRow) : Json := Id.run do
+  let facets := manifest.findQueryableEntriesByLabel (Informal.PreviewManifest.labelString row.label)
+  let assessment? := row.assessment
   let mut declarations : Array Json := #[]
   let mut nativeDeclarations : Array Json := #[]
   for facet in facets do
@@ -197,7 +220,7 @@ private def entryStatusJson (manifest : ManifestFile) (entry : Entry) : Json := 
         ("externalDeclarationChecks", Json.arr nativeDeclarations),
         ("details", assessment.details)]
   return responseJson [
-    ("label", nameJson entry.label),
+    ("label", nameJson row.label),
     ("asOf", Json.str (if assessment?.isSome then "captured-build" else "uncaptured")),
     ("validation", validation),
     ("sourceDeclarationSnapshots", Json.arr declarations)]
@@ -218,7 +241,8 @@ private def countsJson (counts : Array (String × Nat)) : Json :=
   Json.mkObj (counts.toList.map fun (key, count) => (key, Json.num count))
 
 private def statsJson (manifest : ManifestFile) : Json :=
-  let entries := manifest.queryableStatementEntries
+  let index := manifest.index
+  let entries := manifest.nodes.filterMap index.nodeMetadata?
   let byKind := entries.foldl (fun counts entry => incrementCount counts (kindString entry.kind)) #[]
   let byOwner := entries.foldl
     (fun counts entry => entry.ownerDisplayName.map (incrementCount counts ·) |>.getD counts)
@@ -239,33 +263,30 @@ private def missingLabelJson (label : String) : Json :=
     ("label", Json.str label)
   ]
 
-private def withPrimaryEntry
-    (manifest : ManifestFile) (label : String) (mkJson : Entry → Json) : Json :=
-  match manifest.findPrimaryQueryableEntry? label with
-  | some entry => mkJson entry
-  | none => missingLabelJson label
+private def withNode (manifest : ManifestFile) (label : String)
+    (mkJson : NodeRow → NodeOccurrenceMetadata → Option Entry → Json) : Json :=
+  let index := manifest.index
+  (do
+    let row ← manifest.findNodeRow? label
+    let node ← index.nodeMetadata? row
+    return mkJson row node (index.primaryEntry? row)).getD (missingLabelJson label)
 
-/-- A validated query and the manifest projection needed to execute it. -/
+/-- A validated query of the semantic manifest. -/
 structure QueryPlan where
-  /-- Whether execution requires reconstructing strict graph projections. -/
-  needsGraphData : Bool
-  /-- Execute the validated query against the selected manifest projection. -/
   run : ManifestFile → Json
 
 private structure QuerySelector where
   name : String
   argumentName : String
-  needsGraphData : Bool
   run : Sum (ManifestFile → Json) (String → ManifestFile → Json)
 
 private def QuerySelector.noArg
-    (name : String) (needsGraphData : Bool) (run : ManifestFile → Json) : QuerySelector :=
-  { name, argumentName := "", needsGraphData, run := .inl run }
+    (name : String) (run : ManifestFile → Json) : QuerySelector :=
+  { name, argumentName := "", run := .inl run }
 
 private def QuerySelector.oneArg
-    (name argumentName : String) (needsGraphData : Bool)
-    (run : String → ManifestFile → Json) : QuerySelector :=
-  { name, argumentName, needsGraphData, run := .inr run }
+    (name argumentName : String) (run : String → ManifestFile → Json) : QuerySelector :=
+  { name, argumentName, run := .inr run }
 
 private def QuerySelector.line (selector : QuerySelector) : String :=
   match selector.run with
@@ -276,74 +297,73 @@ private def QuerySelector.plan? (selector : QuerySelector) (args : List String) 
   match selector.run, args with
   | .inl run, [name] =>
       if name == selector.name then
-        some { needsGraphData := selector.needsGraphData, run }
+        some { run }
       else
         none
   | .inr run, [name, argument] =>
       if name == selector.name then
-        some {
-          needsGraphData := selector.needsGraphData
-          run := run argument
-        }
+        some { run := run argument }
       else
         none
   | _, _ => none
 
 private def querySelectors : List QuerySelector := [
-  QuerySelector.noArg "labels" false fun manifest =>
+  QuerySelector.noArg "labels" fun manifest =>
     responseJson [
-      ("labels", Json.arr (manifest.queryableStatementEntries.map entrySummaryJson))
+      ("labels", Json.arr (nodeSummaries manifest))
     ],
-  QuerySelector.oneArg "node" "label" false fun label manifest =>
-    withPrimaryEntry manifest label (entryResponseJson manifest),
-  QuerySelector.oneArg "status" "label" false fun label manifest =>
-    withPrimaryEntry manifest label (entryStatusJson manifest),
-  QuerySelector.oneArg "uses" "label" false fun label manifest =>
-    withPrimaryEntry manifest label fun entry =>
+  QuerySelector.oneArg "node" "label" fun label manifest =>
+    withNode manifest label fun _ node entry =>
+      match entry with
+      | some resource => entryResponseJson manifest resource
+      | none => bodylessResponseJson manifest node,
+  QuerySelector.oneArg "status" "label" fun label manifest =>
+    withNode manifest label fun row _ _ => nodeStatusJson manifest row,
+  QuerySelector.oneArg "uses" "label" fun label manifest =>
+    withNode manifest label fun _ node _ =>
       responseJson [
         ("label", Json.str label),
-        ("statementUses", Json.arr (entry.statementUses.map useRefJson)),
-        ("proofUses", Json.arr (entry.proofUses.map useRefJson)),
-        ("uses", Json.arr (entry.uses.map relatedEntryJson))
+        ("statementUses", Json.arr (node.statementUses.map useRefJson)),
+        ("proofUses", Json.arr (node.proofUses.map useRefJson)),
+        ("uses", Json.arr (node.uses.map relatedEntryJson))
       ],
-  QuerySelector.oneArg "used-by" "label" false fun label manifest =>
-    withPrimaryEntry manifest label fun entry =>
+  QuerySelector.oneArg "used-by" "label" fun label manifest =>
+    withNode manifest label fun _ node _ =>
       responseJson [
         ("label", Json.str label),
-        ("usedBy", Json.arr (entry.usedBy.map relatedEntryJson))
+        ("usedBy", Json.arr (node.usedBy.map relatedEntryJson))
       ],
-  QuerySelector.oneArg "group" "label" false fun label manifest =>
-    withPrimaryEntry manifest label fun entry =>
+  QuerySelector.oneArg "group" "label" fun label manifest =>
+    withNode manifest label fun _ node _ =>
       responseJson [
         ("label", Json.str label),
-        ("group", entryGroupJson manifest entry)
+        ("group", nodeGroupJson manifest node)
       ],
-  QuerySelector.noArg "owners" false fun manifest =>
+  QuerySelector.noArg "owners" fun manifest =>
     responseJson [("owners", stringArrayJson manifest.ownerValues)],
-  QuerySelector.noArg "tags" false fun manifest =>
+  QuerySelector.noArg "tags" fun manifest =>
     responseJson [("tags", stringArrayJson manifest.tagValues)],
-  QuerySelector.noArg "work-queue" true fun manifest =>
+  QuerySelector.noArg "work-queue" fun manifest =>
     responseJson [
-      ("entries", Json.arr (manifest.workQueueItems.map workQueueItemJson))
+      ("entries", Json.arr (manifest.workQueueItems.filterMap (workQueueItemJson manifest.index)))
     ],
-  QuerySelector.noArg "metadata" false fun manifest =>
+  QuerySelector.noArg "metadata" fun manifest =>
     responseJson [
-      ("entries", Json.arr (manifest.metadataEntries.map entrySummaryJson))
+      ("entries", Json.arr (nodeSummaries manifest fun node _ => node.hasTriageMetadata))
     ],
-  QuerySelector.oneArg "search" "text" false fun text manifest =>
+  QuerySelector.oneArg "search" "text" fun text manifest =>
     responseJson [
       ("query", Json.str text),
-      ("labels", Json.arr (manifest.queryableStatementEntries |>.filter
-        (fun entry => entry.matchesText text) |>.map entrySummaryJson))
+      ("labels", Json.arr (nodeSummaries manifest fun node _ => node.matchesText text))
     ],
-  QuerySelector.oneArg "code" "decl" false fun decl manifest =>
+  QuerySelector.oneArg "code" "decl" fun decl manifest =>
     responseJson [
       ("query", Json.str decl),
-      ("labels", Json.arr (manifest.queryableStatementEntries |>.filter
-        (fun entry => entry.matchesCode decl || (manifest.findBlockEntriesByLabel entry.authoredLabel).any
-          (·.matchesCode decl)) |>.map entrySummaryJson))
+      ("labels", Json.arr (nodeSummaries manifest fun node entry =>
+        entry.any (·.matchesCode decl) || (manifest.findBlockEntriesByLabel node.authoredLabel).any
+          (·.matchesCode decl)))
     ],
-  QuerySelector.noArg "stats" false statsJson
+  QuerySelector.noArg "stats" statsJson
 ]
 
 def querySelectorLines : List String :=
@@ -391,12 +411,9 @@ private def readManifestWith
 def readManifestForSite (site : FilePath) : IO ManifestFile :=
   readManifestWith Informal.PreviewManifest.readFile site
 
-/-- Read exactly the manifest projection required by a validated query. -/
-def readManifestForQuery (site : FilePath) (plan : QueryPlan) : IO ManifestFile := do
-  if plan.needsGraphData then
-    readManifestForSite site
-  else
-    readManifestWith Informal.PreviewManifest.readFileWithoutGraphs site
+/-- Read query metadata without reconstructing graph projections. -/
+def readManifestForQuery (site : FilePath) : IO ManifestFile :=
+  readManifestWith Informal.PreviewManifest.readFileWithoutGraphs site
 
 def readHtmlCacheForSite (site : FilePath) : IO HtmlCacheFile := do
   let htmlCachePath ← htmlCachePathForSite site
@@ -610,6 +627,13 @@ def checkGeneratedData (data : PersistedGeneratedData) : Array String :=
         s!"group {Informal.PreviewManifest.labelString group.label}"
         group.entries errors)
     errors
+  let errors := manifest.nodes.foldl (init := errors) fun errors row =>
+    match row.bodyless with
+    | none => errors
+    | some node =>
+      let label := Informal.PreviewManifest.labelString row.label
+      let errors := checkRelatedEntries index s!"uses of {label}" node.uses errors
+      checkRelatedEntries index s!"used-by of {label}" node.usedBy errors
   let errors := checkManifestGroupIntegrity manifest errors
   let errors := checkDefaultPreviews index manifest.previews errors
   manifest.graphs.foldl (fun errors graph => checkGraphPreviewKeys index graph errors) errors

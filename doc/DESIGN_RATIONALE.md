@@ -565,8 +565,7 @@ and DOT are not rebuilt.
 Generated-data readers preserve the same boundary without charging every
 semantic query for projections it cannot consume. The general manifest reader
 strictly reconstructs graph topology and DOT variants from semantic nodes and
-rejects mismatches; `vbp check` and the graph-backed `work-queue` selector use
-that reader. Other `vbp query` selectors remove the top-level graph array before
+rejects mismatches during `vbp check`. Semantic queries, including the work queue, read the captured node catalog and remove the top-level graph array before
 decoding because they do not consume graph projections. They still validate the
 manifest schema and decode all queryable semantic data, while avoiding graph and
 DOT rematerialization on graph-free planning-data paths. Query arguments are

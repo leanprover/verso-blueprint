@@ -259,10 +259,6 @@ structure BlockMetadata where
   issueUrl : Option String := none
   /-- A requested external statement is shown only when capture verifies its current bytes. -/
   adoptedStatementAvailable : Option Bool := none
-  /-- Current captured realization assessment. `none` means this rendering
-  projection has no captured snapshot; consumers must never infer completion
-  from the legacy declaration display payload in that case. -/
-  assessment : Option Realizations.NodeAssessment := none
 deriving Inhabited, Repr, BEq, FromJson, ToJson, Quote
 
 /--
@@ -331,6 +327,10 @@ The shared node record used by capture, traversal, and manifest construction.
 Traversal supplies the canonical occurrence; semantic metadata is captured once.
 -/
 structure RenderNode extends BlockMetadata where
+  /-- Current captured realization assessment. `none` means this rendering
+  projection has no captured snapshot; consumers must never infer completion
+  from the legacy declaration display payload in that case. -/
+  assessment : Option Realizations.NodeAssessment := none
   kind : Data.NodeKind := .lemma
   externalRefs : Array Data.ExternalRef := #[]
   proofExternalRefs : Array Data.ExternalRef := #[]
@@ -343,6 +343,10 @@ deriving FromJson, ToJson, Quote
 
 /-- A resolved rendering view, assembled from a node and a document occurrence. -/
 structure BlockData extends BlockMetadata, BlockPresentation where
+  /-- Current captured realization assessment. `none` means this rendering
+  projection has no captured snapshot; consumers must never infer completion
+  from the legacy declaration display payload in that case. -/
+  assessment : Option Realizations.NodeAssessment := none
   /-- Mathematical kind, independent of the rendered facet. -/
   kind : Data.NodeKind := .lemma
   isProof : Bool := false
@@ -401,6 +405,7 @@ def BlockData.toOccurrence (data : BlockData) : BlockOccurrence := {
 }
 
 def RenderNode.resolve (node : RenderNode) (occurrence : BlockOccurrence) : BlockData := {
+  assessment := node.assessment
   toBlockMetadata := node.toBlockMetadata
   kind := node.kind
   isProof := occurrence.isProof
@@ -421,6 +426,7 @@ def BlockData.foldInformalShell (data : BlockData) : Bool :=
 
 /-- Build a synthetic rendering node explicitly, without requiring a Lean environment. -/
 def RenderNode.ofBlockData (data : BlockData) : RenderNode := {
+  assessment := data.assessment
   toBlockMetadata := data.toBlockMetadata
   kind := data.kind
   externalRefs := if data.isProof then #[] else data.codeData.map (·.externalDecls) |>.getD #[]

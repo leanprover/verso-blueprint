@@ -112,8 +112,7 @@ persisted, copied, or externally supplied output; it deliberately performs
 stricter cross-artifact and graph-projection checks than ordinary semantic
 queries. It also reports generated Verso chapter pages outside the current
 section routes in the site's `xref.json`, which can remain after a chapter
-rename or removal. The graph-backed `work-queue` selector also retains strict graph
-decoding; graph-free selectors avoid materializing graph projections. Query
+rename or removal. The `work-queue` selector reads the manifest's semantic node catalog and skips graph reconstruction. Query
 arguments are parsed into a validated plan before any generated file is read,
 so unknown or malformed selectors fail without paying manifest-decoding cost.
 

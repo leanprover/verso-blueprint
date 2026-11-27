@@ -481,7 +481,9 @@ their subjects, requirements, and observations. Prose without an explicit
 assessment requirement remains unassessed. Source-only previews say validation is
 unavailable until captured. Declaration-panel snapshots are display inventory.
 
-This changes the graph payload to schema version 6. Consumers should use the
+The generated manifest (version 14) records one node per included label. A bodyless node can still have an actionable proof. A second rendered view of a label does not increase its count.
+
+The graph payload uses schema version 7. Consumers should use the
 exported `assessment` and `actionableStage`, rather than reconstructing readiness
 from graph colors. The status query's `complete` and `declarations` are
 replaced by `validation` and `sourceDeclarationSnapshots`; the latter

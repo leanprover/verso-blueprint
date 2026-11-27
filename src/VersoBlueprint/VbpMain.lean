@@ -467,7 +467,7 @@ def query (args : List String) : IO UInt32 := do
           pure 0
       | .ok (some plan) =>
           try
-            let manifest ← VersoBlueprint.Vbp.readManifestForQuery opts.site plan
+            let manifest ← VersoBlueprint.Vbp.readManifestForQuery opts.site
             printJson (plan.run manifest)
             pure 0
           catch err =>

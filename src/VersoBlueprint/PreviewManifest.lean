@@ -683,7 +683,7 @@ This is a VBP stale-artifact diagnostic marker, not a public interchange
 version. It may change whenever the generated-data reader needs a clean
 validation boundary.
 -/
-def manifestInternalSchemaVersion : Nat := 13
+def manifestInternalSchemaVersion : Nat := 14
 
 def manifestInternalSchemaVersionField : String := "vbpInternalSchemaVersion"
 
@@ -977,7 +977,8 @@ def Entry.primarySource? (entry : Entry) : Option Informal.Source.Ref :=
   entry.sources[0]?
 
 /-- Convert manifest entry metadata to the shared informal block model. -/
-def Entry.blockData (entry : Entry) : Informal.BlockData := {
+def Entry.blockData (entry : Entry) (assessment : Option Realizations.NodeAssessment := none) : Informal.BlockData := {
+  assessment
   toBlockMetadata := entry.toBlockMetadata
   kind := entry.kind.getD .theorem
   isProof := entry.facet == .proof
@@ -1006,7 +1007,41 @@ def Entry.heading (entry : Entry) (displayLabelOverride? : Option String := none
   let label := ((displayLabelOverride? <|> entry.displayLabel).getD fallbackLabel).trimAscii.toString
   { caption, label }
 
+/-- Display information independent of a rendered preview resource. -/
+structure NodeOccurrenceMetadata extends Informal.BlockMetadata where
+  authoredLabel : String := labelString label
+  kind : Option Informal.Data.NodeKind := none
+  title : String
+  href : Option String := none
+  parentTitle : Option String := none
+  uses : Array RelatedEntry := #[]
+  usedBy : Array RelatedEntry := #[]
+  deriving Inhabited, Repr, ToJson, FromJson
+
+def Entry.nodeMetadata (entry : Entry) : NodeOccurrenceMetadata := {
+  toBlockMetadata := entry.toBlockMetadata
+  authoredLabel := entry.authoredLabel
+  kind := entry.kind
+  title := entry.title
+  href := entry.href
+  parentTitle := entry.parentTitle
+  uses := entry.uses
+  usedBy := entry.usedBy
+}
+
+/-- One included label and its independently captured assessment. A resource
+supplies its display metadata when present; an occurrence without a resource
+retains its own metadata and has no preview key. -/
+structure NodeRow where
+  label : Name
+  primaryKey : Option String := none
+  bodyless : Option NodeOccurrenceMetadata := none
+  assessment : Option Realizations.NodeAssessment
+  deriving Inhabited, Repr, ToJson, FromJson
+
 structure File where
+  /-- Included Blueprint labels, independent of graph blocks and preview multiplicity. -/
+  nodes : Array NodeRow := #[]
   /--
   Internal generated-data schema marker for VBP tooling; not part of the public
   interface.
@@ -1242,11 +1277,13 @@ deriving Inhabited, Repr
 
 structure Index where
   entriesByKey : Std.HashMap String Entry := {}
+  nodesByLabel : Std.HashMap Name NodeRow := {}
   groupsByLabel : Std.HashMap Name GroupRelation := {}
 deriving Inhabited
 
 def Index.ofFile (file : File) : Index := {
   entriesByKey := file.previews.foldl (fun entries entry => entries.insert entry.key entry) {}
+  nodesByLabel := file.nodes.foldl (fun nodes row => nodes.insert row.label row) {}
   groupsByLabel := file.groups.foldl (fun groups group => groups.insert group.label group) {}
 }
 
@@ -1262,6 +1299,12 @@ def File.findEntry? (file : File) (key : String) : Option Entry :=
 def Index.findGroup? (index : Index) (label : Name) : Option GroupRelation :=
   index.groupsByLabel.get? label
 
+def Index.primaryEntry? (index : Index) (row : NodeRow) : Option Entry :=
+  (row.primaryKey.bind index.findEntry?).filter (·.label == row.label)
+
+def Index.nodeMetadata? (index : Index) (row : NodeRow) : Option NodeOccurrenceMetadata :=
+  (index.primaryEntry? row).map Entry.nodeMetadata <|> row.bodyless
+
 private def GroupRelation.withoutMember (group : GroupRelation) (label : Name) : GroupRelation :=
   { group with entries := group.entries.filter (fun member => member.label != label) }
 
@@ -1270,6 +1313,11 @@ def Index.groupForEntry? (index : Index) (entry : Entry) : Option GroupRelation 
   let parent ← entry.parent
   let group ← index.findGroup? parent
   pure (group.withoutMember entry.label)
+
+def Index.groupForNode? (index : Index) (node : NodeOccurrenceMetadata) : Option GroupRelation := do
+  let parent ← node.parent
+  let group ← index.findGroup? parent
+  pure (group.withoutMember node.label)
 
 /-- Group metadata for an entry, with the current node removed from the member list. -/
 def File.groupForEntry? (file : File) (entry : Entry) : Option GroupRelation := do
@@ -1402,6 +1450,10 @@ def File.finalizePreviewReferences
     (file : File) (index : PreviewArtifactIndex) : File :=
   {
     file with
+      nodes := file.nodes.map fun row => { row with bodyless := row.bodyless.map fun node => {
+        node with
+        uses := node.uses.map (RelatedEntry.finalizePreviewReferences index)
+        usedBy := node.usedBy.map (RelatedEntry.finalizePreviewReferences index) } }
       previews := file.previews.map (Entry.finalizePreviewReferences index)
       groups := file.groups.map (GroupRelation.finalizePreviewReferences index)
       graphs := file.graphs.map (graphFinalizePreviewReferences index)
@@ -1544,14 +1596,33 @@ def File.entriesForSourceDocument (file : File) (id : String) : Array Entry :=
 def File.blockStatementEntries (file : File) : Array Entry :=
   file.previews.filter (fun entry => entry.isBlock && entry.isStatement)
 
-/--
-Statement-facet entries that should be visible as Blueprint nodes to query
-clients. Bodyless source-backed nodes are exported as external-markup entries,
-but they still carry the same semantic label, dependency, ownership, and source
-metadata as block entries.
--/
-def File.queryableStatementEntries (file : File) : Array Entry :=
-  file.previews.filter (·.isQueryableStatement)
+/-- Give each included label one row. A block statement supplies its primary metadata
+ahead of an external markup statement or a proof-only resource. -/
+def collectNodeRows (entries : Array Entry) (assessmentFor : Name → Option Realizations.NodeAssessment) :
+    Array NodeRow := Id.run do
+  let mut order := #[]
+  let mut primary : Std.HashMap Name (Nat × String) := {}
+  for entry in entries do
+    unless entry.isBlock || entry.isExternalMarkup do continue
+    let rank := if entry.isBlock && entry.isStatement then 0 else if entry.isExternalMarkup then 1 else 2
+    match primary.get? entry.label with
+    | none => order := order.push entry.label
+    | some (oldRank, _) => if oldRank ≤ rank then continue
+    primary := primary.insert entry.label (rank, entry.key)
+  return order.map fun label => {
+    label, primaryKey := (primary.get? label).map (·.2), assessment := assessmentFor label }
+
+/-- One primary metadata resource per included semantic label. -/
+def File.nodeEntries (file : File) : Array Entry :=
+  let index := file.index
+  file.nodes.filterMap index.primaryEntry?
+
+def File.findNodeRow? (file : File) (label : String) : Option NodeRow :=
+  file.nodes.find? fun row => labelString row.label == label
+
+private def File.nodeMetadata (file : File) : Array NodeOccurrenceMetadata :=
+  let index := file.index
+  file.nodes.filterMap index.nodeMetadata?
 
 /-- All block entries matching the authored public label string, including non-statement facets. -/
 def File.findBlockEntriesByLabel (file : File) (label : String) : Array Entry :=
@@ -1586,13 +1657,13 @@ Statement entries are primary because most clients ask for node metadata rather
 than a proof-only rendered facet. Bodyless source-backed nodes are represented
 by statement-facet external-markup entries and participate in the same lookup.
 -/
-def File.findPrimaryQueryableEntry? (file : File) (label : String) : Option Entry :=
-  let entries := file.findQueryableEntriesByLabel label
-  entries.find? (·.isStatement) <|> entries[0]?
+def File.findPrimaryQueryableEntry? (file : File) (label : String) : Option Entry := do
+  let row ← file.findNodeRow? label
+  file.index.primaryEntry? row
 
 /-- Sorted owner names present on queryable statement entries. -/
 def File.ownerValues (file : File) : Array String :=
-  let owners := file.queryableStatementEntries.foldl (init := #[]) fun owners entry =>
+  let owners := file.nodeMetadata.foldl (init := #[]) fun owners entry =>
       match entry.ownerDisplayName with
       | none => owners
       | some owner => pushUnique owners owner
@@ -1600,55 +1671,34 @@ def File.ownerValues (file : File) : Array String :=
 
 /-- Sorted tag values present on queryable statement entries. -/
 def File.tagValues (file : File) : Array String :=
-  let tags := file.queryableStatementEntries.foldl (init := #[]) fun tags entry =>
+  let tags := file.nodeMetadata.foldl (init := #[]) fun tags entry =>
       entry.tags.foldl pushUnique tags
   tags.qsort (· < ·)
 
 /-- Queryable statement entries carrying owner, tag, priority, or effort metadata. -/
-def File.metadataEntries (file : File) : Array Entry :=
-  file.queryableStatementEntries.filter fun entry =>
-    entry.ownerDisplayName.isSome || entry.priority.isSome ||
-      entry.effort.isSome || !entry.tags.isEmpty
+def NodeOccurrenceMetadata.hasTriageMetadata (node : NodeOccurrenceMetadata) : Bool :=
+  node.ownerDisplayName.isSome || node.priority.isSome ||
+    node.effort.isSome || !node.tags.isEmpty
 
-private def File.actionableGraphNodeWithStep? (file : File) (label : Name) :
-    Option (Informal.Graph.NodeData × String) :=
-  file.graphs.findSome? fun graph =>
-    graph.nodes.findSome? fun node =>
-      if node.label == label then
-        node.actionableStage?.map fun nextStep => (node, nextStep)
-      else
-        none
-
-/-- First finalized graph node showing an actionable next step for `label`. -/
-def File.actionableGraphNode? (file : File) (label : Name) : Option Informal.Graph.NodeData :=
-  (file.actionableGraphNodeWithStep? label).map (·.1)
-
-/-- A queryable statement entry paired with its actionable finalized graph status. -/
+/-- Captured actionable work for one included semantic label. -/
 structure WorkQueueItem where
-  /-- Queryable statement-level manifest entry. -/
-  entry : Entry
-  /-- Matching finalized graph node whose status makes the entry actionable. -/
-  graphNode : Informal.Graph.NodeData
-  /-- Actionable formalization track, either `"statement"` or `"proof"`. -/
+  node : NodeRow
+  statementStatus : Graph.StatementStatus
+  proofStatus : Graph.ProofStatus
   nextStep : String
 
-/--
-Queryable statement entries paired with their actionable finalized graph status.
-
-Finalized graph nodes are the generated planning source of truth. This query
-does not infer readiness from entry metadata; a manifest without matching graph
-nodes therefore has an empty work queue.
--/
 def File.workQueueItems (file : File) : Array WorkQueueItem :=
-  file.queryableStatementEntries.filterMap fun entry => do
-    let (graphNode, nextStep) ← file.actionableGraphNodeWithStep? entry.label
-    pure { entry, graphNode, nextStep }
+  file.nodes.filterMap fun row => do
+    let assessment ← row.assessment
+    let nextStep ← Graph.actionableStageForAssessment? assessment
+    let (statementStatus, proofStatus) := Graph.statusesForAssessment assessment
+    return { node := row, statementStatus, proofStatus, nextStep }
 
 private def containsSearchText (text value : String) : Bool :=
   value.toLower.contains text
 
 /-- Case-insensitive text search over user-facing block manifest fields. -/
-def Entry.matchesText (entry : Entry) (query : String) : Bool :=
+def NodeOccurrenceMetadata.matchesText (entry : NodeOccurrenceMetadata) (query : String) : Bool :=
   let text := query.toLower
   containsSearchText text entry.authoredLabel ||
     containsSearchText text entry.title ||
@@ -1697,27 +1747,51 @@ private def checkManifestInternalSchema (json : Json) : Except String Unit := do
     .error <| unsupportedManifestSchemaMessage
       s!"found `{manifestInternalSchemaVersionField}` {version}, expected {manifestInternalSchemaVersion}"
 
-def readFile (path : System.FilePath) : IO File := do
+/-- A persisted catalog has exactly one row per included label. Its primary key
+must name that label's preferred resource, and captured graph occurrences must
+agree with the same assessment used by queries. -/
+private def File.validateNodes (file : File) : Except String Unit := do
+  let expected := collectNodeRows file.previews (fun _ => none)
+  let index := file.index
+  unless index.nodesByLabel.size == file.nodes.size do
+    throw "missing or duplicate Blueprint node rows"
+  let primary := expected.foldl (init := ({} : Std.HashMap Name String)) fun rows row =>
+    row.primaryKey.elim rows (fun key => rows.insert row.label key)
+  for row in expected do
+    unless (index.nodesByLabel.get? row.label).any (·.primaryKey == row.primaryKey) do
+      throw s!"incorrect primary resource for Blueprint node {row.label}"
+  for row in file.nodes do
+    match row.primaryKey, row.bodyless with
+    | some key, none =>
+      unless primary.get? row.label == some key do
+        throw s!"incorrect primary resource for Blueprint node {row.label}"
+    | none, some data =>
+      unless data.label == row.label && data.authoredLabel == labelString row.label &&
+          !(primary.contains row.label) do
+        throw s!"incorrect bodyless metadata for Blueprint node {row.label}"
+    | _, _ => throw s!"expected either a primary resource or bodyless metadata for Blueprint node {row.label}"
+  for graph in file.graphs do
+    for node in graph.nodes do
+      if let some row := index.nodesByLabel.get? node.label then
+        unless node.assessment == row.assessment do
+          throw s!"graph occurrence disagrees with the node assessment for {node.label}"
+
+private def readManifest (path : System.FilePath) (includeGraphs : Bool) : IO File := do
   let json ← readJsonFile path "Blueprint manifest"
-  match checkManifestInternalSchema json with
-  | .ok () => decodeJsonAs path "Blueprint manifest" json
+  let result : Except String File := do
+    checkManifestInternalSchema json
+    discard <| json.getObjVal? "nodes"
+    let file : File ← fromJson? (if includeGraphs then json else json.setObjVal! "graphs" (Json.arr #[]))
+    file.validateNodes
+    return file
+  match result with
+  | .ok file => return file
   | .error err => throw <| IO.userError s!"could not decode Blueprint manifest {path}: {err}"
 
-/--
-Read the semantic projection consumed by graph-free `vbp query` selectors
-without materializing graph render projections they do not read.
+def readFile (path : System.FilePath) : IO File := readManifest path true
 
-The manifest schema and every non-graph field are decoded normally. Use
-`readFile` for artifact audits: its strict `GraphData` decoder reconstructs and
-checks derived edges, groups, preview mappings, and DOT variants.
--/
-def readFileWithoutGraphs (path : System.FilePath) : IO File := do
-  let json ← readJsonFile path "Blueprint manifest"
-  match checkManifestInternalSchema json with
-  | .ok () =>
-      decodeJsonAs path "Blueprint manifest" <|
-        json.setObjVal! "graphs" (Json.arr #[])
-  | .error err => throw <| IO.userError s!"could not decode Blueprint manifest {path}: {err}"
+/-- Read semantic node rows and preview metadata without reconstructing graph layouts. -/
+def readFileWithoutGraphs (path : System.FilePath) : IO File := readManifest path false
 
 private structure SchemaState where
   seen : Std.HashSet Name := {}
@@ -2049,6 +2123,31 @@ private def buildUsesRelations (state : TraverseState) (data : Informal.BlockDat
 
 private def buildUsedByRelations (state : TraverseState) (data : Informal.BlockData) : Array RelatedEntry :=
   (Informal.RelatedPanel.usedByEntries state data).map RelatedEntry.ofPanel
+
+private def buildNodeRows (state : TraverseState) (logError : String → IO Unit)
+    (previews : Array Entry) : IO (Array NodeRow) := do
+  let mut nodes := collectNodeRows previews fun label =>
+    (TraversalIndex.Nodes.node? state label).bind (·.assessment)
+  let resources := nodes.foldl (init := ({} : NameSet)) fun labels row => labels.insert row.label
+  for decoded in TraversalIndex.Nodes.entries state do
+    match decoded with
+    | .error error =>
+      logError s!"Blueprint manifest: malformed node {error.canonicalName}: {error.message}"
+    | .ok stored =>
+      let data := stored.data
+      unless resources.contains data.label do
+        let reference := RenderingResolution.referenceOfData state data
+        nodes := nodes.push {
+          label := data.label, assessment := data.assessment
+          bodyless := some {
+            toBlockMetadata := data.toBlockMetadata
+            kind := some data.kind
+            title := reference.title
+            href := reference.href
+            parentTitle := blockParentTitle? state data
+            uses := buildUsesRelations state data
+            usedBy := buildUsedByRelations state data } }
+  return nodes
 
 private def groupRelationHeader
     (state : TraverseState)
@@ -2487,7 +2586,8 @@ def buildPreviewDataFiles
         (traversalHtml ++ externalMarkupHtml ++ leanCodeHtml ++ citationHtml).qsort
           (fun a b => a.key < b.key)
       pure (previews, groups, htmlEntries)
-  let manifest : File := { previews, groups, sourceDocuments }
+  let nodes ← buildNodeRows state logError previews
+  let manifest : File := { nodes, previews, groups, sourceDocuments }
   let index := PreviewArtifactIndex.ofKeys manifest (htmlEntries.map (·.key)) (pruneMissingCodeFragments := true)
   let index := index.selectDefaults state previews
   let mut graphEntries := #[]

@@ -51,6 +51,7 @@ public def renderedContent?
         let data := ctx.manifestIndex?.bind (·.findEntry? key) |>.bind (·.codeData)
         facts.append (data.getD {})
       pure <| some {
+        assessment := ctx.manifestIndex?.bind (·.nodesByLabel.get? entry.label) |>.bind (·.assessment)
         body := Informal.PreviewManifest.BlockRender.htmlFragment bodyHtml
         codeBodies := codeEntries.map fun (_, html) => Informal.PreviewManifest.BlockRender.htmlFragment html
         codeData

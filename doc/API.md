@@ -728,18 +728,22 @@ scraping rendered HTML.
 
 Lean-side clients that need common manifest queries should use the helper
 methods on `Informal.PreviewManifest.File` rather than reimplementing filters:
-`queryableStatementEntries`, `findQueryableEntriesByLabel`,
+`nodeEntries`, `findQueryableEntriesByLabel`,
 `findPrimaryQueryableEntry?`, `blockStatementEntries`,
 `findBlockEntriesByLabel`, `findPrimaryBlockEntry?`, `sourceDocument?`,
 `entriesWithSource`, `entriesForSourceDocument`, `ownerValues`, `tagValues`,
-`metadataEntries`, `actionableGraphNode?`, and `workQueueItems`.
-`metadataEntries` selects nodes with owner, tag, priority, or effort metadata.
-`workQueueItems` pairs each selected entry with its actionable graph node and
-next step (`"statement"` or `"proof"`).
-`actionableGraphNode?` performs the corresponding lookup for one label.
-Finalized graph data is the generated planning source of truth: these helpers do
-not infer readiness from tags or other entry metadata, and return no work-queue
-item when no matching graph node is present. Use the queryable helpers for the
+and `workQueueItems`.
+The manifest stores one `nodes` row per included Blueprint label. Its `assessment`
+carries the captured validation. When the label has a display resource,
+`primaryKey` identifies it. For a bodyless occurrence, `primaryKey` is null
+and `bodyless` supplies the occurrence metadata and canonical link. The node
+still participates in status, counts and the work queue.
+The internal manifest schema is version 14. Rebuild generated sites to migrate.
+The `metadata` query selects nodes with owner, tag, priority, or effort metadata.
+`workQueueItems` reports the next actionable statement or proof step from each
+node's assessment. A graph-free chapter has the same work queue as one that
+displays those nodes in a graph. Additional markup previews do not increase
+node counts. Use the queryable helpers for the
 same node selection as `lake exe vbp query`; use the block-only helpers when a
 consumer explicitly needs rendered block entries and should exclude
 source-backed bodyless external-markup nodes. Entry-level helpers
@@ -927,7 +931,9 @@ Generated `blueprint-manifest.json` includes a `graphs` array. Each entry
 contains `schemaVersion`, `nodes`, `edges`, `groups`, and `variants`, with
 status enums, dependency axes, preview keys, hrefs when traversal resolved
 them, and visual metadata for renderers that want Blueprint's default styling.
-Graph schema version 6 retains the private-constructor topology contract and adds
+Graph schema version 7 exports the full legend and, when applicable, the group
+legend in `legends`. A client-created graph uses the same legend as the site.
+The visual fields `gradientangle` and `tooltip` may be omitted. The schema retains the private-constructor topology contract and adds
 `assessment` plus `actionableStage` to every node. An unresolved endpoint has no
 assessment. Version 6 includes `proofRoleComplete` for mathematical proofs. It is
 null when there is no selected proof role. A true result requires a native contract
@@ -1173,10 +1179,9 @@ def renderAuditNode
 
 Use `PreviewManifest.File.findEntry?` and
 `PreviewManifest.HtmlCache.File.findHtml?` when you need direct lookup. For
-client-facing node lists, prefer
-`PreviewManifest.File.queryableStatementEntries` and
-`findPrimaryQueryableEntry?` so label/facet selection matches the generated
-`vbp` query API, including source-backed bodyless external-markup nodes. Code
+client-facing node lists, use `PreviewManifest.File.nodes` or `vbp query labels`.
+`nodeEntries` and `findPrimaryQueryableEntry?` select existing display resources.
+A bodyless occurrence has a node row even when it supplies no preview resource. Code
 panels can reuse `HtmlCache.File.codeHtmlBodies`.
 
 `renderNodeFromManifestCache` has three diagnostic branches that custom
