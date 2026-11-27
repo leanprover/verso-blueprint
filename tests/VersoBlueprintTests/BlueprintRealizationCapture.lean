@@ -14,6 +14,9 @@ set_option trace.blueprint.capture true
 
 namespace RealizationCaptureFixture
 
+-- Recipe steps are projections of raw registrations, never independent inputs.
+#check_failure (fun (p : Informal.Realizations.Capture.Plan) => { p with ordinary := #[] })
+
 /-- Native validity does not require an independent restatement. -/
 @[blueprint "capture.complete"]
 theorem complete : True := True.intro

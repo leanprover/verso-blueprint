@@ -233,8 +233,14 @@ families read the file at `sourcePath?`. -/
 structure NativeRequest where
   context : Context
   name : Name
+  /-- Permissive authoring can retain an unresolved spelling. Only resolved
+  associations establish an identity that capture may inspect. -/
+  present : Bool := true
   moduleName? : Option Name := none
   sourcePath? : Option String := none
+  /-- The attribute's own prose selection may spell the same physical file
+  differently from the native association. -/
+  prosePath? : Option String := none
   /-- An adopted source must still be owned by this imported Lake package. -/
   package? : Option String := none
   range? : Option DeclarationRange := none
@@ -244,7 +250,7 @@ structure NativeRequest where
 instance : Hashable NativeRequest := ⟨fun request => hash (request.context, request.name, request.sourcePath?)⟩
 
 def NativeRequest.ofAssociation (context : Context) (association : NativeAssociation) : NativeRequest := {
-  context, name := association.reference.canonical
+  context, name := association.reference.canonical, present := association.reference.present
   moduleName? := association.reference.provenance.moduleName?
   sourcePath? := association.reference.provenance.sourcePath?
   range? := association.reference.range?, selectionRange? := association.reference.selectionRange? }
@@ -318,8 +324,12 @@ structure DeclarationStep where
   check : CheckRequest
   deriving Inhabited
 
+private def DeclarationStep.hasCheck (step : DeclarationStep) : Bool :=
+  step.native.any (·.present) || !step.inline.isEmpty
+
 private structure NativeDeclarationResult where
   name : Name
+  roles : Array Name := #[]
   prepared : Except (Array Diagnostic) NativeSource.Prepared
   checked : Except Diagnostic NativeLean.CheckedDeclaration
 
@@ -342,6 +352,7 @@ structure AuthoredStep where
 /-- The ordered assembly recipe owns its typed requests. Structural errors are
 checked by the recipe at the position where they arise. -/
 structure Plan where
+  private mk ::
   raw : Raw
   ordinary : Array NodeStep := #[]
   authored : Array AuthoredStep := #[]
@@ -369,7 +380,7 @@ def Plan.documented (p : Plan) : Array NativeRequest :=
   p.sources.filterMap (fun step => step.documented.bind Except.toOption)
 
 def Plan.checks (p : Plan) : Array CheckRequest :=
-  p.declarations.map (·.check)
+  (p.declarations.filter DeclarationStep.hasCheck).map (·.check)
 
 def Plan.expected (p : Plan) : Array ExpectedRequest :=
   p.authored.flatMap (·.goals)
@@ -420,7 +431,8 @@ def plan (raw : Raw) : Plan := Id.run do
               association.context == ⟨`lean, source.context.project⟩
           match selected.toList.eraseDups.toArray with
           | #[association] =>
-            documented := some (.ok (NativeRequest.ofAssociation association.context association))
+            documented := some (.ok { NativeRequest.ofAssociation association.context association with
+              prosePath? := some source.document.path })
           | _ =>
             documented := some (.error {
               code := "ambiguous-docstring", subject := label.toString,
@@ -496,6 +508,9 @@ private def readDocument (reader : System.FilePath → IO String) (key : Documen
 
 private def request (job : NativeRequest) : CoreM (Except Diagnostic NativeSource.Request) := do
   let name := job.name
+  unless job.present do return .error {
+    code := "missing-declaration", subject := name.toString
+    message := "This attachment did not resolve in its authoring environment" }
   let env ← getEnv
   unless (env.checked.get.find? name).isSome do
     return .error {
@@ -555,7 +570,10 @@ private def prepareNative [Monad m] (providers : Providers m) (step : Declaratio
     | return .error #[{ code := "source-association-unavailable", subject := name.toString, message := "No owning source association" }]
   if prepared.any (fun other => other.ranges.range != first.ranges.range ||
       other.ranges.selectionRange != first.ranges.selectionRange ||
-      other.moduleName != first.moduleName || other.declaration != first.declaration) then
+      other.moduleName != first.moduleName || other.declaration != first.declaration ||
+      other.roles != first.roles || other.statementContext != first.statementContext ||
+      other.semanticContext != first.semanticContext ||
+      canonical other.semanticDiagnostics != canonical first.semanticDiagnostics) then
     return .error #[{ code := "ambiguous-source", subject := name.toString, message := "Competing owning sources for the same declaration" }]
   return .ok first
 
@@ -583,7 +601,7 @@ private def Plan.scheduledChecks (p : Plan) : Array (Name × ObjectKey) := Id.ru
     for step in node.realizations do
       unless (realizationContext node.label step).isOk do return requests
       for declaration in step.declarations do
-        requests := requests.push (declaration.check.project, declaration.check.witness)
+        if declaration.hasCheck then requests := requests.push (declaration.check.project, declaration.check.witness)
   return requests
 
 private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : ExceptT (Array Diagnostic) m Collected := do
@@ -608,21 +626,26 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
       let mut declarationResults : Array NativeDeclarationResult := #[]
       for declarationStep in step.declarations do
         let prepared ← prepareNative providers declarationStep
-        let checked ← providers.check declarationStep.check
-        if let .ok checked := checked then
-          collected := { collected with nativeChecks := collected.nativeChecks.insert checked.declaration checked }
-        if let (.ok prepared, .ok checked) := (prepared, checked) then
-          if prepared.roles != checked.roles then
-            collected := { collected with sourceDiagnostics := collected.sourceDiagnostics.addNode label #[{
-                code := "native-role-disagreement", subject := declarationStep.name.toString,
-                message := "Owning-source and native-check classifications disagree" }] }
-        declarationResults := declarationResults.push {
-          name := declarationStep.name, prepared, checked }
-      let checkedRoles := declarationResults.filterMap fun declaration =>
-        match declaration.checked, declaration.prepared with
-        | .ok checked, _ => some (declaration.name, checked.roles)
-        | .error _, .ok prepared => some (declaration.name, prepared.roles)
-        | _, _ => none
+        let checked ← if declarationStep.hasCheck then providers.check declarationStep.check else pure (.error {
+          code := "missing-declaration", subject := declarationStep.name.toString
+          message := "No resolved native attachment to check" })
+        let result : NativeDeclarationResult := { name := declarationStep.name, prepared, checked }
+        if let (.ok source, .ok check) := (prepared, checked) then
+          if source.roles != check.roles then
+            let issue : Diagnostic := {
+              code := "native-role-disagreement", subject := declarationStep.name.toString
+              message := "Owning-source and native-check classifications disagree" }
+            -- Retain the source's intrinsic roles, but no passing check or
+            -- usable source selection can be borrowed for this owner.
+            declarationResults := declarationResults.push {
+              result with prepared := .error #[issue], checked := .error issue, roles := source.roles }
+            continue
+        if let .ok check := checked then
+          collected := { collected with nativeChecks := collected.nativeChecks.insert check.declaration check }
+        declarationResults := declarationResults.push { result with roles :=
+          (checked.toOption.map (·.roles) <|> prepared.toOption.map (·.roles)).getD #[] }
+
+      let checkedRoles := declarationResults.map fun result => (result.name, result.roles)
       let rolesForName (name : Name) : Array Name :=
         (checkedRoles.find? (·.1 == name)).map (·.2) |>.getD #[]
       let declarationRoles (name : Name) : Array Name :=
@@ -1120,7 +1143,7 @@ private def whenOk (agrees : α → Bool) : Except ε α → Bool
   | .error _ => true
 
 private def associatedMatches (request : NativeRequest) (prepared : NativeSource.Prepared) : Bool :=
-  prepared.canonical == request.name &&
+  request.present && prepared.canonical == request.name &&
     prepared.declaration == ⟨⟨`lean, request.context.project⟩, request.name.toString⟩ &&
     request.moduleName?.all (· == prepared.moduleName) &&
     request.range?.all (· == prepared.ranges.range) &&
@@ -1150,7 +1173,7 @@ def evaluate (p : Plan) (observations : Observations) : Except (Array Diagnostic
       answerFor "documented" request.name.toString documented request
         (whenOk fun value => associatedMatches request value.toPrepared &&
           value.document.key.context == ⟨`lean, request.context.project⟩ &&
-          request.sourcePath?.all (· == value.document.key.path))
+          (request.prosePath? <|> request.sourcePath?).all (· == value.document.key.path))
     check := fun request =>
       answerFor "check" request.witness.native checks request (whenOk fun value =>
         value.declaration == request.witness && value.rolesAgree)
@@ -1235,7 +1258,15 @@ def observe (p : Plan) (readFile : System.FilePath → IO String := IO.FS.readFi
         | .ok request =>
           match ← sourcePath job request with
           | .error issue => pure (.error issue)
-          | .ok path => NativeSource.prepareDocumented request path reader semantics parse
+          | .ok path =>
+            if let some selected := job.prosePath? then
+              if selected != path then
+                let sameFile ← try pure ((← IO.FS.realPath selected) == (← IO.FS.realPath path))
+                  catch _ => pure false
+                unless sameFile do return .error {
+                  code := "source-selection-unavailable", subject := job.name.toString
+                  message := "The attribute and native association select different physical files" }
+            NativeSource.prepareDocumented request (job.prosePath?.getD path) reader semantics parse
       check := fun job => answerOnce checks job do
         unless ← preparedBatch.get do
           NativeLean.prepareDeclarations inspection p.scheduledChecks
