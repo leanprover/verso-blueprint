@@ -313,7 +313,6 @@
  *
  * @typedef {Object} BlueprintManifestEntry
  * @property {BlueprintCodeData|null} codeData Declaration status facts for this facet as of generation.
- * @property {BlueprintNodeAssessment|null} assessment Captured node assessment; null when no admitted Blueprint node was captured for this entry.
  * @property {string} key Canonical manifest key.
  * @property {"block" | "leanDecl" | "inlineLeanCode" | "citation" | "externalMarkup"} targetKind Target family for interpreting `key` and `label`.
  * @property {string} [label] Canonical Blueprint node label when available.
@@ -367,7 +366,45 @@
  * @property {number} selectedLeanUseCount Nonnegative integer count of ordinary native uses assessed in their exact contexts, including failed selections.
  * @property {boolean} statementDependenciesComplete Whether the selected statement-axis prerequisites complete.
  * @property {boolean} proofDependenciesComplete Whether the selected proof-axis prerequisites complete.
- * @property {Record<string, unknown>} details Safe current requirements, captured selected-use scopes/results, and diagnostics.
+ * @property {Record<string, unknown> | null} details Safe current requirements, captured selected-use scopes/results, and diagnostics.
+ */
+
+/**
+ * Display data retained for an occurrence without a rendered preview resource.
+ *
+ * @typedef {Object} BlueprintNodeOccurrenceMetadata
+ * @property {string} label Canonical Blueprint node label.
+ * @property {string} authoredLabel Authored display label.
+ * @property {string} title Display title.
+ * @property {string | null} kind Blueprint declaration kind.
+ * @property {string | null} href Link to the canonical occurrence.
+ * @property {string | null} parent Parent group label.
+ * @property {string | null} parentTitle Parent group title.
+ * @property {string | null} owner Assigned owner identifier.
+ * @property {string | null} ownerDisplayName Assigned owner's display name.
+ * @property {string | null} ownerUrl Assigned owner's link.
+ * @property {string | null} ownerImageUrl Assigned owner's image URL.
+ * @property {string[]} tags Authored topic tags.
+ * @property {string | null} effort Authored effort estimate.
+ * @property {string | null} priority Authored triage priority.
+ * @property {string | null} prUrl Associated pull request.
+ * @property {string | null} issueUrl Associated tracking issue.
+ * @property {boolean | null} adoptedStatementAvailable Current verification of a requested external statement.
+ * @property {BlueprintUseRef[]} statementUses Direct statement dependencies.
+ * @property {BlueprintUseRef[]} proofUses Direct proof dependencies.
+ * @property {BlueprintRelatedEntry[]} uses Related dependencies.
+ * @property {BlueprintRelatedEntry[]} usedBy Related dependents.
+ */
+
+/**
+ * Semantic node row in the manifest's top-level `nodes` array. Each row
+ * has either a primary resource or bodyless occurrence metadata.
+ *
+ * @typedef {Object} BlueprintManifestNode
+ * @property {string} label Canonical label, listed once per included node.
+ * @property {string | null} primaryKey Manifest resource supplying the node's display metadata.
+ * @property {BlueprintNodeOccurrenceMetadata | null} bodyless Display metadata when no primary resource exists.
+ * @property {BlueprintNodeAssessment | null} assessment Captured assessment, independent of graph and preview occurrences.
  */
 
 /**
@@ -381,8 +418,8 @@
  * @property {string} penwidth Border width.
  * @property {string} fontcolor Font color.
  * @property {number} peripheries Number of node outlines.
- * @property {string | null} gradientangle Graphviz gradient angle, when present.
- * @property {string | null} tooltip Tooltip text, when present.
+ * @property {string | null} [gradientangle] Graphviz gradient angle, when present.
+ * @property {string | null} [tooltip] Tooltip text, when present.
  */
 
 /**
@@ -428,7 +465,7 @@
  * @property {string} label Canonical Blueprint node label.
  * @property {string} title Resolved display title.
  * @property {string} displayLabel Short display label.
- * @property {string | null} kind Node kind, when available.
+ * @property {"definition" | "proposition" | "lemma" | "theorem" | "corollary" | null} kind Node kind, when available.
  * @property {string | null} parent Parent/group label, when available.
  * @property {string | null} href Link to the canonical generated node, when available.
  * @property {string | null} previewKey Preview key advertised by this graph record, when available.
@@ -443,6 +480,40 @@
  */
 
 /**
+ * The style of one sample in a graph legend.
+ *
+ * @typedef {Object} BlueprintGraphLegendSwatch
+ * @property {string} background Swatch fill color.
+ * @property {string} borderColor Swatch border color.
+ * @property {number} borderWidth Swatch border width in pixels.
+ * @property {string} borderStyle Swatch CSS border style.
+ * @property {string} borderRadius Swatch CSS border radius.
+ */
+
+/**
+ * @typedef {Object} BlueprintGraphLegendItem
+ * @property {string} label Visible legend explanation.
+ * @property {BlueprintGraphLegendSwatch | null} [swatch] Example of the described appearance.
+ */
+
+/**
+ * @typedef {Object} BlueprintGraphLegendGroup
+ * @property {string} key Stable key within a legend.
+ * @property {string} title Legend group heading.
+ * @property {string | null} [summary] Short description of the group.
+ * @property {BlueprintGraphLegendItem[]} items Legend explanations in display order.
+ */
+
+/**
+ * Legend section selected by Lean for a graph view.
+ *
+ * @typedef {Object} BlueprintGraphLegend
+ * @property {"full" | "group"} kind Graph view whose appearance this legend explains.
+ * @property {string} note Explanation of the selected graph view.
+ * @property {BlueprintGraphLegendGroup[]} groups Legend groups in display order.
+ */
+
+/**
  * Graph data exported by the Blueprint manifest or embedded in a graph page.
  *
  * Node `statementUses`, `proofUses`, and `parent` fields are topology projections.
@@ -452,11 +523,12 @@
  * from that topology at the graph finalization boundary.
  *
  * @typedef {Object} BlueprintGraphData
- * @property {6} schemaVersion Current finalized graph payload schema version.
+ * @property {7} schemaVersion Current finalized graph payload schema version.
  * @property {string} key Stable graph/block key.
  * @property {BlueprintGraphNode[]} nodes Graph node payloads.
  * @property {BlueprintGraphEdge[]} edges Derived, deduplicated graph edge payloads with dangling sources omitted.
  * @property {BlueprintGraphGroup[]} groups Group metadata with membership derived from node parents.
+ * @property {BlueprintGraphLegend[]} legends The full legend and, when the group variant exists, the group legend.
  * @property {BlueprintGraphVariant[]} variants Precomputed DOT variants for the bundled graph renderer. The first variant is `full`; keys are unique, and select/hover mappings target keys in this array.
  */
 

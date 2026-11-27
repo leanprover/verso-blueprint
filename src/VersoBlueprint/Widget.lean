@@ -327,9 +327,7 @@ def buildFromCapture (label : Name)
     let previewSelection? := adoptedPreview? <|> PreviewSource.environmentSelection? env label
     let graphModel := Informal.Graph.buildModel snapshot #[label] (groupTitles := state.groups.toArray)
     let dot := graphModel.toDotWith { direction := .LR } Informal.Graph.GraphDotStyle.compact
-    let includeMathlibLegend :=
-      graphModel.nodes.any (fun node => node.visual.color == Informal.Graph.statementBorderMathlibColor)
-    let legend := toJson (Informal.Graph.graphLegendGroups includeMathlibLegend)
+    let legend := toJson graphModel.fullLegend.groups
     let assessment := snapshot.assessmentFor label
     pure {
       dot, previewSelection?, legend

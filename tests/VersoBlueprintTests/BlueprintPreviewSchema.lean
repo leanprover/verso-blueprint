@@ -17,6 +17,10 @@ private def integerSchema (schema : Json) : Bool :=
 private def refSchema (expected : String) (schema : Json) : Bool :=
   (schema.getObjValAs? String "$ref" |>.toOption) == some expected
 
+private def arrayOfRef (expected : String) (schema : Json) : Bool :=
+  (schema.getObjValAs? String "type" |>.toOption) == some "array" &&
+    (schema.getObjVal? "items").toOption.any (refSchema expected)
+
 private def schemaHasValueNull (valueSchema : Json → Bool) (schema : Json) : Bool :=
   match schema.getObjValAs? (Array Json) "anyOf" with
   | .error _ => false
@@ -138,6 +142,7 @@ private def checkObjectSchema (name : String) (fields : Array (String × (Json �
         !fileProps.contains "traverseState" &&
         fileProps.contains "vbpInternalSchemaVersion" &&
         fileRequired.contains manifestInternalSchemaVersionField &&
+        fileProps.contains "nodes" &&
         fileProps.contains "previews" &&
         fileProps.contains "groups" &&
         fileProps.contains "sourceDocuments" &&
@@ -169,6 +174,7 @@ private def checkObjectSchema (name : String) (fields : Array (String × (Json �
         entryProps.contains "foldCodeBlock" &&
         entryProps.contains "externalMarkup" &&
         entryProps.contains "sources" &&
+        !entryProps.contains "assessment" &&
         !entryProps.contains "source" &&
         !entryProps.contains "blocks" &&
         !entryProps.contains "leanCode" &&
@@ -225,6 +231,52 @@ private def checkObjectSchema (name : String) (fields : Array (String × (Json �
         defs.contains "Lean.Lsp.Position" &&
         defs.contains "Informal.Data.NodeKind" &&
         defs.contains "Informal.PreviewCache.Facet"
+
+#guard_msgs in
+#eval checkObjectSchema "Informal.PreviewManifest.File" #[
+  ("nodes", arrayOfRef "#/$defs/Informal.PreviewManifest.NodeRow")
+]
+
+#guard_msgs in
+#eval checkObjectSchema "Informal.PreviewManifest.NodeRow" #[
+  ("label", stringSchema),
+  ("primaryKey", schemaHasStringNull),
+  ("bodyless", schemaHasRefNull "#/$defs/Informal.PreviewManifest.NodeOccurrenceMetadata"),
+  ("assessment", schemaHasRefNull "#/$defs/Informal.Realizations.NodeAssessment")
+]
+
+#guard_msgs in
+#eval checkObjectSchema "Informal.Graph.GraphData" #[
+  ("legends", arrayOfRef "#/$defs/Informal.Graph.Legend")
+]
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let visual : Informal.Graph.NodeVisual := { fillcolor := "#fff" }
+  let encoded := toJson visual
+  !(encoded.getObjVal? "gradientangle").isOk && !(encoded.getObjVal? "tooltip").isOk
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let node : Informal.Graph.NodeData := {
+    label := `legend, title := "Legend", displayLabel := "Legend"
+    statementStatus := .mathlib
+    visual := { fillcolor := "#fff", color := "#000" } }
+  let model : Informal.Graph.GraphModel := { nodes := #[node] }
+  let ordinary : Informal.Graph.GraphModel := { nodes := #[{ node with
+    statementStatus := .ready
+    visual.color := Informal.Graph.statementBorderMathlibColor }] }
+  let mentionsMathlib (legend : Informal.Graph.Legend) :=
+    legend.groups.any (·.items.any (·.label == "In Mathlib"))
+  let graph := model.finish "legend" {}
+  mentionsMathlib graph.legends[0]! && !mentionsMathlib ordinary.fullLegend &&
+    match (toJson graph).getObj? with
+    | .error _ => false
+    | .ok fields =>
+      let forged := Json.obj (fields.insert "legends" (.arr #[]))
+      (fromJson? (α := Informal.Graph.GraphData) forged).isError
 
 #guard_msgs in
 #eval checkObjectSchema "Informal.Source.Document" #[

@@ -145,7 +145,7 @@ export function readGraphJsonScript(root, selector) {
   }
 }
 
-const graphDataSchemaVersion = 6;
+const graphDataSchemaVersion = 7;
 
 /**
  * @param {unknown} value
@@ -171,6 +171,21 @@ function isTrimmedNonemptyString(value) {
   return typeof value === "string" && value.length > 0 && value === value.trim();
 }
 
+/** @param {unknown} value @returns {boolean} */
+function isNullableString(value) {
+  return value === null || typeof value === "string";
+}
+
+/** @param {unknown} value @returns {boolean} */
+function isNaturalNumber(value) {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+/** @param {unknown} value @param {string[]} choices @returns {boolean} */
+function isChoice(value, choices) {
+  return typeof value === "string" && choices.includes(value);
+}
+
 /**
  * @param {unknown} value
  * @returns {boolean}
@@ -194,21 +209,86 @@ function isNodeAssessment(value) {
   ];
   return fields.every((field) => typeof value[field] === "boolean") &&
     (value.proofRoleComplete === null || typeof value.proofRoleComplete === "boolean") &&
-    typeof value.selectedLeanUseCount === "number" &&
-    Number.isSafeInteger(value.selectedLeanUseCount) && value.selectedLeanUseCount >= 0 &&
-    isRecord(value.details);
+    isNaturalNumber(value.selectedLeanUseCount) &&
+    (value.details === null || isRecord(value.details));
+}
+
+/** @param {unknown} value @returns {boolean} */
+function isUseRef(value) {
+  return isRecord(value) && isTrimmedNonemptyString(value.label) &&
+    isChoice(value.origin, ["manual", "automatic"]) &&
+    isChoice(value.intent, ["regular", "auxiliary", "technical"]);
+}
+
+/** @param {unknown} value @returns {boolean} */
+function isNodeVisual(value) {
+  return isRecord(value) &&
+    ["shape", "style", "fillcolor", "color", "penwidth", "fontcolor"]
+      .every((field) => typeof value[field] === "string") &&
+    isNaturalNumber(value.peripheries) &&
+    (value.gradientangle === undefined || isNullableString(value.gradientangle)) &&
+    (value.tooltip === undefined || isNullableString(value.tooltip));
 }
 
 /** @param {unknown} value @returns {boolean} */
 function isGraphNode(value) {
-  if (!isRecord(value) || !Object.prototype.hasOwnProperty.call(value, "assessment") ||
-      !Object.prototype.hasOwnProperty.call(value, "actionableStage")) return false;
+  if (!isRecord(value) || !Object.hasOwn(value, "assessment") || !Object.hasOwn(value, "actionableStage")) {
+    return false;
+  }
+  if (!isTrimmedNonemptyString(value.label) || typeof value.title !== "string" ||
+      typeof value.displayLabel !== "string" ||
+      !["parent", "href", "previewKey"].every((field) => isNullableString(value[field]))) return false;
+  if (value.kind !== null && !isChoice(value.kind,
+    ["definition", "proposition", "lemma", "theorem", "corollary"])) return false;
+  if (!Array.isArray(value.statementUses) || !value.statementUses.every(isUseRef) ||
+      !Array.isArray(value.proofUses) || !value.proofUses.every(isUseRef) || !isNodeVisual(value.visual)) return false;
+  if (!isChoice(value.statementStatus, ["unassessed", "blocked", "ready", "formalized", "mathlib"]) ||
+      !isChoice(value.proofStatus, ["unassessed", "none", "ready", "incomplete", "formalized", "formalizedWithAncestors"])) return false;
   if (value.assessment !== null && !isNodeAssessment(value.assessment)) return false;
   if (value.actionableStage !== null &&
       value.actionableStage !== "statement" && value.actionableStage !== "proof") return false;
   return isRecord(value.warnings) && typeof value.warnings.unknownRef === "boolean" &&
     !Object.prototype.hasOwnProperty.call(value.warnings, "leanOnlyNoStatement") &&
     !Object.prototype.hasOwnProperty.call(value.warnings, "missingExternalDecl");
+}
+
+/** @param {unknown} value @returns {boolean} */
+function isGraphEdge(value) {
+  return isRecord(value) && isTrimmedNonemptyString(value.source) &&
+    isTrimmedNonemptyString(value.target) && Array.isArray(value.axes) &&
+    value.axes.every((axis) => axis === "statement" || axis === "proof");
+}
+
+/** @param {unknown} value @returns {boolean} */
+function isGraphGroup(value) {
+  return isRecord(value) && isTrimmedNonemptyString(value.label) && typeof value.title === "string" &&
+    typeof value.declared === "boolean" && Array.isArray(value.children) &&
+    value.children.every(isTrimmedNonemptyString);
+}
+
+/** @param {unknown} value @returns {boolean} */
+function isLegendSwatch(value) {
+  return isRecord(value) &&
+    ["background", "borderColor", "borderStyle", "borderRadius"]
+      .every((field) => typeof value[field] === "string") &&
+    isNaturalNumber(value.borderWidth);
+}
+
+/** @param {unknown} value @returns {boolean} */
+function isLegendGroup(value) {
+  return isRecord(value) && isTrimmedNonemptyString(value.key) && typeof value.title === "string" &&
+    (value.summary === undefined || isNullableString(value.summary)) &&
+    Array.isArray(value.items) && value.items.every((item) =>
+      isRecord(item) && typeof item.label === "string" &&
+      (item.swatch === undefined || item.swatch === null || isLegendSwatch(item.swatch)));
+}
+
+/** @param {unknown} legends @param {boolean} hasGroup @returns {boolean} */
+function areGraphLegendsValid(legends, hasGroup) {
+  const kinds = hasGroup ? ["full", "group"] : ["full"];
+  return Array.isArray(legends) && legends.length === kinds.length && legends.every((legend, index) =>
+    isRecord(legend) && legend.kind === kinds[index] && typeof legend.note === "string" &&
+    Array.isArray(legend.groups) && legend.groups.length > 0 && legend.groups.every(isLegendGroup));
 }
 
 /**
@@ -275,9 +355,8 @@ function areGraphVariantsValid(variants) {
  *
  * Topology is finalized by Lean before serialization. Browser clients consume
  * that snapshot and do not carry a second implementation of graph finalization.
- * This boundary validates the schema, node assessment/actionability fields,
- * top-level collections, and render-variant contract; it trusts Lean's
- * producer boundary for semantic topology agreement.
+ * This boundary validates the wire shape of nodes, edges, groups, legends and
+ * render variants. Lean finalization supplies their semantic agreement.
  *
  * @param {unknown} rawData Parsed graph JSON.
  * @returns {BlueprintGraphData | null}
@@ -286,15 +365,21 @@ export function decodeGraphData(rawData) {
   if (!isRecord(rawData)) return null;
   const data = /** @type {Record<string, unknown>} */ (rawData);
   if (data.schemaVersion !== graphDataSchemaVersion || !isTrimmedNonemptyString(data.key)) return null;
-  if (!Array.isArray(data.nodes) || !data.nodes.every(isGraphNode) || !Array.isArray(data.edges) ||
-      !Array.isArray(data.groups) || !Array.isArray(data.variants)) return null;
+  if (!Array.isArray(data.nodes) || !data.nodes.every(isGraphNode) ||
+      !Array.isArray(data.edges) || !data.edges.every(isGraphEdge) ||
+      !Array.isArray(data.groups) || !data.groups.every(isGraphGroup) ||
+      !Array.isArray(data.variants)) return null;
   if (!areGraphVariantsValid(data.variants)) return null;
+  if (!areGraphLegendsValid(data.legends, data.variants.some((variant) => variant.key === "group"))) {
+    return null;
+  }
   return {
     schemaVersion: graphDataSchemaVersion,
     key: /** @type {string} */ (data.key),
     nodes: data.nodes,
     edges: data.edges,
     groups: data.groups,
+    legends: /** @type {BlueprintGraphData["legends"]} */ (data.legends),
     variants: data.variants
   };
 }

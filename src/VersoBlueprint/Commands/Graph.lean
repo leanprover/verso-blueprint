@@ -109,17 +109,13 @@ private def graphToHtml
       let some publicGraphData := publicGraphData? | pure .empty
       let publicGraphDataJson : String := Lean.Json.compress (toJson publicGraphData)
       let graphVariants := publicGraphData.variants
-      let hasGroupVariant := graphVariants.any (fun variant => variant.key == groupVariantKey)
       let graphVariantOptions : Array Output.Html :=
         graphVariants.map fun variant => {{
           <option value={{variant.key}}>{{variant.label}}</option>
         }}
-      let includeMathlibLegend :=
-        publicGraphData.nodes.any (fun node => node.visual.color == Informal.Graph.statementBorderMathlibColor)
-      let renderLegend (kind : String) (groups : Array Informal.Graph.LegendGroup)
-          (note? : Option String := none) (hidden : Bool := false) : Output.Html :=
+      let graphLegendHtml : Array Output.Html := publicGraphData.legends.map fun legend =>
         let legendGroupHtml : Array Output.Html :=
-          groups.map fun group =>
+          legend.groups.map fun group =>
             let summaryHtml : Output.Html :=
               match group.summary? with
               | some summary => {{
@@ -153,37 +149,14 @@ private def graphToHtml
                 </div>
               </section>
             }}
-        let noteHtml : Output.Html :=
-          match note? with
-          | some note => {{
-              <p class="bp_graph_legend_note">
-                {{.text false note}}
-              </p>
-            }}
-          | Option.none => .empty
-        if hidden then
-          {{
-            <div class="bp_graph_legend" "data-bp-legend-kind"={{kind}} hidden>
-              {{noteHtml}}
-              {{legendGroupHtml}}
-            </div>
-          }}
-        else
-          {{
-            <div class="bp_graph_legend" "data-bp-legend-kind"={{kind}}>
-              {{noteHtml}}
-              {{legendGroupHtml}}
-            </div>
-          }}
-      let fullLegendHtml :=
-        renderLegend "full" (Informal.Graph.graphLegendGroups includeMathlibLegend)
-          (note? := some Informal.Graph.graphLegendFullViewNote)
-      let groupLegendHtml : Output.Html :=
-        if hasGroupVariant then
-          renderLegend "group" Informal.Graph.groupGraphLegendGroups
-            (note? := some Informal.Graph.graphLegendGroupViewNote) (hidden := true)
-        else
-          .empty
+        let attrs := #[("class", "bp_graph_legend"), ("data-bp-legend-kind", legend.kind)]
+        let attrs := if legend.kind == "full" then attrs else attrs.push ("hidden", "")
+        {{
+          <div {{attrs}}>
+            <p class="bp_graph_legend_note">{{.text false legend.note}}</p>
+            {{legendGroupHtml}}
+          </div>
+        }}
       let graphHtmlAttrs := s.htmlId id
       let graphControlId (suffix : String) : String :=
         match graphHtmlAttrs.findSome? fun
@@ -270,8 +243,7 @@ private def graphToHtml
               <button type="button" class="bp_graph_legend_popover_close" aria-label="Close legend">"Close"</button>
             </div>
             <div class="bp_graph_legend_popover_body">
-              {{fullLegendHtml}}
-              {{groupLegendHtml}}
+              {{graphLegendHtml}}
             </div>
           </div>
           <div id={{graphOptionsPanelId}} class="bp_graph_options_popover" hidden>

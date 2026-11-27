@@ -137,6 +137,42 @@ function graphControlId(data, suffix) {
   return prefixedHtmlId("bp-runtime-graph", (data && data.key ? data.key : "graph") + "-" + runtimeGraphIdCounter) + suffix;
 }
 
+function createLegendSection(doc, legend) {
+  const section = createEl(doc, "div", {
+    class: "bp_graph_legend",
+    "data-bp-legend-kind": legend.kind,
+    hidden: legend.kind !== "full"
+  });
+  section.appendChild(createEl(doc, "p", { class: "bp_graph_legend_note" }, legend.note));
+  for (const group of legend.groups) {
+    const body = createEl(doc, "section", { class: "bp_graph_legend_group" });
+    const header = createEl(doc, "div", { class: "bp_graph_legend_group_header" });
+    header.appendChild(createEl(doc, "span", { class: "bp_graph_legend_group_title" }, group.title));
+    if (group.summary != null) {
+      header.appendChild(createEl(doc, "p", { class: "bp_graph_legend_group_summary" }, group.summary));
+    }
+    body.appendChild(header);
+    const items = createEl(doc, "div", { class: "bp_graph_legend_items" });
+    for (const item of group.items) {
+      const label = createEl(doc, "span", { class: "bp_graph_legend_item" });
+      if (item.swatch) {
+        const swatch = createEl(doc, "span", { class: "bp_graph_legend_swatch" });
+        swatch.style.backgroundColor = item.swatch.background;
+        swatch.style.borderColor = item.swatch.borderColor;
+        swatch.style.borderWidth = String(item.swatch.borderWidth) + "px";
+        swatch.style.borderStyle = item.swatch.borderStyle;
+        swatch.style.borderRadius = item.swatch.borderRadius;
+        label.appendChild(swatch);
+      }
+      label.appendChild(doc.createTextNode(item.label));
+      items.appendChild(label);
+    }
+    body.appendChild(items);
+    section.appendChild(body);
+  }
+  return section;
+}
+
 export function createGraphBlock(graphData, options) {
   const opts = options && typeof options === "object" ? options : {};
   const data = decodeGraphData(graphData);
@@ -189,9 +225,8 @@ export function createGraphBlock(graphData, options) {
   legendHeader.appendChild(createEl(doc, "button", { type: "button", class: "bp_graph_legend_popover_close", "aria-label": "Close legend" }, "Close"));
   legendPopover.appendChild(legendHeader);
   const legendBody = createEl(doc, "div", { class: "bp_graph_legend_popover_body" });
-  legendBody.appendChild(createEl(doc, "div", { class: "bp_graph_legend", "data-bp-legend-kind": "full" }));
-  if (variants.some(function (variant) { return variant.key === "group"; })) {
-    legendBody.appendChild(createEl(doc, "div", { class: "bp_graph_legend", "data-bp-legend-kind": "group", hidden: true }));
+  for (const legend of data.legends) {
+    legendBody.appendChild(createLegendSection(doc, legend));
   }
   legendPopover.appendChild(legendBody);
   block.appendChild(legendPopover);

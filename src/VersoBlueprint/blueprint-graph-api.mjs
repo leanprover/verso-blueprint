@@ -228,10 +228,10 @@ export async function renderGraphs(root, options) {
  *
  * This is useful when a custom browser client loaded graph records with
  * {@link loadGraphs} and wants to insert the same graph block shape used by
- * generated pages. The returned element is not rendered until it is inserted
+ * generated pages, including the legend sections supplied by Lean. The
+ * returned element is not rendered until it is inserted
  * and passed to {@link renderGraphBlock}, or until {@link renderGraphData} is
- * used. Returns `null` when the graph record does not contain valid
- * precomputed render variants.
+ * used. Returns `null` for invalid finalized graph data.
  *
  * @param {BlueprintGraphData} graphData Finalized graph record.
  * @param {BlueprintGraphRenderOptions} [options] Graph render options.
