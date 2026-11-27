@@ -382,6 +382,7 @@ private def keywordTextOfDefinitionSafety (safety : DefinitionSafety) (base : St
   | .safe => base
 
 private def externalDeclPresentation
+    (env : Environment) (decl : Name)
     (declType : Verso.Genre.Manual.Block.Docstring.DeclType) (cinfo : ConstantInfo) :
     ExternalDeclPresentation :=
   let kindMarker := kindMarkerOfDeclType declType
@@ -399,6 +400,14 @@ private def externalDeclPresentation
         kindMarker
         keywordText := keywordTextOfDefinitionSafety defn.safety "def"
       }
+  | .axiomInfo _ =>
+    -- Exported module imports expose body-hidden theorems and definitions as
+    -- `.axiomInfo`; recover their original declaration presentation while
+    -- keeping genuine axioms rendered as `axiom`.
+    match Lean.getOriginalConstKind? env decl with
+    | some .thm => { kindClass := "theorem", kindMarker := "theorem", keywordText := "theorem" }
+    | some .defn => { kindClass := "def", kindMarker := "def", keywordText := "def" }
+    | _ => { kindClass := kindMarker, kindMarker, keywordText := kindMarker }
   | _ =>
       {
         kindClass := kindMarker
@@ -631,7 +640,7 @@ private def renderDeclHtmlDocstringFromInfoE
     if let some s := inductiveCtorsSection? then
       sections := sections.push s
 
-    let presentation := externalDeclPresentation declType cinfo
+    let presentation := externalDeclPresentation env decl declType cinfo
     let signatureHtml ← signatureToHtml presentation.keywordText signature
     let headerMeta := safetyHeaderMeta cinfo ++ renderExternalDeclHeaderMeta declType
 

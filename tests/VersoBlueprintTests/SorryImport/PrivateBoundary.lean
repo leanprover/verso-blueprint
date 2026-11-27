@@ -42,17 +42,36 @@ private unsafe def withPrivateProvider (importAll : Bool) (action : CoreM Bool) 
 /-- info: true -/
 #guard_msgs in
 #eval withPrivateProvider false do
-  -- In exported module imports, `completeBridge` appears as an `.axiomInfo`;
-  -- `registerExternalRef` must still recover its original `.theorem` kind.
+  -- In exported module imports, body-hidden theorems and definitions appear as
+  -- `.axiomInfo`; both `registerExternalRef` and rendered HTML must recover
+  -- their original declaration kind while keeping genuine axioms as `axiom`.
   let env ← getEnv
-  let isAxiom := match env.find? `PrivateSorryBoundary.completeBridge with
+  let isAxiom (name : Name) := match env.find? name with
     | some (.axiomInfo _) => true
     | _ => false
-  let registered ← Informal.registerExternalRef {} (System.FilePath.mk ".") {
-    written := `PrivateSorryBoundary.completeBridge
-    canonical := `PrivateSorryBoundary.completeBridge
-    kind := .definition
-  }
-  return isAxiom && registered.present && registered.kind == .theorem
+  let register (name : Name) (authoredKind : NodeKind) :=
+    Informal.registerExternalRef {} (System.FilePath.mk ".") {
+      written := name, canonical := name, kind := authoredKind
+    }
+  let htmlOf (ref : ExternalRef) : String := match ref.render with
+    | .ok rendered => rendered.html
+    | .error _ => ""
+  let thmRef ← register `PrivateSorryBoundary.completeBridge .definition
+  let defRef ← register `PrivateSorryBoundary.hiddenDef .theorem
+  let axRef ← register `PrivateSorryBoundary.genuineAxiom .theorem
+  let thmHtml := htmlOf thmRef
+  let defHtml := htmlOf defRef
+  let axHtml := htmlOf axRef
+  return isAxiom `PrivateSorryBoundary.completeBridge &&
+    isAxiom `PrivateSorryBoundary.hiddenDef &&
+    isAxiom `PrivateSorryBoundary.genuineAxiom &&
+    thmRef.present && thmRef.kind == .theorem &&
+    thmHtml.contains "data-kind=\"theorem\"" &&
+    thmHtml.contains ">theorem<" && !thmHtml.contains "data-kind=\"axiom\"" &&
+    defRef.present && defRef.kind == .definition &&
+    defHtml.contains "data-kind=\"def\"" &&
+    defHtml.contains ">def<" && !defHtml.contains "data-kind=\"axiom\"" &&
+    axRef.present && axRef.kind == .theorem &&
+    axHtml.contains "data-kind=\"axiom\"" && axHtml.contains ">axiom<"
 
 end Verso.VersoBlueprintTests.SorryImport.PrivateBoundary
