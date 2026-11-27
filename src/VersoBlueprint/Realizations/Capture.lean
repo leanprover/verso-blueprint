@@ -533,11 +533,12 @@ or the owning module's source on the search path. A plain native declaration
 never asks, so a dependency shipped without sources does not affect it. -/
 private def sourcePath (job : NativeRequest) (request : NativeSource.Request) : CoreM (Except Diagnostic String) := do
   if let some pkg := job.package? then
+    -- Package identity is a consumer selection. prepareDocumented verifies
+    -- the path and bytes against that loaded module's artifacts.
     let env ← getEnv
     if let some idx := env.getModuleIdxFor? job.name then
-      if let some owner ← ExternalModuleSource.find? env idx then
-        if owner.package == pkg && owner.module == request.moduleName && job.sourcePath? == some owner.path.toString then
-          return .ok owner.path.toString
+      if env.getModulePackageByIdx? idx == some pkg then
+        if let some path := job.sourcePath? then return .ok path
     return .error {
       code := "source-association-unavailable", subject := job.name.toString
       message := "Adopted docstring no longer belongs to the selected upstream package, module and file" }

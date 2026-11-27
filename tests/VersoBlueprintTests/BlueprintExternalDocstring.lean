@@ -154,7 +154,7 @@ run_cmd liftTermElabM do
   -- come from the ordinary checked environment for every consumer label.
   for (edit, allowed) in #[
       ((fun text : String => text.replace "upstream statement" "upstream statemant"),
-        #["compiled-docstring-mismatch"]),
+        #["source-selection-unavailable"]),
       ((fun text : String => text.replace "Copyright (c) 2026" "Copyright (c) 2027"),
         #["source-selection-unavailable"]),
       ((fun text : String => text.replace "\n" "\r\n"),
