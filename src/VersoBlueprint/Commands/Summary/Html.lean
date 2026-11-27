@@ -118,6 +118,7 @@ private def SummaryHtmlContext.entryRef (ctx : SummaryHtmlContext) (label : Name
   PreviewResources.select ctx.renderPreview (ctx.previewKeys label)
     (fun key => Informal.HoverRender.summaryPreviewWrap labelNode (some label) (some key.value))
     (fun _ => Informal.HoverRender.summaryPreviewWrap labelNode Option.none)
+    (defaultOnly := true)
 
 private def SummaryHtmlContext.declItems (ctx : SummaryHtmlContext) (label : Name)
     (decls : List Name) : Array Output.Html :=

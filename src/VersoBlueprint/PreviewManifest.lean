@@ -302,8 +302,8 @@ Non-visual cache body for a semantic block whose only visible payload is an
 associated Lean-code panel. Browser cache readers reject empty HTML strings, so
 code-only nodes use an explicit inert fragment as their block body.
 -/
-private def codeOnlyBlockPreviewHtml : String :=
-  "<span class=\"bp_code_only_preview_body\" aria-hidden=\"true\"></span>"
+private def codeOnlyBlockPreviewHtml : Output.Html :=
+  .tag "span" #[("class", "bp_code_only_preview_body"), ("aria-hidden", "true")] .empty
 
 private def callbackLogger (logError : String → IO Unit) : Verso.Logger IO where
   log severity text loc := do
@@ -1393,16 +1393,26 @@ def PreviewArtifactIndex.facetKey? (index : PreviewArtifactIndex)
     if index.resolves markupKey then PreviewKey.ofString? markupKey else none
   else none
 
-private def PreviewArtifactIndex.selectDefaults (index : PreviewArtifactIndex) (state : TraverseState)
-    (entries : Array Entry) : PreviewArtifactIndex :=
+private def PreviewArtifactIndex.selectDefaults (index : PreviewArtifactIndex)
+    (entries : Array Entry) (proseKeys : Std.HashSet String) : PreviewArtifactIndex :=
+  let codeKeys := entries.foldl (init := ({} : Std.HashSet String)) fun keys entry =>
+    if entry.codeOnlyPreview then keys.insert entry.key else keys
   let defaultKeys := entries.foldl (init := ({} : Lean.NameMap PreviewKey)) fun keys entry =>
     if (entry.targetKind == .block || entry.targetKind == .externalMarkup) && !keys.contains entry.label then
-      match (PreviewSource.traversalPreviewCandidateKeys state entry.label).find?
-          (fun candidate => index.resolves candidate.value) with
+      let facets := #[PreviewCache.statementKey entry.label, PreviewCache.proofKey entry.label]
+      let prose? := facets.find? fun key => proseKeys.contains key && index.resolves key
+      let code? := facets.find? fun key => codeKeys.contains key && index.resolves key
+      let markup? := (facets.push (PreviewSource.externalMarkupKey entry.label)).find? index.resolves
+      match (prose? <|> code? <|> markup?).bind PreviewKey.ofString? with
       | some key => keys.insert entry.label key
       | none => keys
     else keys
   { index with defaultKeys }
+
+private def PreviewArtifactIndex.defaultMembership (index : PreviewArtifactIndex) : PreviewKey → Bool :=
+  let keys := index.defaultKeys.foldl
+    (fun (keys : Std.HashSet String) _ key => keys.insert key.value) {}
+  fun key => keys.contains key.value
 
 /-- Install the standard page consumers of this output's prepared resources.
 The same availability index feeds relations and authored references; graph pages
@@ -1411,10 +1421,11 @@ these same presentation decisions until the completed resource set is available.
 def Files.withPageExtensions (files : Files) (impls : ExtensionImpls) : ExtensionImpls :=
   let index := PreviewArtifactIndex.ofFiles files
   let available := fun key : PreviewKey => index.resolves key.value
+  let renderPreview := PreviewResources.immediate available index.defaultMembership
   Informal.Commands.withPreparedGraphs impls files.manifest.graphs
-    |> (Informal.Commands.withSummaryPreviewRendering · (PreviewResources.immediate available) (some index.defaultKey?))
-    |> (Inline.withPreviewAvailability · available)
-    |> (Block.withPreviewAvailability · available)
+    |> (Informal.Commands.withSummaryPreviewRendering · renderPreview (some index.defaultKey?))
+    |> (Inline.withPreviewRendering · renderPreview)
+    |> (Block.withPreviewRendering · renderPreview)
 
 private def PreviewArtifactIndex.previewKey?
     (index : PreviewArtifactIndex) (key? : Option Informal.PreviewKey) :
@@ -2248,6 +2259,7 @@ can be resolved. Only the final HTML cache contains opaque serialized bodies. -/
 private structure RenderedResource where
   key : String
   html : Output.Html
+  hasProse : Bool := false
 
 private def buildTraversalEntries
     (impls : ExtensionImpls)
@@ -2265,27 +2277,27 @@ private def buildTraversalEntries
   for (key, resolved?) in inputs do
     if let some resolved := resolved? then
       let entry := resolved.preview
-      let externalBody? := if entry.facet == .statement then
-        Informal.ExternalMarkupRender.previewBody? externalMarkupConfig (externalMarkupArray state entry.label)
-        else none
       if !entry.hasRenderablePreview then
         continue
-      let html ←
+      let prose? ←
         if entry.hasRenderedBody then
           let rendered ← Informal.renderManualBlocksHtmlWithStateAndHovers
             entry.blocks impls state
             (logError := logError) (hoverState := hoverState)
           hoverState := rendered.hoverState
-          let html := rendered.html
-          if PreviewResources.htmlIsBlank html then
-            continue
-          pure html
-        else
-          pure (externalBody?.getD (.text false codeOnlyBlockPreviewHtml))
-      let manifestEntry := { blockEntryOfFacet state resolved with
-        codeOnlyPreview := !entry.hasRenderedBody && externalBody?.isNone }
-      entries := entries.push manifestEntry
-      htmlEntries := htmlEntries.push { key, html }
+          pure (if PreviewResources.htmlIsBlank rendered.html then none else some rendered.html)
+        else pure none
+      let externalBody? := if prose?.isNone && entry.facet == .statement then
+        (Informal.ExternalMarkupRender.previewBody? externalMarkupConfig
+          (externalMarkupArray state entry.label)).filter (!PreviewResources.htmlIsBlank ·)
+        else none
+      let manifestEntry := blockEntryOfFacet state resolved
+      let body? := prose? <|> externalBody?
+      let codeOnly := body?.isNone && !manifestEntry.leanCodePreviewKeys.isEmpty
+      let some html := body? <|> (if codeOnly then some codeOnlyBlockPreviewHtml else none)
+        | continue
+      entries := entries.push { manifestEntry with codeOnlyPreview := codeOnly }
+      htmlEntries := htmlEntries.push { key, html, hasProse := prose?.isSome }
   pure (entries, htmlEntries, hoverState)
 
 private def hasPreviewBackedBlockEntry (entries : Array Entry) (label : Name) : Bool :=
@@ -2589,7 +2601,9 @@ def buildPreviewDataFiles
   let nodes ← buildNodeRows state logError previews
   let manifest : File := { nodes, previews, groups, sourceDocuments }
   let index := PreviewArtifactIndex.ofKeys manifest (htmlEntries.map (·.key)) (pruneMissingCodeFragments := true)
-  let index := index.selectDefaults state previews
+  let proseKeys := traversalHtml.foldl (init := ({} : Std.HashSet String)) fun keys entry =>
+    if entry.hasProse then keys.insert entry.key else keys
+  let index := index.selectDefaults previews proseKeys
   let mut graphEntries := #[]
   for decoded in Informal.GraphApi.cachedEntries state (some index.defaultKey?) do
     match decoded with
@@ -2597,7 +2611,8 @@ def buildPreviewDataFiles
     | .ok stored => graphEntries := graphEntries.push stored.data
   let graphs := graphEntries.qsort (fun a b => a.key < b.key)
   let manifest := { manifest with graphs }
-  let resolve := PreviewResources.finish (fun key => index.resolves key.value)
+  let defaultAvailable := index.defaultMembership
+  let resolve := fun html => PreviewResources.finish (fun key => index.resolves key.value) html defaultAvailable
   let serializeStart ← if verbose then IO.monoMsNow else pure 0
   let resolvedEntries ← htmlEntries.mapM fun entry => do
     let html ← match resolve entry.html with

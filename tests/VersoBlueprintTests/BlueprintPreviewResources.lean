@@ -18,9 +18,10 @@ open Verso.VersoBlueprintTests.Blueprint.Support
     | throw <| IO.userError "Invalid choice A key"
   let some keyB := PreviewKey.ofString? (PreviewCache.statementKey `choice_b)
     | throw <| IO.userError "Invalid choice B key"
-  let a := PreviewResources.deferred keyA (fun _ => .text true "A+") (fun _ => .text true "A-")
-  let b := PreviewResources.deferred keyB (fun _ => .text true "B+") (fun _ => .text true "B-")
-  let nested := PreviewResources.deferred keyA (fun _ => .seq #[a, b]) (fun _ => b)
+  let exact key present absent := PreviewResources.deferred key present absent false
+  let a := exact keyA (fun _ => .text true "A+") (fun _ => .text true "A-")
+  let b := exact keyB (fun _ => .text true "B+") (fun _ => .text true "B-")
+  let nested := exact keyA (fun _ => .seq #[a, b]) (fun _ => b)
   let combined : Output.Html := .seq #[a, b, nested, a]
   let .ok resolved := PreviewResources.finish (· == keyA) combined
     | throw <| IO.userError "Independent choices failed to compose"
@@ -38,10 +39,10 @@ open Verso.VersoBlueprintTests.Blueprint.Support
   let malformed : Output.Html := .tag "verso-blueprint-preview-choice" #[] .empty
   let emptyKey : Output.Html := .tag "verso-blueprint-preview-choice" #[("key", "")]
     (.seq #[.text true "present", .text true "absent"])
-  let presence := PreviewResources.deferred keyA (fun _ => .text true "body") (fun _ => .empty)
+  let presence := exact keyA (fun _ => .text true "body") (fun _ => .empty)
   unless !PreviewResources.htmlIsBlank malformed && !PreviewResources.htmlIsBlank presence do
     throw <| IO.userError "Blank-body filtering concealed an invalid choice"
-  let discarded := PreviewResources.deferred keyA (fun _ => .text true "selected") (fun _ => malformed)
+  let discarded := exact keyA (fun _ => .text true "selected") (fun _ => malformed)
   let .ok selected := PreviewResources.finish (fun _ => true) discarded
     | throw <| IO.userError "Finalization inspected a discarded alternative"
   unless selected.asString == "selected" &&
@@ -401,7 +402,7 @@ private def readFiles (root : System.FilePath) : IO PreviewManifest.PersistedFil
 
 #docs (Manual) proofFallbackDoc "Prepared proof fallback" :=
 :::::::
-:::theorem "blank_statement_with_proof"
+:::theorem "blank_statement_with_proof" (lean := "resourceWitness")
 The statement body will render blank.
 :::
 
@@ -409,11 +410,16 @@ The statement body will render blank.
 The proof's prepared marker.
 :::
 
+:::theorem "blank_statement_with_code" (lean := "resourceWitness")
+This statement body will also render blank.
+:::
+
 :::theorem "references_blank_statement_with_proof"
-This node uses {uses "blank_statement_with_proof"}[].
+This node uses {uses "blank_statement_with_proof"}[] and {uses "blank_statement_with_code"}[].
 :::
 
 {bpref "blank_statement_with_proof"}[Preferred available preview]
+and {bpref "blank_statement_with_code"}[Available Lean preview]
 
 {blueprint_graph}
 
@@ -422,8 +428,10 @@ This node uses {uses "blank_statement_with_proof"}[].
 
 #eval show IO Unit from do
   let label := `blank_statement_with_proof
+  let codeLabel := `blank_statement_with_code
   let statementKey := PreviewCache.statementKey label
   let proofKey := PreviewCache.proofKey label
+  let codeKey := PreviewCache.statementKey codeLabel
   let impls : ExtensionImpls := extension_impls%
   let impls := impls.insertBlock `blankStatementBody {
     traverse := fun _ _ _ => pure none
@@ -436,18 +444,25 @@ This node uses {uses "blank_statement_with_proof"}[].
     (fun _ go container contents =>
       if container.name == ``Informal.Block.informal &&
           (fromJson? (α := BlockOccurrence) container.data).toOption.any
-            (fun occurrence => occurrence.label == label && !occurrence.isProof) then
+            (fun occurrence => (occurrence.label == label || occurrence.label == codeLabel) &&
+              !occurrence.isProof) then
         .other container #[.other { name := `blankStatementBody } #[]]
       else .other container (contents.map go))
   let (blocks, state) ← Informal.traverseManualBlocks blocks (model.withExtensions impls)
   let files ← PreviewManifest.buildPreviewDataFiles impls (fun msg => throw (IO.userError msg))
     (PreviewManifest.PreparedPreviewState.prepare state)
   let index := PreviewManifest.PreviewArtifactIndex.ofFiles files
-  unless !index.resolves statementKey && index.resolves proofKey &&
+  unless index.resolves statementKey && index.resolves proofKey &&
       index.defaultKey? label == PreviewKey.ofString? proofKey &&
-      (index.facetKey? label .statement).isNone &&
-      index.facetKey? label .proof == PreviewKey.ofString? proofKey do
+      index.facetKey? label .statement == PreviewKey.ofString? statementKey &&
+      index.facetKey? label .proof == PreviewKey.ofString? proofKey &&
+      index.defaultKey? codeLabel == PreviewKey.ofString? codeKey do
     throw <| IO.userError "Prepared default or exact-facet availability disagreed with rendered bodies"
+  for key in #[statementKey, codeKey] do
+    unless (files.manifest.findEntry? key).any (fun entry =>
+        entry.codeOnlyPreview && !entry.leanCodePreviewKeys.isEmpty &&
+          entry.leanCodePreviewKeys.all index.resolves) do
+      throw <| IO.userError s!"Missing same-facet Lean fallback for {key}"
   let some graph := files.manifest.graphs[0]? | throw <| IO.userError "Missing fallback graph"
   unless (graph.nodes.find? (·.label == label)).any (fun node =>
       node.previewKey == PreviewKey.ofString? proofKey) &&
@@ -455,9 +470,15 @@ This node uses {uses "blank_statement_with_proof"}[].
     throw <| IO.userError "Prepared graph and variants did not select the available proof"
   let sourceKey := PreviewCache.statementKey `references_blank_statement_with_proof
   let some source := files.manifest.findEntry? sourceKey | throw <| IO.userError "Missing relation source"
-  unless source.uses.any (fun relation =>
-      relation.label == label && relation.previewKey == PreviewKey.ofString? proofKey) do
-    throw <| IO.userError "Persisted relation did not select the available proof"
+  for (target, key) in #[(label, proofKey), (codeLabel, codeKey)] do
+    unless source.uses.any (fun relation =>
+        relation.label == target && relation.previewKey == PreviewKey.ofString? key) do
+      throw <| IO.userError s!"Persisted relation did not select {key}"
+  let some cached := files.htmlCache.findHtml? sourceKey | throw <| IO.userError "Missing cached relation source"
+  unless hasSubstr cached s!"data-bp-preview-key=\"{proofKey}\"" &&
+      hasSubstr cached s!"data-bp-preview-key=\"{codeKey}\"" &&
+      !hasSubstr cached s!"data-bp-preview-key=\"{statementKey}\"" do
+    throw <| IO.userError "Deferred references did not distinguish the default from the exact resource"
   let page ← Informal.renderManualBlocksHtmlWithState blocks (files.withPageExtensions impls) state
   let keyAttr := s!"data-bp-preview-key=\"{proofKey}\""
   let summaryAttrs := s!"data-bp-preview-label=\"{label}\" {keyAttr}"

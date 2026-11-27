@@ -533,7 +533,7 @@ private def panelEntryDataHtml (renderPreview : PreviewResources.Render)
   jsonArrayHtml #[
     scriptJson (.str entry.previewTitle),
     PreviewResources.select renderPreview entry.previewKeys
-      (fun key => scriptJson (.str key.value)) (fun _ => scriptJson Json.null),
+      (fun key => scriptJson (.str key.value)) (fun _ => scriptJson Json.null) (defaultOnly := true),
     scriptJson (.str s!"{entry.label}"),
     scriptJson (optionStringJson entry.href),
     scriptJson (toJson entry.badgeCodes),
@@ -616,6 +616,7 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry)
   if let #[entry] := entries then
     if cfg.singleMode == .inlinePreview then
       return PreviewResources.select renderPreview entry.previewKeys (renderInlinePreview entry) renderPanelShell
+        (defaultOnly := true)
   return renderPanelShell ()
 
 

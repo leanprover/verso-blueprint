@@ -130,6 +130,7 @@ private def informalReferenceToHtml (renderPreview : PreviewResources.Render := 
         | none => {{<span title={{labelText}}>{{content}}</span>}}
       let content := PreviewResources.select renderPreview reference.previewKeys
         (fun key => reference.withPreview key node) (fun _ => node)
+        (defaultOnly := true)
       return {{<span>{{content}}</span>}}
 
 inline_extension Inline.informal (data : InlineData) where
