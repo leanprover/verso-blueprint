@@ -1438,8 +1438,18 @@ class TestPreviewRuntimeRegressions:
                     declared: true,
                     entries: []
                 };
-                function manifest(previews, groups, nodes = []) {
-                    return { nodes, previews, groups, graphs: [] };
+                function manifest(previews, groups, nodes) {
+                    const resolvedNodes = Array.isArray(nodes)
+                        ? nodes
+                        : previews
+                            .filter((item) => item && (item.targetKind === "block" || item.targetKind === "externalMarkup"))
+                            .map((item) => ({
+                                label: item.label,
+                                primaryKey: item.key,
+                                bodyless: null,
+                                assessment: null
+                            }));
+                    return { nodes: resolvedNodes, previews, groups, graphs: [] };
                 }
                 const bodylessNodeRow = {
                     label: "group_member",
@@ -1477,7 +1487,8 @@ class TestPreviewRuntimeRegressions:
                     crossGroupMember: manifest([], [group, crossGroup]),
                     missingMember: manifest([entry], [{ ...group, entries: [] }]),
                     bodylessMember: manifest([], [group], [bodylessNodeRow]),
-                    unbackedBodylessMember: manifest([], [group]),
+                    unbackedBodylessMember: manifest([], [group], []),
+                    missingNodeRow: manifest([entry], [group], []),
                     mismatchedBodylessTitle: manifest([], [group], [{
                         ...bodylessNodeRow,
                         bodyless: { ...bodylessNodeRow.bodyless, parentTitle: "Stale group title" }
@@ -1525,6 +1536,11 @@ class TestPreviewRuntimeRegressions:
         assert (
             "group sample_group member group_member has no matching manifest entry"
             in result["unbackedBodylessMember"]["message"]
+        )
+        assert result["missingNodeRow"]["state"] == "error"
+        assert (
+            "group sample_group member group_member has no matching manifest entry"
+            in result["missingNodeRow"]["message"]
         )
         assert result["mismatchedBodylessTitle"]["state"] == "error"
         assert (
@@ -2501,6 +2517,19 @@ class TestPreviewRuntimeRegressions:
                             sourceLocation: unavailableSourceLocation,
                             externalMarkup: [],
                             sources: []
+                        },
+                        {
+                            key: "proof_missing_cache--proof",
+                            targetKind: "block",
+                            label: "proof_missing_cache",
+                            authoredLabel: "proof_missing_cache",
+                            facet: "proof",
+                            title: "Proof missing cache",
+                            sourceLocation: unavailableSourceLocation,
+                            externalMarkup: [
+                                { language: "markdown", slot: "statement", raw: "Statement only" }
+                            ],
+                            sources: []
                         }
                     ],
                     groups: [],
@@ -2535,6 +2564,13 @@ class TestPreviewRuntimeRegressions:
                     facet: "proof",
                     externalMarkup: { prefer: [{ display: "source" }] }
                 });
+                const proofStatementSlotLeak = await preview.renderNode(proofRenderHost, {
+                    label: "proof_missing_cache",
+                    facet: "proof",
+                    externalMarkup: {
+                        prefer: [{ language: "markdown", display: "source" }]
+                    }
+                });
                 return {
                     resolvedOk: resolved.ok,
                     resolvedReason: resolved.reason,
@@ -2548,6 +2584,8 @@ class TestPreviewRuntimeRegressions:
                     externalProofOk: externalProof.ok,
                     proofExternalFallbackOk: proofExternalFallback.ok,
                     proofExternalFallbackReason: proofExternalFallback.reason,
+                    proofStatementSlotLeakOk: proofStatementSlotLeak.ok,
+                    proofStatementSlotLeakReason: proofStatementSlotLeak.reason,
                     manifestStatus: preview.readManifestStatus(),
                     htmlCacheStatus: preview.readHtmlCacheStatus(),
                     html: host.innerHTML
@@ -2568,6 +2606,8 @@ class TestPreviewRuntimeRegressions:
         assert result["externalProofOk"] is False
         assert result["proofExternalFallbackOk"] is False
         assert result["proofExternalFallbackReason"] == "external-markup-entry-missing"
+        assert result["proofStatementSlotLeakOk"] is False
+        assert result["proofStatementSlotLeakReason"] == "external-markup-missing"
         assert result["manifestStatus"]["state"] == "ready"
         assert result["htmlCacheStatus"]["state"] == "ready"
         assert "Preview body unavailable" in result["html"]

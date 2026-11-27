@@ -142,13 +142,18 @@ private unsafe def renderPreviewBlocksHtmlUsingCaptureUnsafe
   let assessmentFor? (label : Lean.Name) : Option Realizations.NodeAssessment := do
     let snapshot ← snapshot?
     let assessments ← assessments?
-    pure (assessments.getD label (snapshot.assessmentFor label))
+    pure <| match assessments.get? label with
+      | some assessment => assessment
+      | none => snapshot.assessmentFor label
   let nodes := TraversalIndex.Nodes.capture state snapshot? assessmentFor?
   let graph? := snapshot?.map fun snapshot =>
     let assessments := assessments?.getD {}
     Graph.buildModel snapshot (snapshot.registry.nodes.map (·.label))
       (groupTitles := state.groups.toArray)
-      (assessmentFor := fun label => assessments.getD label (snapshot.assessmentFor label))
+      (assessmentFor := fun label =>
+        match assessments.get? label with
+        | some assessment => assessment
+        | none => snapshot.assessmentFor label)
   let impls := TraversalIndex.withInitializer impls fun traverseState =>
     let traverseState := TraversalIndex.Nodes.install traverseState nodes
     match graph? with

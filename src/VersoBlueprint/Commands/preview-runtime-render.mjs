@@ -280,31 +280,33 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
     );
   }
 
-  export function externalMarkupMatchesPreference(markup, preference) {
+  export function externalMarkupMatchesPreference(markup, preference, facet) {
     if (!markup || typeof markup !== "object") return false;
     const language = normalizeExternalMarkupToken(preference && preference.language);
     const slot =
       preference && typeof preference.slot === "string" ? preference.slot.trim() : "";
+    const markupSlot = String(markup.slot || "").trim();
+    if (facet === "proof" && markupSlot !== "proof") return false;
     if (language && normalizeExternalMarkupToken(markup.language) !== language) return false;
-    if (slot && String(markup.slot || "").trim() !== slot) return false;
+    if (slot && markupSlot !== slot) return false;
     return typeof markup.raw === "string" && markup.raw.length > 0;
   }
 
-  export function firstExternalMarkupForPreference(entry, preference) {
+  export function firstExternalMarkupForPreference(entry, preference, facet) {
     const markups =
       entry && Array.isArray(entry.externalMarkup) ? entry.externalMarkup : [];
     return markups.find(function (markup) {
-      return externalMarkupMatchesPreference(markup, preference);
+      return externalMarkupMatchesPreference(markup, preference, facet);
     }) || null;
   }
 
-  export function selectExternalMarkup(entry, preferences) {
+  export function selectExternalMarkup(entry, preferences, facet) {
     let missingRenderer = null;
     let missingMarkupPreference = null;
     for (const preference of preferences) {
       if (!preference || typeof preference !== "object") continue;
       if (isNativeMarkupPreference(preference)) continue;
-      const markup = firstExternalMarkupForPreference(entry, preference);
+      const markup = firstExternalMarkupForPreference(entry, preference, facet);
       if (!markup) {
         if (!missingMarkupPreference) missingMarkupPreference = preference;
         continue;
@@ -614,7 +616,7 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
       return result;
     }
 
-    const selection = selectExternalMarkup(manifestEntry, preferences);
+    const selection = selectExternalMarkup(manifestEntry, preferences, normalized.facet);
     if (!selection.ok) {
       const preference = selection.preference || {};
       const result = renderNodePreviewResult({
