@@ -73,19 +73,19 @@ generated data also prints an error to stderr and exits nonzero.
 All query commands print compact JSON for agent consumption. The JSON shape is fully unstable today; do not treat it as a compatibility contract. Top-level query objects include `"apiStability":"unstable"`. Query arguments are validated before generated data is read, so unknown or malformed selectors do not require a built site. Query reads the semantic manifest only for valid selectors; use `check` when you need to validate the rendered HTML cache as well.
 
 - `selectors`: query selector forms supported by this `vbp` binary. This selector does not require generated Blueprint data.
-- `labels`: statement-level Blueprint block summaries.
-- `node <label>`: one complete block entry with title, kind, href, parent/group, owner/tags/priority/effort, statement/proof uses, reverse uses, group data, and Lean preview keys.
+- `labels`: summaries for all included Blueprint nodes in `manifest.nodes` (including statement blocks, external-markup statements, proof-only nodes, and bodyless nodes).
+- `node <label>`: one complete node entry with title, kind, href, parent/group, owner/tags/priority/effort, statement/proof uses, reverse uses, group data, and Lean preview keys (or bodyless occurrence metadata when no preview resource exists).
 - `status <label>`: the generated capture's native checks and full labeled assessments. Returns `asOf: "captured-build"` or `"uncaptured"`, `validation` (including `captured`, native statement/proof results, selected-dependency results and `details`), and display-only `sourceDeclarationSnapshots`.
 - `uses <label>`: statement/proof dependencies and resolved related entries for one label.
 - `used-by <label>`: reverse dependencies for one label.
 - `group <label>`: group metadata and sibling entries for one label, when present.
-- `owners` and `tags`: distinct values from statement-level block entries.
+- `owners` and `tags`: distinct values across included Blueprint nodes.
 - `work-queue` lists included node labels whose captured native assessment has an
   actionable `nextStep` (`statement` or `proof`), with `statementStatus` and
   `proofStatus`. The queue is available in documents with or without a graph block.
-- `metadata`: statement-level entries with owner, tags, priority, or effort metadata.
-- `search <text>`: statement-level entries whose label, title, owner, tag, or parent title contains the text, case-insensitively.
-- `code <decl>`: statement-level entries with Lean preview keys containing the declaration text.
+- `metadata`: included nodes with owner, tags, priority, or effort metadata.
+- `search <text>`: included nodes whose label, title, owner, tag, or parent title contains the text, case-insensitively.
+- `code <decl>`: statement-level entries with Lean preview keys or code data containing the declaration text.
 - `stats`: counts of distinct included node labels by kind, owner, and tag.
 
 If generated data is missing, run `lake exe vbp build` first. If a label is unknown, `query` returns JSON with `"error":"unknown-label"`.

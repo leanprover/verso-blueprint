@@ -160,9 +160,8 @@ generated browser APIs described here rather than depending on those markers.
 On the Lean 4.35 line, declaration `range` and `selectionRange` source positions
 use Lean's object encoding: `pos` and `endPos` contain `{ "line": ..., "column": ... }`
 instead of the former `[line, column]` arrays. Update consumers to read those
-named fields and regenerate sites with `lake exe vbp build`; the internal
-manifest schema marker advances to 10. LSP ranges still use `line` and
-`character`.
+named fields and regenerate sites with `lake exe vbp build`. LSP ranges still
+use `line` and `character`.
 
 In practice:
 
@@ -746,8 +745,9 @@ displays those nodes in a graph. Additional markup previews do not increase
 node counts. Use the queryable helpers for the
 same node selection as `lake exe vbp query`; use the block-only helpers when a
 consumer explicitly needs rendered block entries and should exclude
-source-backed bodyless external-markup nodes. Entry-level helpers
-`Entry.hasSourceDocument`, `Entry.matchesText`, and `Entry.matchesCode` provide
+source-backed bodyless external-markup nodes. Entry- and node-level helpers
+`Entry.hasSourceDocument`, `NodeOccurrenceMetadata.matchesText`, and
+`Entry.matchesCode` provide
 the same source filtering and search predicates used by the `lake exe vbp query`
 interface.
 
@@ -761,8 +761,11 @@ def primaryNodeTitle?
 
 def workQueueNextSteps
     (manifest : Informal.PreviewManifest.File) : Array (String × String) :=
+  let index := manifest.index
   manifest.workQueueItems.map fun item =>
-    (item.entry.authoredLabel, item.nextStep)
+    let label := (index.nodeMetadata? item.node).map (·.authoredLabel)
+      |>.getD (Informal.PreviewManifest.labelString item.node.label)
+    (label, item.nextStep)
 ```
 
 Generator-side Lean callers can configure source-backed external-markup cache
@@ -842,10 +845,10 @@ contains no derived edge, child, or DOT-variant caches:
 ```lean
 import VersoBlueprint.Graph
 
-def semanticGraph (state : Informal.Environment.State) :
+def semanticGraph (snapshot : Informal.Realizations.Capture.Snapshot) :
     Informal.Graph.GraphModel :=
-  let roots := state.data.toArray.map (·.1)
-  Informal.Graph.buildModel state roots
+  let roots := snapshot.registry.nodes.map (·.label)
+  Informal.Graph.buildModel snapshot roots
 ```
 
 `GraphModel` has one topology representation: each node's `statementUses`,
@@ -934,9 +937,10 @@ them, and visual metadata for renderers that want Blueprint's default styling.
 Graph schema version 8 exports the full legend and, when applicable, the group
 legend in `legends`. A client-created graph uses the same legend as the site.
 The visual fields `gradientangle` and `tooltip` may be omitted. The schema retains the private-constructor topology contract and adds
-`assessment` plus `actionableStage` to every node. An unresolved endpoint has no
-assessment. Version 6 includes `proofRoleComplete` for mathematical proofs. It is
-null when there is no selected proof role. A true result requires a native contract
+`assessment` plus `actionableStage` to every node. An unresolved endpoint has
+`assessment: null`, `actionableStage: null`, and both statuses `unassessed`.
+Each captured assessment includes `proofRoleComplete` for mathematical proofs (or
+`null` when there is no selected proof role). A true result requires a native contract
 for every selected declaration and passing local proof checks. A formalized graph
 proof status also requires all selected native bodies to pass, including computational
 implementations. The graph requires `hasNativeBodyRequirement` on each captured
@@ -950,7 +954,7 @@ Regenerate generated Blueprint output when adopting this revision; there is no
 older-schema compatibility path.
 
 Generated `edges` and group `children` are guaranteed projections of the
-authoritative node fields. The browser API recognizes version-5 records with valid node assessments/actionable stages,
+authoritative node fields. The browser API recognizes version-8 records with valid node assessments/actionable stages and matching status projections,
 all top-level collections and a valid render-variant contract: `full` is first,
 variant keys are unique, and select/hover mappings target variants in the same
 record. It deliberately does not repeat Lean's graph finalization work. Lean's
@@ -2014,7 +2018,9 @@ than reconstructing readiness from status colors.
 
 Generated data clients can use `resolveLabel(label, { facet: "statement" })`
 and `resolveLabel(label, { facet: "proof" })` from `api/data.mjs`, or `loadManifest`,
-to read each entry's `codeData`. An ordinary external directive has `provedStatus: null` in
+to read each entry's `codeData`. `resolveLabel` matches either canonical `label`
+or `authoredLabel`, and `{ facet: "statement" }` falls back to a statement-facet
+`externalMarkup` entry when no block statement entry exists. An ordinary external directive has `provedStatus: null` in
 `externalDecls` while awaiting capture. The registration inventory persists across
 imports. `externalChecks` contains pairs of canonical names and statuses from
 the current capture. A null result in one of these pairs means the declaration
@@ -2031,6 +2037,5 @@ Source counts are obtained only after semantic analysis using
 
 The status payload migrated from `containsSorry: [...]` to
 `incomplete: { knownSorry: [...], unverified: [...] }`; defaults are conservative.
-The internal manifest marker is now 13; the CLI rejects older generations.
 Regenerate persisted artifacts and handle both evidence arrays. The generated
 manifest schema validates the nested axes, origins, and verification reasons.
