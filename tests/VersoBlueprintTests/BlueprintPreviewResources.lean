@@ -213,8 +213,8 @@ private def readFiles (root : System.FilePath) : IO PreviewManifest.PersistedFil
         | throw <| IO.userError "Render model lost the resource node"
       let some sourceAssessment := sourceNode.assessment
         | throw <| IO.userError "Render model lost the realization assessment"
-      let projectedEntries := emitted.manifest.previews.filter (·.label == `resource_statement)
-      unless !projectedEntries.isEmpty && projectedEntries.all (·.assessment == some sourceAssessment) do
+      let projected := (emitted.manifest.findNodeRow? "resource_statement").bind (·.assessment)
+      unless projected == some sourceAssessment do
         throw <| IO.userError "Preview manifest did not preserve the captured node assessment"
       unless toJson files.manifest == toJson emitted.manifest &&
           toJson files.htmlCache == toJson emitted.htmlCache do
