@@ -456,19 +456,17 @@ private def hasErrorsSince [MonadLiftT CoreM m] (messageCount : Nat) : m Bool :=
 
 /-- Publish a complete node registration, including the module catalog for an
 attribute. An attribute cannot publish after reporting a newly found import conflict. -/
-private def commitContribution [MonadLiftT CoreM m] (label : Label) (contribution : SourceData.Registration) (facts : List Record)
-    (attributeRegistration : Bool := false) : m (Option NodeInventory) := do
-  let messageCount ← if attributeRegistration then
-    pure (← liftM Core.getMessageLog).reportedPlusUnreported.size
-  else pure 0
+private def commitContribution (label : Label) (contribution : SourceData.Registration) (facts : List Record)
+    (attributeGuard : Option (m Bool) := none) : m (Option NodeInventory) := do
   reportImportedConflicts
   let mainModule ← getMainModule
   let state := informalExt.getState (← getEnv)
   match state.addNode label mainModule contribution facts with
   | .ok (state, node) =>
-    if attributeRegistration then
-      if ← hasErrorsSince messageCount then return none
-    let state := if attributeRegistration then state.recordAttributeLabel mainModule label else state
+    let mut state := state
+    if let some mayPublish := attributeGuard then
+      unless ← mayPublish do return none
+      state := state.recordAttributeLabel mainModule label
     modify fun _ => state
     return some node
   | .error reasons =>
@@ -476,17 +474,18 @@ private def commitContribution [MonadLiftT CoreM m] (label : Label) (contributio
     return none
 
 /-- Register a node payload under an explicit label. -/
-def contribute [MonadLiftT CoreM m] (label : Label) (contribution : SourceData.Registration) : m (Option NodeInventory) :=
+def contribute (label : Label) (contribution : SourceData.Registration) : m (Option NodeInventory) :=
   commitContribution label contribution []
 
 /-- Register a producer-identified selected record with a node payload. -/
-def contributeRecord [MonadLiftT CoreM m] (fact : Record) (contribution : SourceData.Registration) :
+def contributeRecord (fact : Record) (contribution : SourceData.Registration) :
     m (Option NodeInventory) :=
   commitContribution fact.label contribution [fact]
 
 /-- Admit an ordinary attribute association and export its catalog entry together. -/
-def contributeAttribute (fact : Record) (payload : SourceData.Registration) : CoreM (Option NodeInventory) :=
-  commitContribution fact.label payload [fact] (attributeRegistration := true)
+def contributeAttribute (fact : Record) (payload : SourceData.Registration) : CoreM (Option NodeInventory) := do
+  let messageCount := (← Core.getMessageLog).reportedPlusUnreported.size
+  commitContribution fact.label payload [fact] (some (do return !(← hasErrorsSince messageCount)))
 
 def checkLabelAndNesting (label : Label) (kind : Data.InProgressKind) : m Bool := do
   let { inventory, activeDirective, .. } := informalExt.getState (← getEnv)
