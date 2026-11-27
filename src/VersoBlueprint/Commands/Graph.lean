@@ -15,6 +15,7 @@ import VersoBlueprint.GraphApi
 import VersoBlueprint.Lib.HoverRender
 import VersoBlueprint.Lib.HtmlId
 import VersoBlueprint.Lib.ExtensionDecode
+import VersoBlueprint.Lib.PreviewResources
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.Lib.PreviewSource
 import VersoBlueprint.Resolve
@@ -83,30 +84,10 @@ def graphAssetBundle : BlueprintAssetBundle :=
   previewPanelAssetBundle (cssExtras := [graphCss])
 
 open Verso Genre Manual Doc.Html Output.Html in
-/-- Render a graph from prepared resource data when available. Direct/plain HTML
-rendering retains traversal-based resolution. An explicitly prepared empty map
-is distinct from a generator that did not request preview resources. -/
-private def graphToHtml
-    (preparedGraphs? : Option (Std.HashMap String GraphData) := none) :
-    BlockToHtml Manual (ReaderT Multi.AllRemotes (ReaderT ExtensionImpls (BuildLogT IO))) :=
-    fun _goI _goB id data _blocks => do
-      let some graphData ← Informal.ExtensionDecode.decode? (α := GraphBlockData) data
-          (fun err => s!"Malformed data in Block.graph.toHtml ({err})")
-        | pure .empty
-      let s ← HtmlT.state
-      let resolved : Except String GraphData := match preparedGraphs? with
-        | some graphs => match graphs.get? (Informal.GraphApi.cacheKey id) with
-          | some graph => .ok graph
-          | none => .error s!"Missing prepared Blueprint graph {Informal.GraphApi.cacheKey id}"
-        | none => do
-            let model ← graphData.resolveModel s
-            pure (Informal.GraphApi.finishDataForBlock s id model graphData.options)
-      let publicGraphData? ← match resolved with
-        | .ok graph => pure (some graph)
-        | .error message => do
-          Verso.reportError message
-          pure none
-      let some publicGraphData := publicGraphData? | pure .empty
+private def renderGraphHtml (s : Verso.Genre.Manual.TraverseState) (id : Multi.InternalId)
+    (options : GraphOptions) (previewMode : Informal.HoverRender.PreviewMode)
+    (previewPlacement : Informal.HoverRender.PreviewPlacement) (publicGraphData : GraphData) : Output.Html :=
+    Id.run do
       let publicGraphDataJson : String := Lean.Json.compress (toJson publicGraphData)
       let graphVariants := publicGraphData.variants
       let graphVariantOptions : Array Output.Html :=
@@ -173,39 +154,37 @@ private def graphToHtml
       let graphOptionsPanelId : String := graphControlId "--options"
       let graphDirectionOptions : Array Output.Html :=
         allGraphDirections.map fun direction =>
-          if direction == graphData.options.direction then
+          if direction == options.direction then
             {{ <option value={{direction.rankdir}} selected>{{direction.rankdir}}</option> }}
           else
             {{ <option value={{direction.rankdir}}>{{direction.rankdir}}</option> }}
       let graphPackChecked : Array (String × String) :=
-        if graphData.options.pack then #[("checked", "checked")] else #[]
-      let graphPackDefault : String := if graphData.options.pack then "true" else "false"
-      let previewModeDefault : String := graphData.previewMode.dataValue
+        if options.pack then #[("checked", "checked")] else #[]
+      let graphPackDefault : String := if options.pack then "true" else "false"
+      let previewModeDefault : String := previewMode.dataValue
       let graphPreviewModeOptions : Array Output.Html := #[
-        if graphData.previewMode == .pinned then
+        if previewMode == .pinned then
           {{ <option value="pinned" selected>"Click to pin"</option> }}
         else
           {{ <option value="pinned">"Click to pin"</option> }},
-        if graphData.previewMode == .hover then
+        if previewMode == .hover then
           {{ <option value="hover" selected>"Hover"</option> }}
         else
           {{ <option value="hover">"Hover"</option> }}
       ]
-      let previewPlacementDefault : String := graphData.previewPlacement.dataValue
+      let previewPlacementDefault : String := previewPlacement.dataValue
       let graphPreviewPlacementOptions : Array Output.Html := #[
-        if graphData.previewPlacement == .docked then
+        if previewPlacement == .docked then
           {{ <option value="docked" selected>"Docked"</option> }}
         else
           {{ <option value="docked">"Docked"</option> }},
-        if graphData.previewPlacement == .anchored then
+        if previewPlacement == .anchored then
           {{ <option value="anchored" selected>"Near node"</option> }}
         else
           {{ <option value="anchored">"Near node"</option> }}
       ]
       let previewPanel :=
-        Informal.HoverRender.graphPreviewPanel
-          graphData.previewMode
-          graphData.previewPlacement
+        Informal.HoverRender.graphPreviewPanel previewMode previewPlacement
       let groupHoverPanel := Informal.HoverRender.graphGroupPreviewPanel
       return {{
         <div class="bp_graph_fullwidth">
@@ -256,7 +235,7 @@ private def graphToHtml
               <select
                 id={{graphDirectionSelectId}}
                 class="bp_graph_controls_select bp_graph_direction_select"
-                data-bp-graph-default-direction={{graphData.options.direction.rankdir}}
+                data-bp-graph-default-direction={{options.direction.rankdir}}
               >
                 {{graphDirectionOptions}}
               </select>
@@ -289,7 +268,7 @@ private def graphToHtml
           </div>
           <div
             class="bp_graph_canvas"
-            "data-bp-graph-direction"={{graphData.options.direction.rankdir}}
+            "data-bp-graph-direction"={{options.direction.rankdir}}
             "data-bp-graph-pack"={{graphPackDefault}}
           >
             <script type="application/json" class="bp-graph-data">
@@ -300,6 +279,31 @@ private def graphToHtml
           {{groupHoverPanel}}
         </div>
       }}
+
+open Verso Genre Manual Doc.Html in
+/-- Direct rendering uses traversal candidates. Prepared rendering uses the
+finalized graph selected for the output. -/
+private def graphToHtml
+    (preparedGraphs? : Option (Std.HashMap String GraphData) := none) :
+    BlockToHtml Manual (ReaderT Multi.AllRemotes (ReaderT ExtensionImpls (BuildLogT IO))) :=
+  fun _goI _goB id data _blocks => do
+    let some graphData ← Informal.ExtensionDecode.decode? (α := GraphBlockData) data
+        (fun err => s!"Malformed data in Block.graph.toHtml ({err})")
+      | pure .empty
+    let state ← HtmlT.state
+    let key := Informal.GraphApi.cacheKey id
+    let resolved : Except String GraphData := match preparedGraphs? with
+      | some graphs => match graphs[key]? with
+        | some graph => .ok graph
+        | none => .error s!"Missing prepared Blueprint graph {key}"
+      | none => do
+        let model ← graphData.resolveModel state
+        pure (Informal.GraphApi.finishDataForBlock state id model graphData.options)
+    match resolved with
+    | .ok graph => pure (renderGraphHtml state id graphData.options graphData.previewMode graphData.previewPlacement graph)
+    | .error message =>
+      Verso.reportError message
+      pure .empty
 
 open Verso Doc Elab Genre Manual in
 block_extension Block.graph (graphData : GraphBlockData) where
@@ -326,6 +330,9 @@ block_extension Block.graph (graphData : GraphBlockData) where
   extraCss := graphAssetBundle.css
   extraJs := graphAssetBundle.js
 
+private def indexGraphs (graphs : Array GraphData) : Std.HashMap String GraphData :=
+  graphs.foldl (fun index graph => index.insert graph.key graph) {}
+
 /-- Bind the standard graph HTML renderer to this output's finalized graphs.
 Only HTML emission uses this adapter; traversal, TeX, and other block hooks keep
 their supplied implementations. No graph data is copied into traversal stores. -/
@@ -334,13 +341,38 @@ def withPreparedGraphs (impls : Verso.Genre.Manual.ExtensionImpls)
   match impls.getBlock? ``Block.graph with
   | none => impls
   | some descriptor =>
-    let index := graphs.foldl (fun index graph => index.insert graph.key graph)
-      ({} : Std.HashMap String GraphData)
-    impls.insertBlock ``Block.graph { descriptor with toHtml := some (graphToHtml (some index)) }
+    impls.insertBlock ``Block.graph { descriptor with toHtml := some (graphToHtml (some (indexGraphs graphs))) }
+
+/-- Delay graph HTML during preview body rendering until the manifest has picked
+each label's usable default resource. The traversal graph already owns the model. -/
+def withDeferredGraphs (impls : Verso.Genre.Manual.ExtensionImpls) : Verso.Genre.Manual.ExtensionImpls :=
+  match impls.getBlock? ``Block.graph with
+  | none => impls
+  | some descriptor => impls.insertBlock ``Block.graph { descriptor with
+    toHtml := some fun _goI _goB id data _blocks => do
+      let some graphData ← Informal.ExtensionDecode.decode? (α := GraphBlockData) data
+          (fun err => s!"Malformed data in Block.graph.toHtml ({err})")
+        | pure .empty
+      let presentation := (id, graphData.options, graphData.previewMode, graphData.previewPlacement)
+      pure (PreviewResources.deferredGraph (Informal.GraphApi.cacheKey id)
+        (toJson presentation).compress) }
+
+/-- Resolve a cached graph marker with the same renderer and graph payload as
+the prepared page. -/
+def resolveDeferredGraphs (state : Verso.Genre.Manual.TraverseState) (graphs : Array GraphData) :
+    String → String → Except String Verso.Output.Html :=
+  let index := indexGraphs graphs
+  fun key presentation => do
+    let some graph := index[key]? | throw s!"Missing prepared Blueprint graph {key}"
+    let (id, options, mode, placement) ← Json.parse presentation >>= fromJson?
+      (α := Verso.Multi.InternalId × GraphOptions × Informal.HoverRender.PreviewMode ×
+        Informal.HoverRender.PreviewPlacement)
+    unless Informal.GraphApi.cacheKey id == key do throw s!"Deferred Blueprint graph key disagrees with {key}"
+    pure (renderGraphHtml state id options mode placement graph)
 
 open Verso.ArgParse
 
-instance : FromArgVal GraphDirection Verso.Doc.Elab.PartElabM where
+instance : FromArgVal GraphDirection Verso.Doc.Elab.DocElabM where
   fromArgVal := {
     description := doc!"graph direction (`LR`, `RL`, `TB`, or `BT`)"
     signature := CanMatch.Ident ∪ CanMatch.String
@@ -357,7 +389,7 @@ instance : FromArgVal GraphDirection Verso.Doc.Elab.PartElabM where
         throwError "Expected a direction identifier or string, got {toMessageData other}"
   }
 
-instance : FromArgVal Informal.HoverRender.PreviewMode Verso.Doc.Elab.PartElabM where
+instance : FromArgVal Informal.HoverRender.PreviewMode Verso.Doc.Elab.DocElabM where
   fromArgVal := {
     description := doc!"graph preview mode (`pinned` or `hover`)"
     signature := CanMatch.Ident ∪ CanMatch.String
@@ -374,7 +406,7 @@ instance : FromArgVal Informal.HoverRender.PreviewMode Verso.Doc.Elab.PartElabM 
         throwError "Expected a preview mode identifier or string, got {toMessageData other}"
   }
 
-instance : FromArgVal Informal.HoverRender.PreviewPlacement Verso.Doc.Elab.PartElabM where
+instance : FromArgVal Informal.HoverRender.PreviewPlacement Verso.Doc.Elab.DocElabM where
   fromArgVal := {
     description := doc!"graph preview placement (`docked` or `anchored`)"
     signature := CanMatch.Ident ∪ CanMatch.String
@@ -397,7 +429,7 @@ structure BlueprintGraphConfig where
   preview : Option Informal.HoverRender.PreviewMode := none
   previewPlacement : Option Informal.HoverRender.PreviewPlacement := none
 
-instance : FromArgs BlueprintGraphConfig Verso.Doc.Elab.PartElabM where
+instance : FromArgs BlueprintGraphConfig Verso.Doc.Elab.DocElabM where
   fromArgs :=
     BlueprintGraphConfig.mk <$>
       .named' `direction true <*>
@@ -405,7 +437,7 @@ instance : FromArgs BlueprintGraphConfig Verso.Doc.Elab.PartElabM where
       .named' `preview true <*>
       .named' `previewPlacement true
 
-def parseGraphDirection (cfg : BlueprintGraphConfig) : Verso.Doc.Elab.PartElabM GraphDirection := do
+def parseGraphDirection (cfg : BlueprintGraphConfig) : Verso.Doc.Elab.DocElabM GraphDirection := do
   match cfg.direction with
   | none =>
     let configured :=
@@ -419,7 +451,7 @@ def parseGraphDirection (cfg : BlueprintGraphConfig) : Verso.Doc.Elab.PartElabM 
       pure .TB
   | some direction => pure direction
 
-def parseGraphOptions (cfg : BlueprintGraphConfig) : Verso.Doc.Elab.PartElabM GraphOptions := do
+def parseGraphOptions (cfg : BlueprintGraphConfig) : Verso.Doc.Elab.DocElabM GraphOptions := do
   let direction ← parseGraphDirection cfg
   let pack :=
     cfg.pack.getD <|
@@ -429,7 +461,7 @@ def parseGraphOptions (cfg : BlueprintGraphConfig) : Verso.Doc.Elab.PartElabM Gr
   pure { direction, pack }
 
 def parseGraphPreviewMode
-    (cfg : BlueprintGraphConfig) : Verso.Doc.Elab.PartElabM Informal.HoverRender.PreviewMode := do
+    (cfg : BlueprintGraphConfig) : Verso.Doc.Elab.DocElabM Informal.HoverRender.PreviewMode := do
   match cfg.preview with
   | none =>
     let configured :=
@@ -444,7 +476,7 @@ def parseGraphPreviewMode
   | some mode => pure mode
 
 def parseGraphPreviewPlacement
-    (cfg : BlueprintGraphConfig) : Verso.Doc.Elab.PartElabM Informal.HoverRender.PreviewPlacement := do
+    (cfg : BlueprintGraphConfig) : Verso.Doc.Elab.DocElabM Informal.HoverRender.PreviewPlacement := do
   match cfg.previewPlacement with
   | none =>
     let configured :=
@@ -457,6 +489,19 @@ def parseGraphPreviewPlacement
       logWarning m!"Invalid value '{configured}' for option 'verso.blueprint.graph.defaultPreviewPlacement'; expected docked or anchored. Falling back to docked."
       pure .docked
   | some placement => pure placement
+
+private def resolveGraphBlockConfig (cfg : BlueprintGraphConfig) : Verso.Doc.Elab.DocElabM GraphBlockData :=
+  return {
+    options := ← parseGraphOptions cfg
+    previewMode := ← parseGraphPreviewMode cfg
+    previewPlacement := ← parseGraphPreviewPlacement cfg }
+
+open Verso Doc Elab in
+/-- Render the dependency graph as a block inside a Manual body. -/
+@[block_command]
+public meta def _root_.blueprint_graph : BlockCommandOf BlueprintGraphConfig := fun cfg => do
+  let graphData ← resolveGraphBlockConfig cfg
+  serializedBlockTerm `Informal.Commands.Block.graph graphData
 
 open Verso Doc Elab Syntax in
 def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (options : GraphOptions := {})
@@ -480,13 +525,12 @@ open Verso Doc Elab Syntax PartElabM in
 @[part_command Lean.Doc.Syntax.command]
 public meta def depGraph : PartCommand
   | stx@`(block|command{blueprint_graph $args*}) => do
-    let cfg ← Verso.ArgParse.parseThe BlueprintGraphConfig (← parseArgs args)
-    let options ← parseGraphOptions cfg
-    let previewMode ← parseGraphPreviewMode cfg
-    let previewPlacement ← parseGraphPreviewPlacement cfg
+    let graphData ← liftDocElabM do
+      let cfg ← Verso.ArgParse.parseThe BlueprintGraphConfig (← parseArgs args)
+      resolveGraphBlockConfig cfg
     let endPos := stx.getTailPos?.get!
     closePartsUntil 1 endPos
-    addPart (← mkGraphPart stx endPos options previewMode previewPlacement)
+    addPart (← mkGraphPart stx endPos graphData.options graphData.previewMode graphData.previewPlacement)
   | _ => (Lean.Elab.throwUnsupportedSyntax : PartElabM Unit)
 
 end Informal.Commands

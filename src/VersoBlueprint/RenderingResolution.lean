@@ -34,15 +34,22 @@ structure Facet where
   preview : PreviewCache.Entry
   data : BlockData
 
-/-- Resolve node semantics for an already decoded facet. Keep `preview` intact:
-its source, target and folding defaults belong to the selected occurrence. -/
-def facet (state : TraverseState) (key : String) (preview : PreviewCache.Entry) : Except String Facet := do
+/-- Project the selected facet of one resolved node. The code facts belong to
+the chosen occurrence, even when the canonical occurrence has the other facet. -/
+def Facet.ofNode (node : RenderNode) (canonicalData : BlockData) (preview : PreviewCache.Entry) : Facet :=
+  { preview, data := node.resolve { canonicalData.toOccurrence with isProof := preview.facet == .proof } }
+
+/-- Reject a stored facet whose payload names a different key. -/
+def checkFacetKey (key : String) (preview : PreviewCache.Entry) : Except String Unit :=
   unless PreviewCache.key preview.label preview.facet == key do
     throw s!"Mismatched Blueprint preview identity for '{key}'"
+
+/-- Resolve node semantics for an already decoded facet, preserving its occurrence. -/
+def facet (state : TraverseState) (key : String) (preview : PreviewCache.Entry) : Except String Facet := do
+  checkFacetKey key preview
   let node ← TraversalIndex.Nodes.required state preview.label
-  let canonicalData ← canonical state preview.label
-  let data := node.resolve { canonicalData.toOccurrence with isProof := preview.facet == .proof }
-  return { preview, data }
+  let data := (TraversalIndex.Nodes.resolveCanonical state node).withResolvedNumbering state
+  return .ofNode node data preview
 
 /-- Resolve an explicit stored facet. Absence is optional; malformed content,
 mismatched identity, and missing node semantics are errors. No other facet is borrowed. -/

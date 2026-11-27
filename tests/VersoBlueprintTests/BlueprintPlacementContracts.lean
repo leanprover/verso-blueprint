@@ -298,6 +298,16 @@ Attached statement witness.
 ```md "site_node_standalone" (slot := statement)
 Standalone statement witness.
 ```
+:::theorem "site_node_witness_only"
+:::
+
+```md "site_node_witness_only" (slot := statement)
+A placed statement supplied by an external witness.
+```
+
+:::theorem "site_node_references"
+See {bpref "site_node_inline"}[the inline proof] and {bpref "site_node_witness_only"}[the witness].
+:::
 :::::::
 
 #eval show IO Unit from IO.FS.withTempDir fun output => do
@@ -336,6 +346,13 @@ Standalone statement witness.
     throw <| IO.userError "Inline-only statement lost its declaration, code fragment, or default"
 
   let parent := `site_node_group
+  let some references := files.htmlCache.findHtml? (PreviewCache.statementKey `site_node_references)
+    | throw <| IO.userError "Missing cached references"
+  let page ← IO.FS.readFile (output / "html-single" / "index.html")
+  for key in #[inlineKey, PreviewCache.statementKey `site_node_witness_only] do
+    let attr := s!"data-bp-preview-key=\"{key}\""
+    unless hasSubstr references attr && hasSubstr page attr do
+      throw <| IO.userError s!"Cached and page links must select the published default {key}"
   let some group := index.findGroup? parent | throw <| IO.userError "Missing site node group"
   let expected : Array (Name × Option String × Option String) := #[
     (`site_node_proof_only, some proofKey, some proofKey),

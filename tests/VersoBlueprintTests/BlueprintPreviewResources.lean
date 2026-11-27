@@ -421,7 +421,9 @@ This node uses {uses "blank_statement_with_proof"}[] and {uses "blank_statement_
 {bpref "blank_statement_with_proof"}[Preferred available preview]
 and {bpref "blank_statement_with_code"}[Available Lean preview]
 
-{blueprint_graph}
+:::theorem "embedded_graph_body"
+{blueprint_graph (direction := LR) (preview := hover) (previewPlacement := anchored)}
+:::
 
 {blueprint_summary}
 :::::::
@@ -468,6 +470,17 @@ and {bpref "blank_statement_with_code"}[Available Lean preview]
       node.previewKey == PreviewKey.ofString? proofKey) &&
       graph.variants.any (·.previewKeyByNodeId.contains (Graph.graphNodeSvgId label, proofKey)) do
     throw <| IO.userError "Prepared graph and variants did not select the available proof"
+  let some embedded := files.htmlCache.findHtml? (PreviewCache.statementKey `embedded_graph_body)
+    | throw <| IO.userError "Missing theorem preview whose body is an embedded graph"
+  let some afterTag := (embedded.splitOn "class=\"bp-graph-data\">")[1]?
+    | throw <| IO.userError "The theorem preview did not resolve the deferred graph"
+  let .ok embeddedGraph := Json.parse (afterTag.splitOn "</script>").head! >>= fromJson? (α := Graph.GraphData)
+    | throw <| IO.userError "Could not decode the embedded graph in the theorem preview"
+  unless toJson embeddedGraph == toJson graph && !hasSubstr embedded "verso-blueprint-graph-ref" &&
+      hasSubstr embedded "data-bp-graph-direction=\"LR\"" &&
+      hasSubstr embedded "data-bp-graph-default-preview-mode=\"hover\"" &&
+      hasSubstr embedded "data-bp-graph-default-preview-placement=\"anchored\"" do
+    throw <| IO.userError "The theorem preview must use the finalized graph and its available proof target"
   let sourceKey := PreviewCache.statementKey `references_blank_statement_with_proof
   let some source := files.manifest.findEntry? sourceKey | throw <| IO.userError "Missing relation source"
   for (target, key) in #[(label, proofKey), (codeLabel, codeKey)] do

@@ -83,6 +83,13 @@ def traversalPreviewCandidateKeys
     | none => TraversalIndex.TraversalPreviews.previewFacets s label
     | some facet => #[facet].filter (TraversalIndex.TraversalPreviews.hasRenderablePreview s label)
   let markup := if facet? == some .proof then #[] else (traversalExternalMarkupLookupKey? s label).toArray
+  -- Inline panels and external witnesses can be attached after the statement
+  -- occurrence. Keep its standard key among the candidates for final resolution.
+  let facets := if facet? != some .proof && !facets.contains .statement &&
+      (TraversalIndex.TraversalPreviews.object? s (PreviewCache.statementKey label)).isSome &&
+      (!markup.isEmpty || (TraversalIndex.InlineCode.blockIds s label).any fun id =>
+        (TraversalIndex.LeanCodePreviews.object? s (TraversalIndex.LeanCodePreviews.lookupInlineKey id)).isSome)
+    then facets.push .statement else facets
   (facets.map (PreviewCache.key label) ++ markup).filterMap PreviewKey.ofString?
 
 def traversalPreviewCandidateKey?

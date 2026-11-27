@@ -29,6 +29,13 @@ def select (render : Render) (keys : Array PreviewKey)
 -- Unlike an index into a render session, it can be freely composed and copied.
 private def marker := "verso-blueprint-preview-choice"
 
+private def graphMarker := "verso-blueprint-graph-ref"
+
+/-- A cached graph block retains its key and presentation until default
+resource selection has finished. -/
+def deferredGraph (key presentation : String) : Html :=
+  .tag graphMarker #[("key", key), ("presentation", presentation)] (.seq #[])
+
 /-- Retain both presentations until resource availability is known. There is no
 mutable session, side table, or function stored in the resulting fragment. -/
 def deferred (key : PreviewKey) (present absent : Unit → Html) (defaultOnly : Bool) : Html :=
@@ -64,15 +71,17 @@ partial def htmlIsBlank : Html → Bool
       -- Keep malformed choices for finalization to diagnose, even if empty.
       | _, _ => false
 
-/-- Resolve self-contained choices before serialization. Invalid choices on the
+/-- Resolve self-contained choices and prepared graphs before serialization. Invalid choices on the
 selected path or branches that disagree about body presence are diagnosed.
 Discarded alternatives are not recursively validated. Raw HTML stays opaque.
 The result still has type `Html`: callers must enforce this serialization boundary. -/
 partial def finish (available : PreviewKey → Bool) (html : Html)
-    (defaultAvailable : PreviewKey → Bool := available) : Except String Html :=
+    (defaultAvailable : PreviewKey → Bool := available)
+    (resolveGraph : String → String → Except String Html :=
+      fun key _ => .error s!"Missing prepared Blueprint graph {key}") : Except String Html :=
   match html with
   | .text escape text => pure (.text escape text)
-  | .seq children => .seq <$> children.mapM (fun child => finish available child defaultAvailable)
+  | .seq children => .seq <$> children.mapM (fun child => finish available child defaultAvailable resolveGraph)
   | .tag name attrs contents => do
     if name == marker then
       let (some (key, defaultOnly), .seq #[present, absent]) := (choiceKey? attrs, contents)
@@ -82,8 +91,12 @@ partial def finish (available : PreviewKey → Bool) (html : Html)
       let some key := PreviewKey.ofString? key
         | throw "Empty Blueprint preview choice key"
       let selected := if defaultOnly then defaultAvailable key else available key
-      finish available (if selected then present else absent) defaultAvailable
+      finish available (if selected then present else absent) defaultAvailable resolveGraph
+    else if name == graphMarker then
+      let (#[("key", key), ("presentation", presentation)], .seq #[]) := (attrs, contents)
+        | throw "Malformed deferred Blueprint graph"
+      resolveGraph key presentation
     else
-      return .tag name attrs (← finish available contents defaultAvailable)
+      return .tag name attrs (← finish available contents defaultAvailable resolveGraph)
 
 end Informal.PreviewResources
