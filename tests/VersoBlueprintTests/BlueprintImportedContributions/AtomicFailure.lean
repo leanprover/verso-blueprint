@@ -94,11 +94,11 @@ theorem atomicWitness : True := atomicDependency
 /--
 error: Label atomic_directive declares conflicting priorities including 'high'
 ---
-error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@3892/0 label=atomic_directive refs=[] priority=(some high)
+error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@3885/0 label=atomic_directive refs=[] priority=(some high)
 ---
 error: Label atomic_directive declares conflicting priorities including 'low'
 ---
-error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@4595/0 label=atomic_directive refs=[atomicWitness] priority=(some low)
+error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@4588/0 label=atomic_directive refs=[atomicWitness] priority=(some low)
 -/
 #guard_msgs in
 #check_blueprint_atomic

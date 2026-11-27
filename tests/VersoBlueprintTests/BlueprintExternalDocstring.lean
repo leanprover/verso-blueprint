@@ -78,7 +78,7 @@ private def ensureNestedWidgetPreview (capture : Except (Array Realizations.Diag
   -- Render the original statement and proof occurrences inside a selected
   -- preview, so each must resolve its own presentation facts in traversal.
   let blocks := #[Verso.Doc.Block.blockquote ExternalDocstringFixture.chapter.toPart.content]
-  let nested := { widget with previewSelection? := some (.ofPreview one .statement { blocks }) }
+  let nested := { widget with previewSelection? := some (.ofBlocks one .statement blocks) }
   let rendered ← nested.renderPreviewHtml
   -- Native declaration panels can independently display compiled docstrings.
   -- Check the adopted statement and authored proof in their prose bodies.

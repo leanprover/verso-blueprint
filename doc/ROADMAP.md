@@ -75,8 +75,8 @@ Work:
    go through shared helpers; `PreviewSource` owns statement/proof selection,
    traversal store helpers own whole-domain decoding, and
    `PreviewManifest.File` owns client-facing manifest filters and label lookup
-2. merge the traversal preview cache and widget `elabStx` preview path behind a
-   phase-safe representation
+2. keep persisted and traversal preview bodies in the same typed Manual block
+   representation, with each phase deciding which body it can display
 3. keep preview labels and titles on the canonical manifest-backed path; new
    renderers should consume resolved manifest titles instead of mixing raw
    labels, source labels, and local fallbacks

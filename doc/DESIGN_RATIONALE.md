@@ -36,6 +36,13 @@ metadata live in the same environment state. Elaboration and compilation are res
 the object-level facts and persisting them through Lean's compiled environment
 data (oleans), rather than trying to precompute whole-site presentation.
 
+An open directive keeps its metadata and uses in `Environment.DirectiveDraft`
+until admission. A registered source takes its project and language from the
+document key. Prose carries one typed Manual body and its original source
+syntax. The body feeds placement and previews, while the syntax locates the
+authored bytes for capture. Docstring ownership belongs to prose, and a fence
+selection belongs to its text or markup payload.
+
 Later, the generator binary re-enters that persisted state during Verso
 traversal and assembles the final rendered metadata in document context.
 Traversal resolves numbering, hrefs, cross-page references, previews, and

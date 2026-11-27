@@ -567,9 +567,10 @@ private def ordinaryNodeIssue (raw : Raw) (node : NodeStep) : Option Diagnostic 
 
 private def realizationContext (label : Name) (step : RealizationStep) : Except Diagnostic Context :=
   let contexts := canonical (step.sources.map (·.source.context) ++ step.associations.map (·.context))
-  if contexts.size == 1 then .ok contexts[0]!
-  else .error { code := "source-context-mismatch", subject := label.toString
-                message := "A realization requires one agreed stored source context" }
+  match contexts with
+  | #[context] => .ok context
+  | _ => .error { code := "source-context-mismatch", subject := label.toString
+                  message := "A realization requires one agreed stored source context" }
 
 /-- Schedule only the prefix that the ordinary recipe can reach. The recipe
 still emits structural diagnostics at their original positions. -/
@@ -917,12 +918,14 @@ private def selectTarget (collected : Collected) (context : Context) (axis : Nam
     let validator := nativeValidator role
     let key : RequirementKey := ⟨.declaration model.key object, role⟩
     let contracts := canonical ((input.requirements.filter (·.value.key == key)).map (·.value))
-    unless checked.roles.contains role && contracts.size == 1 &&
-        contracts[0]!.expected == .check validator && contracts[0]!.coverage == .dependencyClosure &&
+    let #[contract] := contracts
+      | return ← fail "invalid-native-contract" "Dependency requires its exact selected native role and completeness contract"
+    unless checked.roles.contains role &&
+        contract.expected == .check validator && contract.coverage == .dependencyClosure &&
         declaration.required.contains key do
       return ← fail "invalid-native-contract" "Dependency requires its exact selected native role and completeness contract"
     if role == `proof then
-      let hasStatement := contracts[0]!.prerequisites.any fun prerequisite =>
+      let hasStatement := contract.prerequisites.any fun prerequisite =>
         statements.any fun statementModel =>
           prerequisite == ⟨.declaration statementModel.key object, `statement⟩ &&
           statementModel.declarations.any (·.object == object)
