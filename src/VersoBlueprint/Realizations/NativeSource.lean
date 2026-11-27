@@ -26,6 +26,17 @@ private def issue (code : String) (label : Name) (message : String) : Diagnostic
 
 private def openParserNamespaces (context : Parser.ParserModuleContext) (decl : Syntax) :
     Parser.ParserModuleContext := Id.run do
+  if decl.isOfKind ``Parser.Command.openOnly || decl.isOfKind ``Parser.Command.openRenaming then
+    let names := if decl.isOfKind ``Parser.Command.openOnly then
+      decl[2].getArgs.map fun id => (id.getId, id.getId)
+    else decl[2].getSepArgs.map fun item => (item[0].getId, item[2].getId)
+    let namespaces := ResolveName.resolveNamespace context.env context.currNamespace context.openDecls decl[0].getId
+    let mut openDecls := context.openDecls
+    for ns in namespaces do
+      for (original, exposed) in names do
+        for (name, fields) in ResolveName.resolveGlobalName context.env context.options .anonymous [] (ns ++ original) do
+          if fields.isEmpty then openDecls := .explicit exposed name :: openDecls
+    return { context with openDecls }
   let (ids, opened) := match decl.getKind with
     | ``Parser.Command.openSimple => (decl[0].getArgs, some [])
     | ``Parser.Command.openScoped => (decl[1].getArgs, none)
@@ -74,28 +85,74 @@ private def advanceParserContext (context : Parser.ParserModuleContext) (scopes 
   | ``Parser.Command.set_option => (setParserOption context command, scopes)
   | ``Parser.Command.namespace => enterParserScopes context scopes command[1].getId true
   | ``Parser.Command.section =>
-    if let #[id] := command[2].getArgs then enterParserScopes context scopes id.getId false
+    if command[2][0].isIdent then enterParserScopes context scopes command[2][0].getId false
     else (context, context :: scopes)
   | ``Parser.Command.end =>
-    let count := if let #[id] := command[1].getArgs then id.getId.getNumParts else 1
+    let count := max 1 command[1][0].getId.getNumParts
     (scopes[count - 1]?.getD context, scopes.drop count)
   | _ => (context, scopes)
+
+private partial def hasInheritance (stx : Syntax) : Bool :=
+  (match stx with
+    | .atom _ "inherit_doc" => true
+    | .ident _ _ name _ => name == `inherit_doc
+    | _ => false) || stx.getArgs.any hasInheritance
+
+private partial def hasStandaloneInheritance (stx : Syntax) : Bool :=
+  (stx.isOfKind ``Parser.Command.attribute && hasInheritance stx[2]) ||
+    stx.getArgs.any hasStandaloneInheritance
+
+private structure InheritanceTarget where
+  name : Name
+  position : Position
+  rootQualified : Bool
+
+/-- Resolve standalone targets in their source scopes. An unknown wrapper,
+unresolved target, or ambiguous name cannot establish independent ownership. -/
+private partial def inheritanceTargets (context : Parser.ParserModuleContext) (map : FileMap)
+    (command : Syntax) : Array (Option InheritanceTarget) :=
+  if command.isOfKind ``Parser.Command.attribute && hasInheritance command[2] then
+    let targets := command[4].getArgs
+    if targets.isEmpty then #[none] else targets.map fun target => do
+      let position ← target.getPos?
+      let [(name, [])] := ResolveName.resolveGlobalName context.env context.options
+        context.currNamespace context.openDecls target.getId | none
+      return ⟨name, map.toPosition position, (`_root_ : Name).isPrefixOf target.getId⟩
+  else if command.isOfKind ``Parser.Command.«in» then
+    inheritanceTargets context map command[0] ++
+      inheritanceTargets (advanceParserContext context [] command[0]).1 map command[2]
+  else if hasStandaloneInheritance command then #[none]
+  else #[]
 
 structure ParsedSource where
   private mk ::
   private commands : Array Syntax
+  private incrementalDocument? : Option Syntax := none
   private failure? : Option String := none
+  private inheritance : Array (Option InheritanceTarget) := #[]
 
 private def parserFailure (messages : MessageLog) : String :=
   let location := (messages.toList.find? (·.severity == .error)).map
     (fun message => s!" at {message.pos.line}:{message.pos.column}") |>.getD ""
   s!"Owning source could not be parsed{location} in the current syntax environment without elaboration"
 
+/-- The command grammar changes during elaboration of an incremental `#doc`.
+Use the corresponding term grammar at its original position instead. -/
+private def parseIncrementalDocument (input : Parser.InputContext) (context : Parser.ParserModuleContext)
+    (header : Syntax) : Except String Syntax := do
+  let some start := header.getPos? | throw "Verso document header has no original source position"
+  let state := (Parser.mkParserState input.fileMap.source).setPos start
+  let state := (Parser.categoryParserFnImpl `term).run input context (Parser.getTokenTable context.env) state
+  unless state.allErrors.isEmpty && input.atEnd state.pos do
+    throw "Owning Verso document could not be parsed in the current syntax environment without elaboration"
+  return state.stxStack.back
+
 private def parseSourceWith (env : Environment) (path text : String) : CoreM ParsedSource := do
   try
     let input := Parser.mkInputContext text path
+    let mayInherit := text.contains "inherit_doc"
     let (_, state, messages) ← liftM <| Parser.parseHeader input
-    if messages.hasErrors then return ⟨#[], some (parserFailure messages)⟩
+    if messages.hasErrors then return { commands := #[], failure? := some (parserFailure messages) }
     let rec loop (fuel : Nat) (state : Parser.ModuleParserState)
         (context : Parser.ParserModuleContext) (scopes : ParserScopes) (parsed : ParsedSource) : ParsedSource :=
       match fuel with
@@ -112,11 +169,19 @@ private def parseSourceWith (env : Environment) (path text : String) : CoreM Par
         -- during recovery can start inside the damaged command.
         if state.recovering || next.recovering || messages.hasErrors then
           return loop fuel next context scopes parsed
+        if command.isOfKind `Verso.Doc.Concrete.replaceDoc then
+          let parsed := { parsed with commands := parsed.commands.push command }
+          return match parseIncrementalDocument input context command with
+          | .ok document => { parsed with incrementalDocument? := some document }
+          | .error failure => { parsed with failure? := parsed.failure?.or (some failure) }
+        let inherited := if mayInherit then inheritanceTargets context input.fileMap command else #[]
         let (context, scopes) := advanceParserContext context scopes command
-        return loop fuel next context scopes { parsed with commands := parsed.commands.push command }
-    return loop (text.utf8ByteSize + 1) state { env, options := {} } [] ⟨#[], none⟩
+        return loop fuel next context scopes { parsed with
+          commands := parsed.commands.push command
+          inheritance := parsed.inheritance ++ inherited }
+    return loop (text.utf8ByteSize + 1) state { env, options := {} } [] { commands := #[] }
   catch _ =>
-    return ⟨#[], some "Owning source parser failed"⟩
+    return { commands := #[], failure? := some "Owning source parser failed" }
 
 abbrev SourceParser := String → String → CoreM ParsedSource
 
@@ -163,16 +228,6 @@ private partial def declarations (command : Syntax) : Array Syntax :=
     declarations command[2]
   else #[]
 
-private partial def hasInheritance (stx : Syntax) : Bool :=
-  (match stx with
-    | .atom _ "inherit_doc" => true
-    | .ident _ _ name _ => name == `inherit_doc
-    | _ => false) || stx.getArgs.any hasInheritance
-
-private partial def hasStandaloneInheritance (stx : Syntax) : Bool :=
-  (stx.isOfKind ``Parser.Command.attribute && hasInheritance stx) ||
-    stx.getArgs.any hasStandaloneInheritance
-
 private def originalRange? (text : String) (stx : Syntax) : Option Syntax.Range := do
   -- canonicalOnly also admits some synthetic positions; require original input.
   let .original leading _ _ _ := stx.getHeadInfo | none
@@ -181,14 +236,12 @@ private def originalRange? (text : String) (stx : Syntax) : Option Syntax.Range 
     let range ← stx.getRange?
     if range.stop.byteIdx > text.utf8ByteSize then none else some range
 
-/-- Select one original declaration at both owning native ranges. -/
-def declarationAtRanges (label : Name) (text : String) (range selection : DeclarationRange)
+private def declarationInBuffer (label : Name) (map : FileMap) (range selection : DeclarationRange)
     (commands : Array Syntax) : Except Diagnostic Syntax := do
-  let map := FileMap.ofString text
   let candidates := commands.flatMap declarations |>.filter fun declaration => Id.run do
-    let some whole := originalRange? text declaration | return false
+    let some whole := originalRange? map.source declaration | return false
     let name := Elab.getDeclarationSelectionRef declaration[1]
-    let some selected := originalRange? text name | return false
+    let some selected := originalRange? map.source name | return false
     return DeclarationRange.ofStringPositions map whole.start whole.stop == range &&
       DeclarationRange.ofStringPositions map selected.start selected.stop == selection
   if candidates.isEmpty then
@@ -197,12 +250,15 @@ def declarationAtRanges (label : Name) (text : String) (range selection : Declar
     throw <| issue "ambiguous-docstring" label "Multiple source declarations match the accepted ranges"
   return candidates[0]!
 
-private def docCommentSyntaxAtRanges (label : Name) (text : String) (range selection : DeclarationRange)
+/-- Select one original declaration at both owning native ranges. Lean's parser
+uses LF-normalized buffers. The owning text may retain its original line endings. -/
+def declarationAtRanges (label : Name) (text : String) (range selection : DeclarationRange)
+    (commands : Array Syntax) : Except Diagnostic Syntax :=
+  declarationInBuffer label (FileMap.ofString text.crlfToLf) range selection commands
+
+private def docCommentSyntaxAtRanges (label : Name) (map : FileMap) (range selection : DeclarationRange)
     (commands : Array Syntax) : Except Diagnostic (Syntax × TSyntax ``Parser.Command.docComment) := do
-  if commands.any hasStandaloneInheritance then
-    throw <| issue "inherited-docstring" label
-      "Standalone inherit_doc applications prevent an unambiguous own-source association"
-  let declaration ← declarationAtRanges label text range selection commands
+  let declaration ← declarationInBuffer label map range selection commands
   let modifiers := declaration[0]
   if hasInheritance modifiers then
     throw <| issue "inherited-docstring" label "Own comment and inherit_doc cannot establish a unique own association"
@@ -219,10 +275,19 @@ private def matchesDeclarationName (canonical : Name) (decl : Syntax) : Bool :=
   else
     !spelling.isAnonymous && spelling.isSuffixOf canonical
 
-private def rawDocComment (label : Name) (text : String) (comment : TSyntax ``Parser.Command.docComment) :
+/-- Map a position in the LF-normalized parser buffer to the equivalent boundary
+in its exact owning bytes. The maps must describe the same text modulo CRLF. -/
+def rawSourcePosition (raw normalized : FileMap) (position : String.Pos.Raw) : String.Pos.Raw :=
+  raw.ofPosition (normalized.toPosition position)
+
+private def rawDocComment (label : Name) (text : String) (map : FileMap)
+    (comment : TSyntax ``Parser.Command.docComment) :
     Except Diagnostic String := do
-  let some source := originalRange? text comment.raw
+  let some source := originalRange? map.source comment.raw
     | throw <| issue "source-association-unavailable" label "Doc comment has no original owning-source positions"
+  let source := if text == map.source then source else
+    let file := FileMap.ofString text
+    { start := rawSourcePosition file map source.start, stop := rawSourcePosition file map source.stop }
   let raw := String.Pos.Raw.extract text source.start source.stop
   unless raw.startsWith "/--" && raw.endsWith "-/" do
     throw <| issue "source-association-unavailable" label "Selected syntax does not delimit an original doc comment"
@@ -230,11 +295,13 @@ private def rawDocComment (label : Name) (text : String) (comment : TSyntax ``Pa
   -- including initial/final whitespace and supplementary-plane characters.
   return String.Pos.Raw.extract text ⟨source.start.byteIdx + 3⟩ ⟨source.stop.byteIdx - 2⟩
 
-/-- Exact own-comment association. Lean positions count codepoints;
-`ofStringPositions` checks UTF-16 columns using the owning FileMap. -/
+/-- Extract the direct modifier comment at the two original ranges. This
+syntax-only helper checks the selected declaration's modifiers. Use
+`selectDocumented` to resolve standalone attribute applications. -/
 def docCommentAtRanges (label : Name) (text : String) (range selection : DeclarationRange)
     (commands : Array Syntax) : Except Diagnostic String := do
-  rawDocComment label text (← docCommentSyntaxAtRanges label text range selection commands).2
+  let map := FileMap.ofString text.crlfToLf
+  rawDocComment label text map (← docCommentSyntaxAtRanges label map range selection commands).2
 
 /-- Compare optional accepted snapshot ranges with the environment's current
 native ranges for that same canonical declaration. This pure check does not fill
@@ -258,6 +325,36 @@ structure Request where
   range? : Option DeclarationRange := none
   selectionRange? : Option DeclarationRange := none
 
+private def inheritanceMayApply (request : Request) (parsed : ParsedSource)
+    (requireRootQualification : Bool) : CoreM Bool := do
+  let env ← getEnv
+  for target in parsed.inheritance do
+    let some target := target | return true
+    if target.name == request.canonical then return true
+    if requireRootQualification && !target.rootQualified then return true
+    if ExternalModuleSource.moduleNameForDecl? env target.name == some request.moduleName then
+      -- The parser resolves against the completed environment. A declaration
+      -- introduced later can shadow the target which was visible at this site.
+      let some ranges ← findDeclarationRanges? target.name | return true
+      let stop := ranges.range.endPos
+      if target.position.line < stop.line ||
+          (target.position.line == stop.line && target.position.column < stop.column) then return true
+  return false
+
+private def checkSourceInheritance (request : Request) (text : String) (parsed : ParsedSource)
+    (requireRootQualification : Bool := false) : CoreM (Except Diagnostic Unit) := do
+  let name := request.canonical
+  if ← inheritanceMayApply request parsed requireRootQualification then
+    return .error <| issue "inherited-docstring" name
+      "A standalone inherit_doc application targets this declaration or cannot be ruled out"
+  if let some failure := parsed.failure? then
+    -- A skipped command can hide a standalone inheritance application. Its
+    -- attribute name must occur literally, including when guillemet-escaped.
+    if text.contains "inherit_doc" then
+      return .error <| issue "source-parse-failed" name
+        (failure ++ ". Cannot rule out an inherit_doc application")
+  return .ok ()
+
 /-- A declaration as the compiled environment establishes it. It carries no
 source document: its content is the checked declaration, not the owning file. -/
 structure Prepared where
@@ -270,8 +367,8 @@ structure Prepared where
   statementContext : Option String := none
   semanticDiagnostics : Array Diagnostic := #[]
 
-/-- A declaration together with its own doc comment's raw bytes and the owning
-source file they were read from. -/
+/-- A declaration together with its own comment's raw bytes and the verified
+parser input containing it. A Verso fence has a padded input at the file's path. -/
 structure Documented extends Prepared where
   document : Document
   format : Name
@@ -471,6 +568,47 @@ structure DocumentSelection where
   rawDocstring : String
   ranges : DeclarationRanges
 
+open Lean.Doc.Syntax in
+/-- Recover only actual Lean command fences from the original document syntax. -/
+private partial def leanFenceContents (stx : Syntax) : Array StrLit :=
+  match (⟨stx⟩ : TSyntax `block) with
+  | `(block|``` $name:ident $_args* | $contents:str ```) =>
+    let leanExpanders := #[`lean, `Informal.lean, `Verso.Genre.Manual.InlineLean.lean,
+      `internal, `Informal.internal]
+    if leanExpanders.contains (name.getId.replacePrefix `_root_ .anonymous) then #[contents] else #[]
+  | _ => stx.getArgs.flatMap leanFenceContents
+
+private partial def documentFenceContents (stx : Syntax) : Array StrLit :=
+  if stx[0].getAtomVal == "#docs" || stx[0].getAtomVal == "#doc" ||
+      stx.isOfKind `Verso.Doc.Concrete.docTerm then
+    leanFenceContents stx
+  else if stx.isOfKind `Lean.Parser.Term.dynamicQuot then #[]
+  else stx.getArgs.flatMap documentFenceContents
+
+private def documentFences (parsed : ParsedSource) : Array StrLit :=
+  parsed.commands.flatMap documentFenceContents ++
+    parsed.incrementalDocument?.toArray.flatMap documentFenceContents
+
+private def paddedFenceInput (map : FileMap) (contents : StrLit) : CoreM String :=
+  withReader (fun ctx : Core.Context => { ctx with fileMap := map }) <|
+    Verso.SyntaxUtils.parserInputString contents
+
+private def checkOwningSourceInheritance (request : Request) (path text : String) (parsed : ParsedSource)
+    (parse : SourceParser) : CoreM (Except Diagnostic Unit) := do
+  unless text.contains "inherit_doc" do return .ok ()
+  if let .error diagnostic ← checkSourceInheritance request text parsed then return .error diagnostic
+  let map := FileMap.ofString text.crlfToLf
+  for contents in documentFences parsed do
+    let some range := originalRange? map.source contents.raw | continue
+    unless (range.start.extract map.source range.stop).contains "inherit_doc" do continue
+    let padded ← paddedFenceInput map contents
+    -- Document elaboration can change the lexical scope. Only explicitly
+    -- absolute targets are unambiguous without replaying those scopes.
+    if let .error diagnostic ← checkSourceInheritance request padded (← parse path padded)
+        (requireRootQualification := true) then
+      return .error diagnostic
+  return .ok ()
+
 private def selectDocumentedWith (request : Request) (sourcePath : String)
     (source : CoreM (Except Diagnostic String)) (parse : SourceParser) :
     CoreM (Except Diagnostic DocumentSelection) := do
@@ -488,7 +626,8 @@ private def selectDocumentedWith (request : Request) (sourcePath : String)
     | .error diagnostic => return .error diagnostic
   if blank text then return .error <| issue "source-unavailable" name "Canonical source is empty"
   let parsed ← parse sourcePath text
-  let (declaration, comment) ← match docCommentSyntaxAtRanges name text ranges.range ranges.selectionRange parsed.commands with
+  let map := FileMap.ofString text.crlfToLf
+  let (declaration, comment) ← match docCommentSyntaxAtRanges name map ranges.range ranges.selectionRange parsed.commands with
     | .ok selected => pure selected
     | .error diagnostic =>
       if let some failure := parsed.failure? then
@@ -498,13 +637,9 @@ private def selectDocumentedWith (request : Request) (sourcePath : String)
   unless matchesDeclarationName name declaration do
     return .error <| issue "source-association-unavailable" name
       "Selected source identifier disagrees with the checked declaration name"
-  if let some failure := parsed.failure? then
-    -- A skipped command can hide a standalone inheritance application. Its
-    -- attribute name must occur literally, including when guillemet-escaped.
-    if text.contains "inherit_doc" then
-      return .error <| issue "source-parse-failed" name
-        (failure ++ ". Cannot rule out an inherit_doc application")
-  let rawDocstring ← match rawDocComment name text comment with
+  if let .error diagnostic ← checkOwningSourceInheritance request sourcePath text parsed parse then
+    return .error diagnostic
+  let rawDocstring ← match rawDocComment name text map comment with
     | .ok raw => pure raw
     | .error diagnostic => return .error diagnostic
   if blank rawDocstring then return .error <| issue "missing-docstring" name "Empty raw docstring"
@@ -550,9 +685,35 @@ def prepareDocumented (request : Request) (sourcePath : String)
     (parse : SourceParser := parseOwningSource) : CoreM (Except Diagnostic Documented) :=
   prepareDocumentedFrom request sourcePath (owningSource request sourcePath readSource) semantics parse
 
+/-- Reproduce Verso's checked input from one actual Lean fence in the physical
+source. The prefix is just parser padding. Preserve raw line endings in the
+literal body, where the native comment can occur. -/
+private def attributeFenceInput (request : Request) (path raw registered : String) (parse : SourceParser) :
+    CoreM (Except Diagnostic String) := do
+  let text := raw.crlfToLf
+  let map := FileMap.ofString text
+  let parsed ← parse path text
+  if let .error diagnostic ← checkOwningSourceInheritance request path text parsed parse then
+    return .error diagnostic
+  if let some failure := parsed.failure? then
+    return .error <| issue "source-parse-failed" request.canonical failure
+  for contents in documentFences parsed do
+    let some range := originalRange? text contents.raw | continue
+    unless range.stop.byteIdx == registered.utf8ByteSize do continue
+    let padded ← paddedFenceInput map contents
+    unless padded == registered do continue
+    let rawMap := FileMap.ofString raw
+    let rawStart := rawSourcePosition rawMap map range.start
+    let rawStop := rawSourcePosition rawMap map range.stop
+    let rawContents := rawStart.extract raw rawStop
+    return .ok ((0 : String.Pos.Raw).extract padded range.start ++ rawContents)
+  return .error <| issue "source-selection-unavailable" request.canonical
+    "The attribute's owning file has no input matching its compiled source buffer"
+
 /-- An owning attribute registration retains its compiler input even when Lake
 restores the module with a synthetic trace. Capture supplies the document from
-that declaration's exact producer. Check both its physical file and its bytes. -/
+that declaration's exact producer. A Verso fence must reproduce its actual
+compiler input from the original literal in that file. -/
 def prepareAttributeDocstring (request : Request) (registered : Document) (nativePath : String)
     (readSource : System.FilePath → IO String) (semantics : NativeLean.SemanticContext)
     (parse : SourceParser) : CoreM (Except Diagnostic Documented) :=
@@ -563,10 +724,8 @@ def prepareAttributeDocstring (request : Request) (registered : Document) (nativ
         return .error <| issue "source-selection-unavailable" request.canonical
           "The attribute and native association select different physical files"
       let text ← readSource physical
-      unless text == registered.text do
-        return .error <| issue "source-selection-unavailable" request.canonical
-          "The attribute's owning file differs from its compiled source buffer"
-      return .ok text
+      if text.crlfToLf == registered.text then return .ok text
+      attributeFenceInput request registered.key.path text registered.text parse
     catch _ =>
       return .error <| issue "source-unavailable" request.canonical "Cannot read the attribute's owning source") semantics parse
 

@@ -519,11 +519,6 @@ run_cmd liftTermElabM do
   match malformed with
   | .error diagnostic => ensure (diagnostic.code == "source-parse-failed") "Malformed source is explicit"
   | .ok _ => throwError "Malformed source must not borrow a native-rendered docstring"
-  let standalone := "import Lean\n/-- own -/ theorem t : True := True.intro\nattribute [inherit_doc True.intro] t\n"
-  let commands ← obtain (← parseSource `standalone "<injected-source>" standalone)
-  match docCommentAtRanges `standalone standalone default default commands with
-  | .error diagnostic => ensure (diagnostic.code == "inherited-docstring") "Standalone inheritance is diagnosed"
-  | .ok _ => throwError "Standalone inheritance cannot silently override own-source provenance"
 
 -- Checked alternatives can coexist under one node. Validate must admit new
 -- evidence against the complete caller batch before returning that batch.
@@ -1050,5 +1045,37 @@ run_cmd liftTermElabM do
     ensure (issue.code == "source-parse-failed" && issue.message.contains "inherit_doc")
       "Malformed source with possible inheritance must fail conservatively"
   | .ok _ => throwError "Parser recovery hid a possible inheritance application"
+
+  let selected := ``RealizationParserFixture.afterScope
+  let other := ``RealizationParserFixture.Other.afterScope
+  let unrelated := text ++ "\nnamespace RealizationParserFixture.Other\nattribute [inherit_doc True.intro] afterScope\nend RealizationParserFixture.Other\n"
+  discard <| obtain (← select selected unrelated)
+  let renamed := text ++ "\nopen RealizationParserFixture renaming afterScope -> renamed in\nattribute [inherit_doc True.intro] renamed\n"
+  discard <| obtain (← select other renamed)
+  let laterShadow := text.replace "namespace Other\n" "namespace Other\nattribute [inherit_doc True.intro] afterScope\n"
+  for (name, bytes) in #[(other, unrelated), (selected, renamed), (selected, laterShadow),
+      (selected, text ++ "\nattribute [inherit_doc True.intro] _root_.RealizationParserFixture.afterScope\n"),
+      (selected, text ++ "\nopen RealizationParserFixture RealizationParserFixture.Other\nattribute [inherit_doc True.intro] afterScope\n")] do
+    match ← select name bytes with
+    | .error diagnostic =>
+      ensure (diagnostic.code == "inherited-docstring" && diagnostic.subject == name.toString)
+        "A matching or ambiguous standalone inheritance must block the selected direct comment"
+    | .ok _ => throwError "Standalone inheritance escaped its owning scope"
+
+  let original ← obtain (← select other text)
+  let crlf := text.replace "\n" "\r\n"
+  let crlfSelection ← obtain (← select other crlf)
+  ensure (crlf != text && crlfSelection.document.text == crlf &&
+    crlfSelection.rawDocstring == original.rawDocstring.replace "\n" "\r\n" &&
+    crlfSelection.rawDocstring.contains "\r\n" &&
+    crlfSelection.ranges.range == original.ranges.range &&
+    crlfSelection.ranges.selectionRange == original.ranges.selectionRange)
+    "CRLF must preserve the original comment bytes while matching compiled Lean ranges"
+  let request : NativeSource.Request := {
+    project := `adapterFixture, canonical := other
+    moduleName := `VersoBlueprintTests.BlueprintRealizationAdapter.ParserSource }
+  let documented ← obtain (← NativeSource.prepareDocumented request path (fun _ => pure crlf) (parse := parse))
+  ensure (documented.document.text == crlf && documented.rawDocstring == crlfSelection.rawDocstring)
+    "The verified compiler input must accept CRLF while retaining its exact owning bytes"
 
 end VersoBlueprintTests.BlueprintRealizationAdapter

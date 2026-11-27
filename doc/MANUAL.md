@@ -558,8 +558,11 @@ blocks. The same structural content is rendered inside the attached “Lean code
 for…” declaration panel. If no docstring is available, the node is still
 registered, but there is no imported informal statement body. Capture checks an
 attribute-owned comment against the source file and original compiler input
-retained by its registration. This also works when Lake restores the owning
-module from its artifact cache.
+retained by its registration. Inside a Lean fence, capture reconstructs the
+padded compiler input from the fence in the owning file. Lean's normalized
+line endings locate the comment, while the selected prose preserves its
+original line endings. This also works when Lake restores the owning module
+from its artifact cache.
 
 For authored realization endpoints, use the `markdown` base name with role
 `statement` for a default Markdown docstring. A `doc.verso` docstring uses the

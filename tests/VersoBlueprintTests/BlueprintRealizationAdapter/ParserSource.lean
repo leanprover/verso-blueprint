@@ -60,4 +60,14 @@ theorem intervening : True := True.intro
 /-- A valid command after recovery has its own exact source range. -/
 theorem afterRecovery : True := True.intro
 
+namespace Other
+
+/--
+A different declaration with the same final name.
+Its original comment contains Unicode 😀 and a second line.
+-/
+theorem afterScope : True := True.intro
+
+end Other
+
 end RealizationParserFixture

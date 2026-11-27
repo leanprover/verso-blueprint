@@ -717,7 +717,7 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
                   if (source.ownDocstring.any fun owner =>
                       documented.canonical == owner.canonical && documented.moduleName == owner.moduleName) &&
                       documented.document.key.path == source.document.path &&
-                      some documented.document.text == source.proseBuffer? &&
+                      source.proseBuffer? == some documented.document.text.crlfToLf &&
                       documented.document.key.context.project == source.context.project then
                     pure (.ok documented.rawDocstring)
                   else

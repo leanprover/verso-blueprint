@@ -4,6 +4,8 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 import VersoBlueprintTests.BlueprintCanonicalSourcePersistence.Attachment
+import VersoBlueprintTests.BlueprintRealizationCapture.FenceOwner
+import VersoBlueprintTests.BlueprintRealizationCapture.IncrementalFenceOwner
 import VersoBlueprint.Realizations.Capture
 import VersoBlueprint.Realizations.Authoring
 
@@ -685,6 +687,84 @@ run_cmd liftTermElabM do
     ensure (match result with
       | .error issue => issue.code == "source-association-unavailable"
       | .ok _ => false) "A byte-identical file with a different physical path impersonated the inline owner"
+
+-- A successful native declaration inside a Lean fence has a padded parser
+-- buffer. Its own comment must come from the exact actual fence in the file.
+run_cmd liftTermElabM do
+  let label := Name.mkSimple "capture.fencedAttribute"
+  let raw := Capture.Raw.ofState (Environment.informalExt.getState (← getEnv))
+  let some (_, node) := raw.nodes.find? (·.1 == label)
+    | throwError "Missing fenced attribute node"
+  let some source := node.sources.find? (·.ownDocstring.isSome)
+    | throwError "Missing real attribute source from the Lean fence"
+  let some buffer := source.proseBuffer? | throwError "Missing retained padded input"
+  let physical ← IO.FS.realPath source.document.path
+  let text ← IO.FS.readFile physical
+  let comment := "\nA fenced declaration owns this 𝒫 comment.\n"
+  ensure (buffer != text && buffer.contains comment) "The fixture must retain Verso's padded fence input"
+  let plan := Capture.plan { raw with nodes := #[(label, node)], facts := raw.facts.filter (·.label == label) }
+  let capture (replacement : String) : TermElabM Capture.Snapshot := do
+    let observations ← obtain (← Capture.observe plan fun path =>
+      if path == physical then pure replacement else IO.FS.readFile path)
+    obtain (Capture.evaluate plan observations)
+  let selected (snapshot : Capture.Snapshot) :=
+    (snapshot.registry.documents.find? (·.key == source.selectedDocumentKey)).map (·.text)
+  let genuine ← capture text
+  ensure (selected genuine == some comment && genuine.sourceDiagnostics.nodes.isEmpty)
+    "The checked fence did not publish its own exact raw doc comment"
+  let crlf ← capture (text.replace "\n" "\r\n")
+  ensure (selected crlf == some (comment.replace "\n" "\r\n") && crlf.sourceDiagnostics.nodes.isEmpty)
+    "Checked fence selection lost the owning file's original CRLF comment bytes"
+  for edited in #[
+      text.replace "owns this 𝒫 comment" "lost this 𝒫 comment",
+      text.replace "```lean \"capture.fenceDisplay\"" "```rust \"capture.fenceDisplay\""] do
+    ensure (edited != text && edited.utf8ByteSize == text.utf8ByteSize)
+      "Stale source controls must preserve declaration byte ranges"
+    let rejected ← capture edited
+    ensure (selected rejected == some "" && rejected.sourceDiagnostics.nodes.any fun (owner, issue) =>
+      owner == label && issue.code == "source-selection-unavailable")
+      "Edited or non-Lean fence source reused an old checked attribute comment"
+  let inherited ← capture (text ++ "\nattribute [inherit_doc Nat] CaptureFenceOwner.documented\n")
+  ensure (selected inherited == some "" && inherited.sourceDiagnostics.nodes.any fun (owner, issue) =>
+    owner == label && issue.code == "inherited-docstring")
+    "Inheritance in the enclosing module must reject a fenced own-comment selection"
+  let followingFence (target : String) := text.replace "```\n:::::::" <|
+    s!"```\n\n```internal\nattribute [inherit_doc Nat] {target}\n```\n:::::::"
+  let unrelated ← capture (followingFence "_root_.CaptureFenceOwner.unrelatedNative")
+  ensure (selected unrelated == some comment && unrelated.sourceDiagnostics.nodes.isEmpty)
+    "Inheritance in another fence for a known unrelated declaration hid the genuine own comment"
+  for target in #["_root_.CaptureFenceOwner.documented", "documented"] do
+    let inherited ← capture (followingFence target)
+    ensure (selected inherited == some "" && inherited.sourceDiagnostics.nodes.any fun (owner, issue) =>
+      owner == label && issue.code == "inherited-docstring")
+      "Matching or ambiguous inheritance in another fence reused the selected own comment"
+
+run_cmd liftTermElabM do
+  let label := Name.mkSimple "capture.incrementalFencedAttribute"
+  let raw := Capture.Raw.ofState (Environment.informalExt.getState (← getEnv))
+  let some (_, node) := raw.nodes.find? (·.1 == label) | throwError "Missing incremental fenced attribute"
+  let some source := node.sources.find? (·.ownDocstring.isSome) | throwError "Missing incremental fence source"
+  let plan := Capture.plan { raw with nodes := #[(label, node)], facts := raw.facts.filter (·.label == label) }
+  let snapshot ← obtain (Capture.evaluate plan (← obtain (← Capture.observe plan)))
+  let selected := snapshot.registry.documents.find? (·.key == source.selectedDocumentKey)
+  ensure (selected.any (·.text == " An own comment in an incremental document. ") &&
+      snapshot.sourceDiagnostics.nodes.isEmpty)
+    "The checked incremental #doc fence did not publish its own exact comment"
+  let request : NativeSource.Request := {
+    project := `blueprintFixtures
+    canonical := `CaptureFenceOwner.precedingDocumented
+    moduleName := `VersoBlueprintTests.BlueprintRealizationCapture.IncrementalFenceOwner }
+  let path := source.document.path
+  let text ← IO.FS.readFile path
+  let select (target : String) := NativeSource.selectDocumented request path (fun _ =>
+    pure (text ++ s!"\n```internal\nattribute [inherit_doc Nat] {target}\n```\n"))
+  let unrelated ← obtain (← select "_root_.CaptureFenceOwner.incrementalDocumented")
+  ensure (unrelated.rawDocstring == " This declaration precedes the incremental document. ")
+    "Unrelated inheritance inside #doc hid a preceding top-level comment"
+  match ← select "_root_.CaptureFenceOwner.precedingDocumented" with
+  | .ok _ => throwError "Inheritance inside #doc was ignored for a preceding top-level comment"
+  | .error diagnostic =>
+    ensure (diagnostic.code == "inherited-docstring") "Expected checked enclosing-fence inheritance rejection"
 
 -- Source attribution is per registration. Only the genuine imported block and
 -- its compatible copy may use the shared declaration and native check.
