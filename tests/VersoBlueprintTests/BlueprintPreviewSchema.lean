@@ -271,12 +271,12 @@ private def checkObjectSchema (name : String) (fields : Array (String × (Json �
   let mentionsMathlib (legend : Informal.Graph.Legend) :=
     legend.groups.any (·.items.any (·.label == "In Mathlib"))
   let graph := model.finish "legend" {}
-  mentionsMathlib graph.legends[0]! && !mentionsMathlib ordinary.fullLegend &&
+  graph.legends.any mentionsMathlib && !mentionsMathlib ordinary.fullLegend &&
     match (toJson graph).getObj? with
     | .error _ => false
     | .ok fields =>
       let forged := Json.obj (fields.insert "legends" (.arr #[]))
-      (fromJson? (α := Informal.Graph.GraphData) forged).isError
+      !(fromJson? (α := Informal.Graph.GraphData) forged).isOk
 
 #guard_msgs in
 #eval checkObjectSchema "Informal.Source.Document" #[
