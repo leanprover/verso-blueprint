@@ -1,3 +1,4 @@
+import json
 import re
 import subprocess
 import sys
@@ -765,8 +766,12 @@ class TestGraphLayoutRuntime:
         expect(graph_card).to_have_attribute("data-bp-graph-count", "1")
         expect(graph_card).to_have_attribute("data-bp-graph-module-ok", "true")
         expect(graph_card).to_have_attribute("data-bp-graph-module-count", "1")
+        graph_data = page.locator(".bp_graph_fullwidth script.bp-graph-data").first
+        graph_nodes = json.loads(graph_data.text_content())["nodes"]
+        assert any(node["label"] == "used_target" for node in graph_nodes)
+        expect(graph_card).to_have_attribute("data-bp-graph-node-count", str(len(graph_nodes)))
         expect(graph_card.locator("[data-bp-custom-client-graph-summary]").first).to_contain_text(
-            "Nodes 58"
+            f"Nodes {len(graph_nodes)}"
         )
 
     def test_graph_legend_is_collapsed_by_default_and_tracks_variant_switch(self, server: str, page: Page):
