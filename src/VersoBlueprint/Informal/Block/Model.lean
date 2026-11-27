@@ -365,7 +365,8 @@ private def externalChecksOn (node : Data.NodeInventory) (placement : Name)
       if previous.isNone || (association.reference.present && !previous.any (·.reference.present)) then
         selected := selected.insert name association
   return selected.toArray.map fun (name, association) =>
-    (name, statuses.get? ⟨association.context, name.toString⟩)
+    (name, if association.reference.present then statuses.get? ⟨association.context, name.toString⟩
+      else some .missing)
 
 def BlockData.visibleBody (data : BlockData) (blocks : Array α) : Array α :=
   if !data.isProof && data.adoptedStatementAvailable == some false then #[] else blocks

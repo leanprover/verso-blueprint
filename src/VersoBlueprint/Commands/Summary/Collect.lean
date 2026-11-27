@@ -140,8 +140,10 @@ private def nodeLeanSummary (snapshot : Realizations.Capture.Snapshot) (label : 
       | .declaration _ object => object == declaration.object &&
           !(snapshot.registry.localResult requirement.key).complete
       | _ => false
+  let missing (declaration : Realizations.Declaration) :=
+    declaration.sourceIssues.any (·.code == "missing-declaration")
   let incompleteDetails := snapshot.nativeChecks.foldl (init := #[]) fun items checked =>
-    if !declarations.any (·.object == checked.declaration) || !checked.status.isIncomplete ||
+    if !declarations.any (fun d => d.object == checked.declaration && !missing d) || !checked.status.isIncomplete ||
         items.any (·.decl == checked.declaration.native.toName) then
       items
     else
@@ -152,18 +154,9 @@ private def nodeLeanSummary (snapshot : Realizations.Capture.Snapshot) (label : 
         isTheorem := checked.kind.any (·.isTheoremLike)
         status := checked.status
       }
-  let missingLeanDecls : List MissingLeanDeclItem := (declarations.filterMap fun declaration =>
-    match snapshot.registry.objects.find? (·.key == declaration.object) with
-    | some object =>
-      if object.resolution == .missing then
-        some ({
-          label
-          kind := toString node.kind
-          written := declaration.object.native.toName
-          canonical := declaration.object.native.toName
-        } : MissingLeanDeclItem)
-      else none
-    | none => none).toList
+  let missingLeanDecls : List MissingLeanDeclItem := ((declarations.filter missing).map fun declaration =>
+    { label, kind := toString node.kind
+      written := declaration.object.native.toName, canonical := declaration.object.native.toName }).toList
   return {
     leanDecls := declarations.size
     incompleteDecls := incompleteDecls.size

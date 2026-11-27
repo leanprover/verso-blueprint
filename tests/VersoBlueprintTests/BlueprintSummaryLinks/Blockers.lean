@@ -18,7 +18,7 @@ open Verso.VersoBlueprintTests.BlueprintSummaryLinks.Shared
     let out ← renderManualDocHtmlString manualImpls summaryBlockersDoc
       (model := summaryBlockersDocBlueprint.model)
     let passed :=
-      hasSubstr out "Current blockers (3)" &&
+      hasSubstr out "Current blockers (2)" &&
       hasSubstr out "Missing external Lean declaration:" &&
       hasSubstr out "Declaration with sorry:" &&
       !hasSubstr out "Incomplete details ("

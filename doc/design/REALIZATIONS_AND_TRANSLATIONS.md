@@ -184,8 +184,7 @@ its object no source document, so its availability rests on the environment and
 its semantic descriptor. An owning file that is unreadable, edited, deleted, or
 absent from the source search path (as for a dependency shipped without sources)
 yields no `source-unavailable` for it and blocks none of its native checks or
-realizations, and an independent expected goal binds only its specification
-document. Capture still reads the owning file where its bytes are the content: a
+realizations, and an independent expected goal binds its specification documents. Capture still reads the owning file where its bytes are the content: a
 declaration's own doc comment, whose raw bytes the environment does not keep, and
 an inline Blueprint block, whose original syntax is checked against the file.
 Capture checks each inline registration's declaration membership and original
@@ -211,7 +210,9 @@ kind, owning source, ranges, and display snippet without inspecting the proof
 dependencies. Declaration previews before the project capture show `awaiting
 capture`. The generator uses each declaration's current native check for the
 panel and code preview. Authored uses and optional `autoDeps` inference still
-run during registration.
+run during registration. A name that did not resolve at its authoring site
+remains missing for that attachment, even if a later declaration or another
+node uses the same spelling.
 
 Explicit contracts and review inputs use `Realizations.Authoring`:
 

@@ -1256,11 +1256,30 @@ run_cmd liftTermElabM do
   let some code := rendered.toBlockData.codeData | throwError "Missing forward-reference code panel"
   let #[reference] := code.displayExternalDecls | throwError "Expected one forward-reference panel entry"
   ensure (reference.canonical == ``declaredLater && !reference.present && reference.observedStatus == some .missing &&
-    rendered.statementExternalChecks.all (·.2.isNone))
+    rendered.statementExternalChecks == #[(``declaredLater, some .missing)])
     "The forward-reference panel must agree with the declaration index and capture"
   let html ← renderPreviewBlocksHtmlWithSnapshot forwardDoc.toPart.content snapshot
   ensure (html.asString.contains "bp_external_status_missing" && html.asString.contains "declaration not found")
     "The rendered forward-reference panel must display the missing declaration"
+
+-- Another label registers the same spelling after its declaration exists.
+attribute [blueprint "capture.resolvedLater"] declaredLater
+
+run_cmd liftTermElabM do
+  let snapshot ← obtain (← Capture.capture)
+  let missing := Name.mkSimple "capture.forwardNative"
+  let resolved := Name.mkSimple "capture.resolvedLater"
+  let state := Environment.informalExt.getState (← getEnv)
+  let panels := TraversalIndex.Nodes.capture state (some snapshot)
+  let checks (label : Name) := (panels.find? (·.label == label)).map (·.statementExternalChecks)
+  let summary ← Commands.buildSummary snapshot
+  ensure ((← Environment.labelsForLeanDecl ``declaredLater) == #[resolved] &&
+    (snapshot.assessmentFor resolved).requiredComplete && !(snapshot.assessmentFor missing).requiredComplete &&
+    checks resolved == some #[(``declaredLater, some .proved)] &&
+    checks missing == some #[(``declaredLater, some .missing)] &&
+    summary.missingLeanDecls.any (fun row => row.label == missing && row.canonical == ``declaredLater) &&
+    !summary.missingLeanDecls.any (·.label == resolved))
+    "A resolved sibling must not supply its registration, panel status or summary to a forward reference"
 
 run_cmd liftTermElabM do
   let flat := Name.mkSimple "foo.bar»"
