@@ -22,9 +22,9 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       (model.nodes.find? (·.label == Lean.Name.mkSimple label)).bind (·.assessment)
     let isCapturedComplete (label : String) := (assessmentFor? label).any fun assessment =>
       assessment.hasNativeDeclarations && assessment.nativeStatementComplete &&
-        assessment.nativeProofComplete && assessment.requiredComplete
+        assessment.nativeBodyComplete && assessment.requiredComplete
     let isCapturedIncomplete (label : String) := (assessmentFor? label).any fun assessment =>
-      assessment.hasNativeDeclarations && !assessment.nativeProofComplete && !assessment.requiredComplete
+      assessment.hasNativeDeclarations && !assessment.nativeBodyComplete && !assessment.requiredComplete
     let isCapturedAxiom (label : String) := (assessmentFor? label).any fun assessment =>
       assessment.hasNativeDeclarations && assessment.hasAxiomLike
     let isNativeFree (label : String) := (assessmentFor? label).any fun assessment =>

@@ -332,7 +332,7 @@ run_meta do
     let .ok validation := status.getObjVal? "validation"
       | throw <| IO.userError "Status query omitted captured validation"
     unless (validation.getObjValAs? Bool "captured").toOption == some true &&
-        (validation.getObjValAs? Bool "nativeProofComplete").toOption == some complete do
+        (validation.getObjValAs? Bool "nativeBodyComplete").toOption == some complete do
       throw <| IO.userError "Status query ignored the proof association's native validation"
     let .ok declarations := status.getObjValAs? (Array Json) "sourceDeclarationSnapshots"
       | throw <| IO.userError "Status query omitted declaration inventory"
@@ -362,7 +362,7 @@ run_meta do
   let .ok validation := mixed.getObjVal? "validation"
     | throw <| IO.userError "Mixed proof lost its captured assessment"
   for (field, value) in #[("captured", true), ("hasNativeDeclarations", true), ("hasNativeBodyRequirement", true),
-      ("nativeStatementComplete", false), ("nativeProofComplete", false), ("requiredComplete", false)] do
+      ("nativeStatementComplete", false), ("nativeBodyComplete", false), ("requiredComplete", false)] do
     unless (validation.getObjValAs? Bool field).toOption == some value do
       throw <| IO.userError s!"Incorrect mixed proof status for {field}"
   let .ok diagnostics := validation.getObjVal? "details" >>= (·.getObjValAs? (Array Json) "sourceDiagnostics")

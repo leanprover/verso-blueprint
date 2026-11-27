@@ -212,7 +212,7 @@ private def nodeStatusJson (manifest : ManifestFile) (row : NodeRow) : Json := I
         ("nativeStatementComplete", toJson assessment.nativeStatementComplete),
         ("hasNativeBodyRequirement", toJson assessment.hasNativeBodyRequirement),
         ("proofRoleComplete", toJson assessment.proofRoleComplete),
-        ("nativeProofComplete", toJson assessment.nativeProofComplete),
+        ("nativeBodyComplete", toJson assessment.nativeBodyComplete),
         ("requiredComplete", toJson assessment.requiredComplete),
         ("statementDependenciesComplete", toJson assessment.statementDependenciesComplete),
         ("proofDependenciesComplete", toJson assessment.proofDependenciesComplete),

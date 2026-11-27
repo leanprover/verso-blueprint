@@ -738,7 +738,7 @@ carries the captured validation. When the label has a display resource,
 `primaryKey` identifies it. For a bodyless occurrence, `primaryKey` is null
 and `bodyless` supplies the occurrence metadata and canonical link. The node
 still participates in status, counts and the work queue.
-The internal manifest schema is version 14. Rebuild generated sites to migrate.
+The internal manifest schema is version 15. Rebuild generated sites to migrate.
 The `metadata` query selects nodes with owner, tag, priority, or effort metadata.
 `workQueueItems` reports the next actionable statement or proof step from each
 node's assessment. A graph-free chapter has the same work queue as one that
@@ -931,7 +931,7 @@ Generated `blueprint-manifest.json` includes a `graphs` array. Each entry
 contains `schemaVersion`, `nodes`, `edges`, `groups`, and `variants`, with
 status enums, dependency axes, preview keys, hrefs when traversal resolved
 them, and visual metadata for renderers that want Blueprint's default styling.
-Graph schema version 7 exports the full legend and, when applicable, the group
+Graph schema version 8 exports the full legend and, when applicable, the group
 legend in `legends`. A client-created graph uses the same legend as the site.
 The visual fields `gradientangle` and `tooltip` may be omitted. The schema retains the private-constructor topology contract and adds
 `assessment` plus `actionableStage` to every node. An unresolved endpoint has no
@@ -1972,9 +1972,11 @@ Native validity, independently authored expected propositions and prose
 correspondence are separate contracts. `hasNativeBodyRequirement` records whether a
 proof or computational implementation check applies to any selected native
 declaration. A proposition definition can pass its statement check with both
-`hasNativeBodyRequirement` and `nativeProofComplete` false.
+`hasNativeBodyRequirement` and `nativeBodyComplete` false. If a node has a checked
+mathematical proof and an unfinished computational body, `proofRoleComplete` is
+true and `nativeBodyComplete` is false.
 `requiredComplete` summarizes the generated native checks for the ordinary Lean
-realizations and their selected Blueprint prerequisites. `nativeProofComplete`
+realizations and their selected Blueprint prerequisites. `nativeBodyComplete`
 can be true while `requiredComplete` is false because a selected prerequisite is
 unfinished. Independent expected propositions and correspondence reviews have
 their own labeled results in `details.assessment`. `details` exposes actual subjects,
@@ -1998,7 +2000,7 @@ counts stay in the known-sorry evidence.
 `sourceDeclarationSnapshots`. `validation.captured` distinguishes a captured
 assessment from unavailable validation. Captured data includes
 `hasNativeDeclarations`, `nativeStatementComplete`, `hasNativeBodyRequirement`,
-`nativeProofComplete`, `proofRoleComplete`,
+`nativeBodyComplete`, `proofRoleComplete`,
 `requiredComplete`, `statementDependenciesComplete`, `proofDependenciesComplete`
 and `details`. `validation.externalDeclarationChecks` reports each external declaration’s current
 check beside its facet and canonical name. It replaces the former aggregate `verdict`, `complete`,

@@ -53,7 +53,7 @@ const row: BlueprintManifestNode = {
   label: "code-only", primaryKey: "code-only--statement", bodyless: null, assessment: null,
 };
 for (const graph of await loadGraphs()) {
-  const schemaVersion: 7 = graph.schemaVersion;
+  const schemaVersion: 8 = graph.schemaVersion;
   const legends: ("full" | "group")[] = graph.legends.map((legend) => legend.kind);
   const tooltip: string | null | undefined = graph.nodes[0]?.visual.tooltip;
   void [schemaVersion, legends, tooltip];

@@ -100,7 +100,7 @@ private def capturedAssessment? (label : String) : Option Realizations.NodeAsses
     ("fresh native summary retains inline record type hole", (summaryStatus "sorry.capture.inline-record").any
       (fun status => status.hasTypeGap && status.containsExplicitSorry)),
     ("native proof completeness remains separate", (capturedAssessment? "sorry.capture.both").any fun assessment =>
-      assessment.hasNativeDeclarations && !assessment.nativeProofComplete)]
+      assessment.hasNativeDeclarations && !assessment.nativeBodyComplete)]
   pure <| checks.filterMap fun (name, ok) => if ok then none else some name
 
 -- Captured producer evidence survives duplicate snapshot merging, including a

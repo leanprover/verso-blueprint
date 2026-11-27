@@ -37,12 +37,12 @@ run_cmd liftTermElabM do
   let dependent := snapshot.assessmentFor (label "capture.dependent")
 
   ensure (complete.hasNativeDeclarations && complete.nativeStatementComplete &&
-    complete.nativeProofComplete && complete.requiredComplete)
+    complete.nativeBodyComplete && complete.requiredComplete)
     "A checked native theorem should be complete in its own selected realization"
   ensure (admitted.hasNativeDeclarations && admitted.nativeStatementComplete &&
-    !admitted.nativeProofComplete && !admitted.requiredComplete)
+    !admitted.nativeBodyComplete && !admitted.requiredComplete)
     "An admitted theorem must remain incomplete"
-  ensure (dependent.nativeProofComplete && !dependent.requiredComplete &&
+  ensure (dependent.nativeBodyComplete && !dependent.requiredComplete &&
     !dependent.proofDependenciesComplete)
     "A locally checked proof must stay distinct from an unfinished dependency"
   let admittedGraph := Graph.buildModel snapshot #[label "capture.admitted"] |>.finish "admitted" {}
@@ -87,7 +87,7 @@ run_cmd liftTermElabM do
   let some statementNode := graph.nodes.find? (·.label == statementOnly)
     | throwError "Missing statement-only native proposition"
   ensure (statementNode.assessment.any (fun view => view.requiredComplete && !view.hasNativeBodyRequirement &&
-      !view.nativeProofComplete) && statementNode.statementStatus == .formalized &&
+      !view.nativeBodyComplete) && statementNode.statementStatus == .formalized &&
       statementNode.proofStatus == .none && statementNode.actionableStage?.isNone &&
       (statementNode.visual.tooltip?.getD "").contains "no native body check")
     "A checked statement-only proposition must not acquire a pending proof or proof-writing task"

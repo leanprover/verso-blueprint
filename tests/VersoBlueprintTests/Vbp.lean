@@ -500,7 +500,7 @@ private def jsonArrayHasNullField (values : Array Json) (field : String) : Bool 
 #eval
   -- MOCK transport fixture only: these values do not report provider or kernel success.
   let check (statement proof : Informal.Data.ProvedStatus)
-      (nativeStatementComplete nativeProofComplete requiredComplete : Bool)
+      (nativeStatementComplete nativeBodyComplete requiredComplete : Bool)
       (kind : Informal.Data.NodeKind := .theorem) : Bool :=
     let statementSource : Informal.BlockCodeData := { externalDecls := #[{
       (Informal.Data.ExternalRef.ofName `truthDecl) with kind, provedStatus := some statement }] }
@@ -511,7 +511,7 @@ private def jsonArrayHasNullField (values : Array Json) (field : String) : Bool 
       hasNativeDeclarations := true
       hasNativeBodyRequirement := true
       nativeStatementComplete
-      nativeProofComplete
+      nativeBodyComplete
       requiredComplete
       hasAxiomLike := false
       selectedLeanUseCount := 1
@@ -544,7 +544,7 @@ private def jsonArrayHasNullField (values : Array Json) (field : String) : Bool 
             jsonBoolField? validation "hasNativeDeclarations" == some true,
             jsonBoolField? validation "hasAxiomLike" == some false,
             jsonBoolField? validation "nativeStatementComplete" == some nativeStatementComplete,
-            jsonBoolField? validation "nativeProofComplete" == some nativeProofComplete,
+            jsonBoolField? validation "nativeBodyComplete" == some nativeBodyComplete,
             jsonBoolField? validation "requiredComplete" == some requiredComplete,
             (jsonField? validation "selectedLeanUseCount") == some (toJson (1 : Nat)),
             (jsonField? details "assessment").isSome,
@@ -555,13 +555,13 @@ private def jsonArrayHasNullField (values : Array Json) (field : String) : Bool 
               (jsonField? row "sourceSnapshotStatus").isSome && (jsonField? row "status").isNone),
             (match heading.statusMark with
              | some mark => mark.title.contains "Selected Lean prerequisites unfinished" &&
-                 mark.status == (if (if kind.isTheoremLike then nativeProofComplete else nativeStatementComplete) && requiredComplete then .proved else .incomplete {})
+                 mark.status == (if (if kind.isTheoremLike then nativeBodyComplete else nativeStatementComplete) && requiredComplete then .proved else .incomplete {})
              | none => false),
             (match heading.statusMark with
              | some mark => mark.title.contains "Native statement: passed" == nativeStatementComplete
              | none => false),
             (match heading.statusMark with
-             | some mark => mark.title.contains "Native body: passed" == nativeProofComplete
+             | some mark => mark.title.contains "Native body: passed" == nativeBodyComplete
              | none => false),
             (match heading.statusMark with
              | some mark => mark.title.contains "Native Lean requirements: complete" == requiredComplete

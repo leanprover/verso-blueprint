@@ -29,7 +29,7 @@ open Verso.VersoBlueprintTests.SorryImport.Captured
     return ref.present && ref.provedStatus.isNone && capturedRef.provedStatus == some status &&
       status.hasTypeGap && status.hasProofGap &&
       status.containsExplicitSorry && status.dependsOnSorry &&
-      assessment.hasNativeDeclarations && !assessment.nativeProofComplete &&
+      assessment.hasNativeDeclarations && !assessment.nativeBodyComplete &&
       graphNode.assessment == some assessment &&
       graphNode.statementStatus == expectedStatuses.1 && graphNode.proofStatus == expectedStatuses.2 &&
       statusCaptureBlueprint.model.summary.incompleteDetails.any (fun item =>

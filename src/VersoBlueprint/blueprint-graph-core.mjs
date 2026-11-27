@@ -145,7 +145,7 @@ export function readGraphJsonScript(root, selector) {
   }
 }
 
-const graphDataSchemaVersion = 7;
+const graphDataSchemaVersion = 8;
 
 /**
  * @param {unknown} value
@@ -202,7 +202,7 @@ function isNodeAssessment(value) {
     "hasAxiomLike",
     "nativeStatementComplete",
     "hasNativeBodyRequirement",
-    "nativeProofComplete",
+    "nativeBodyComplete",
     "requiredComplete",
     "statementDependenciesComplete",
     "proofDependenciesComplete"

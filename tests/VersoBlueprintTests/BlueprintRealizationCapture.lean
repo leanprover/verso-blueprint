@@ -166,17 +166,17 @@ run_cmd liftTermElabM do
   -- prerequisites, and do not borrow validity from a complete sibling.
   let completeView := snapshot.assessmentFor (Name.mkSimple "capture.complete")
   ensure (completeView.hasNativeDeclarations && completeView.nativeStatementComplete &&
-    completeView.nativeProofComplete && completeView.requiredComplete &&
+    completeView.nativeBodyComplete && completeView.requiredComplete &&
     completeView.proofDependenciesComplete) "Complete public assessment lost its native checks"
   let admittedView := snapshot.assessmentFor (Name.mkSimple "capture.admitted")
-  ensure (admittedView.nativeStatementComplete && !admittedView.nativeProofComplete &&
+  ensure (admittedView.nativeStatementComplete && !admittedView.nativeBodyComplete &&
     !admittedView.requiredComplete) "Public assessment hid an admitted native body"
   for label in #["capture.dependent", "capture.missing", "capture.cycleA", "capture.groupedDependent"] do
     let view := snapshot.assessmentFor (Name.mkSimple label)
-    ensure (view.nativeProofComplete && !view.requiredComplete && !view.proofDependenciesComplete)
+    ensure (view.nativeBodyComplete && !view.requiredComplete && !view.proofDependenciesComplete)
       s!"Public assessment conflated local proof and prerequisites for {label}"
   let groupedView := snapshot.assessmentFor (Name.mkSimple "capture.grouped")
-  ensure (groupedView.nativeStatementComplete && !groupedView.nativeProofComplete &&
+  ensure (groupedView.nativeStatementComplete && !groupedView.nativeBodyComplete &&
     !groupedView.requiredComplete) "Public assessment borrowed the complete sibling's proof"
   ensure (completeView.details.getObjVal? "assessment" |>.isOk)
     "Public assessment omitted exact subjects and contracts"
@@ -991,7 +991,7 @@ run_cmd liftTermElabM do
         "The checked sibling must retain its precise passed proof"
       let mixed := snapshot.assessmentFor target
       ensure (mixed.hasNativeDeclarations && mixed.hasNativeBodyRequirement &&
-        !mixed.nativeStatementComplete && !mixed.nativeProofComplete &&
+        !mixed.nativeStatementComplete && !mixed.nativeBodyComplete &&
         !mixed.nativeLocallyComplete && !mixed.requiredComplete && mixed.proofRoleComplete == some false &&
         (Graph.statusesForAssessment mixed).2 == .incomplete)
         "The aggregate cannot count an unclassified declaration as a completed sibling or statement-only proposition"
@@ -1010,7 +1010,7 @@ run_cmd liftTermElabM do
         "Failed target selection must block the dependent closure without erasing its local checks"
       let proposition := snapshot.assessmentFor (Name.mkSimple "capture.propositionOnly")
       ensure (proposition.hasNativeDeclarations && proposition.nativeStatementComplete &&
-        !proposition.hasNativeBodyRequirement && !proposition.nativeProofComplete &&
+        !proposition.hasNativeBodyRequirement && !proposition.nativeBodyComplete &&
         proposition.nativeLocallyComplete && proposition.requiredComplete &&
         (Graph.actionableStageForAssessment? proposition).isNone)
         "A classified proposition definition must retain its legitimate statement-only completion"
@@ -1039,7 +1039,7 @@ run_cmd liftCoreM <| Authoring.expectNative `wrongExpectedGoal (Name.mkSimple "c
 run_cmd liftTermElabM do
   let snapshot ← obtain (← Capture.capture)
   let assessment := snapshot.assessmentFor (Name.mkSimple "capture.wrongExpected")
-  ensure (assessment.nativeStatementComplete && assessment.nativeProofComplete &&
+  ensure (assessment.nativeStatementComplete && assessment.nativeBodyComplete &&
     assessment.requiredComplete && assessment.proofDependenciesComplete)
     "The native-only summary must remain distinct from an independently authored wrong proposition"
   ensure (!(snapshot.registry.resultForRequirement

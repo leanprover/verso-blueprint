@@ -275,7 +275,7 @@ structure GraphModel where
   groupMetadata : Array GroupMetadata := #[]
 deriving Inhabited, Repr, ToJson, FromJson, Quote
 
-private def graphDataSchemaVersion : Nat := 7
+private def graphDataSchemaVersion : Nat := 8
 
 structure LegendSwatch where
   background : String := "#ffffff"

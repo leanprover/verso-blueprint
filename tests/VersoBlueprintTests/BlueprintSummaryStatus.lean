@@ -65,9 +65,13 @@ run_cmd liftTermElabM do
   let mixedGraph := Graph.buildModel snapshot #[mixedLabel] |>.finish "mixed-bodies" {}
   let some mixedNode := mixedGraph.nodes.find? (·.label == mixedLabel)
     | throwError "Missing mixed native node"
-  ensure (mixed.proofRoleComplete == some true && !mixed.nativeProofComplete && !mixed.requiredComplete &&
+  ensure (mixed.proofRoleComplete == some true && !mixed.nativeBodyComplete && !mixed.requiredComplete &&
     mixedNode.proofStatus == .none)
     "A passing mathematical proof cannot mark a node with an admitted implementation as formalized"
+  let wire := toJson mixed
+  ensure ((wire.getObjValAs? Bool "proofRoleComplete").toOption == some true &&
+      (wire.getObjValAs? Bool "nativeBodyComplete").toOption == some false)
+    "The serialized mixed node must distinguish its checked proof from its unfinished implementation"
   let unfinishedDefinitionProofs := snapshot.registry.nodes.countP fun node =>
     node.kind == .definition && (snapshot.assessmentFor node.label).proofRoleComplete == some false
   ensure (unfinishedDefinitionProofs > 0 && summary.definitionStatus.noProof == unfinishedDefinitionProofs)
@@ -82,12 +86,12 @@ run_cmd liftTermElabM do
     ((⟨Name.mkSimple "capture.complete", `verso⟩ : RealizationKey).forRole `proof)
   ensure missingProse.isNone
     "Missing optional prose argument must not manufacture a realization or a validation obligation"
-  ensure (complete.nativeProofComplete && complete.requiredComplete)
+  ensure (complete.nativeBodyComplete && complete.requiredComplete)
     "Native proof and its own realization closure should be counted complete"
-  ensure (dependent.nativeProofComplete && !dependent.requiredComplete)
+  ensure (dependent.nativeBodyComplete && !dependent.requiredComplete)
     "Native proof completion should remain separate from unfinished Blueprint dependencies"
   let wrongExpected := snapshot.assessmentFor (Name.mkSimple "capture.wrongExpected")
-  ensure (wrongExpected.nativeStatementComplete && wrongExpected.nativeProofComplete &&
+  ensure (wrongExpected.nativeStatementComplete && wrongExpected.nativeBodyComplete &&
     wrongExpected.requiredComplete && wrongExpected.proofDependenciesComplete)
     "The native summary must remain independent of a separately authored expected proposition"
   let expectedKey : RequirementKey := ⟨.declaration

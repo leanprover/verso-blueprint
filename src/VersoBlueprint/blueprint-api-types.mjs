@@ -360,9 +360,9 @@
  * @property {boolean} hasNativeDeclarations Whether the node has selected native declarations in its Lean realizations.
  * @property {boolean} hasAxiomLike Whether a selected native declaration has a freshly checked axiom-like status.
  * @property {boolean} nativeStatementComplete Local native statement checks, before Blueprint prerequisites.
- * @property {boolean | null} proofRoleComplete Whether native contracts cover every selected declaration and all selected proof roles pass locally, or null when no proof role is selected.
  * @property {boolean} hasNativeBodyRequirement Whether the selected declarations require a native proof or implementation check.
- * @property {boolean} nativeProofComplete Local native body checks, separate from expected-goal correspondence.
+ * @property {boolean} nativeBodyComplete Whether native contracts cover every selected declaration and all applicable proof and implementation bodies pass locally. False when no body check applies.
+ * @property {boolean | null} proofRoleComplete Whether native contracts cover every selected declaration and all selected proof roles pass locally, or null when no proof role is selected.
  * @property {boolean} requiredComplete Whether the generated native requirements and selected prerequisites complete; not universal node completion.
  * @property {number} selectedLeanUseCount Nonnegative integer count of ordinary native uses assessed in their exact contexts, including failed selections.
  * @property {boolean} statementDependenciesComplete Whether the selected statement-axis prerequisites complete.
@@ -524,7 +524,7 @@
  * from that topology at the graph finalization boundary.
  *
  * @typedef {Object} BlueprintGraphData
- * @property {7} schemaVersion Current finalized graph payload schema version.
+ * @property {8} schemaVersion Current finalized graph payload schema version.
  * @property {string} key Stable graph/block key.
  * @property {BlueprintGraphNode[]} nodes Graph node payloads.
  * @property {BlueprintGraphEdge[]} edges Derived, deduplicated graph edge payloads with dangling sources omitted.

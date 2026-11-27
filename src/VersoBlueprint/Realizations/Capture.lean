@@ -146,8 +146,7 @@ def Snapshot.assessmentFor (snapshot : Snapshot) (label : Name) : NodeAssessment
   let locallyComplete (selected : Array (Name × Option RequirementKey)) :=
     coversDeclarations && !selected.isEmpty &&
       selected.all fun (_, key) => key.any fun key => (registry.localResult key).complete
-  -- The legacy summary's proof field means native body completeness. A
-  -- computational definition supplies a value, not a mathematical proof edge.
+  -- Body checks cover selected proofs and computational implementations.
   let bodyChecks := checks.filter (·.1 != `statement)
   let statementComplete := locallyComplete (checks.filter (·.1 != `proof))
   let bodyComplete := locallyComplete bodyChecks
@@ -178,7 +177,7 @@ def Snapshot.assessmentFor (snapshot : Snapshot) (label : Name) : NodeAssessment
     hasAxiomLike := snapshot.nativeChecks.any (fun checked => objects.contains checked.declaration && checked.status.isAxiomLike)
     nativeStatementComplete := statementComplete
     hasNativeBodyRequirement := bodyChecks.any (·.2.isSome)
-    nativeProofComplete := bodyComplete
+    nativeBodyComplete := bodyComplete
     proofRoleComplete
     requiredComplete
     selectedLeanUseCount := selected.size

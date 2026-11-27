@@ -130,7 +130,7 @@ theorem omittedMixedSorry : True := by sorry
       let details := assessment.details.compress
       if declaration == `omittedLiterateSorry then
         unless assessment.hasNativeDeclarations && assessment.nativeStatementComplete &&
-            !assessment.nativeProofComplete && !assessment.requiredComplete &&
+            !assessment.nativeBodyComplete && !assessment.requiredComplete &&
             graphNode.proofStatus == .incomplete && graphNode.actionableStage? == some "proof" &&
             headingMark.title.contains "Native statement: passed" &&
             headingMark.title.contains "Native body: unfinished" &&
@@ -146,7 +146,7 @@ theorem omittedMixedSorry : True := by sorry
             s!"htmlHasDeclaration={hasSubstr html.asString declaration.toString}")
       else
         unless assessment.hasNativeDeclarations && assessment.nativeStatementComplete &&
-            !assessment.nativeProofComplete && !assessment.requiredComplete &&
+            !assessment.nativeBodyComplete && !assessment.requiredComplete &&
             graphNode.proofStatus == .incomplete && graphNode.actionableStage? == some "proof" &&
             headingMark.title.contains "Native statement: passed" &&
             headingMark.title.contains "Native body: unfinished" &&

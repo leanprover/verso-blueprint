@@ -98,7 +98,7 @@ inspection; say that its evidence describes the last generation. Query is
 read-only and does not recheck changed sources. `check` audits artifact
 consistency and cannot establish freshness.
 
-`validation.nativeStatementComplete` and `nativeProofComplete` describe local
+`validation.nativeStatementComplete` and `nativeBodyComplete` describe local
 native checks. Use `proofRoleComplete` for mathematical proofs, including
 proof-valued definitions. It is null when no proof applies.
 `hasNativeBodyRequirement` includes computational implementations. A proposition definition can have only a statement

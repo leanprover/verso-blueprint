@@ -22,8 +22,9 @@ structure NodeAssessment where
   nativeStatementComplete : Bool := false
   /-- The selected native declarations have a required proof or implementation check. -/
   hasNativeBodyRequirement : Bool := false
-  /-- Local own-declaration body checks, not proof of an independent expected goal. -/
-  nativeProofComplete : Bool := false
+  /-- True when at least one body check applies, every selected declaration has its
+  native contract and all selected proof and implementation bodies pass locally. -/
+  nativeBodyComplete : Bool := false
   /-- Present when a native proof role is selected. Success requires contract
   coverage for every selected declaration and passing local proof checks. -/
   proofRoleComplete : Option Bool := none
@@ -46,7 +47,7 @@ instance : Repr NodeAssessment where
 /-- All applicable local checks have passed, before Blueprint prerequisites. -/
 def NodeAssessment.nativeLocallyComplete (assessment : NodeAssessment) : Bool :=
   assessment.hasNativeDeclarations && assessment.nativeStatementComplete &&
-    (!assessment.hasNativeBodyRequirement || assessment.nativeProofComplete)
+    (!assessment.hasNativeBodyRequirement || assessment.nativeBodyComplete)
 
 /-- User-facing status of the ordinary native checks and their selected prerequisites. -/
 def NodeAssessment.leanRequirementMessage (assessment : NodeAssessment) : String :=
@@ -66,7 +67,7 @@ def NodeAssessment.nativeStatusMessage (assessment : NodeAssessment) : String :=
   if !assessment.hasNativeDeclarations then assessment.leanRequirementMessage else
   let statement := if assessment.nativeStatementComplete then "passed" else "unfinished"
   let body := if assessment.hasNativeBodyRequirement then
-    if assessment.nativeProofComplete then "passed" else "unfinished"
+    if assessment.nativeBodyComplete then "passed" else "unfinished"
     else "not required"
   let classification := if assessment.hasAxiomLike then "Axiom-like declarations present. " else ""
   s!"{classification}Native statement: {statement}. Native body: {body}. " ++
@@ -119,7 +120,7 @@ def statusesForAssessment (assessment : Realizations.NodeAssessment) :
   let proof :=
     if assessment.proofRoleComplete == some false then
       .incomplete
-    else if assessment.nativeProofComplete then
+    else if assessment.nativeBodyComplete then
       if assessment.statementDependenciesComplete && assessment.proofDependenciesComplete then
         .formalizedWithAncestors
       else
@@ -135,7 +136,7 @@ def actionableStageForAssessment? (assessment : Realizations.NodeAssessment) : O
   if !assessment.hasNativeDeclarations then none
   else if !assessment.nativeStatementComplete then
     if assessment.statementDependenciesComplete then some "statement" else none
-  else if assessment.hasNativeBodyRequirement && !assessment.nativeProofComplete then
+  else if assessment.hasNativeBodyRequirement && !assessment.nativeBodyComplete then
     if assessment.proofDependenciesComplete then some "proof" else none
   else
     none

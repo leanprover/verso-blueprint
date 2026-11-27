@@ -558,7 +558,7 @@ run_cmd liftTermElabM do
         value.key.subject == key.subject && value.key != key))
         "Capture invented sibling contracts or dependency-selection gates for an authored alternative"
       let defaultAssessment := snapshot.assessmentFor Owner.node
-      ensure (defaultAssessment.nativeProofComplete && defaultAssessment.requiredComplete)
+      ensure (defaultAssessment.nativeBodyComplete && defaultAssessment.requiredComplete)
         "An unfinished authored alternative must not change the default proof summary"
   finally
     setEnv initialEnv

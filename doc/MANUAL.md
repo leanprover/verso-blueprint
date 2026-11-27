@@ -463,7 +463,7 @@ summary, headings and query manifest. A structural/import conflict rejects the
 whole capture; it does not publish a partial project.
 
 `lake exe vbp query status <label>` exposes `validation`: `nativeStatementComplete` and
-`nativeProofComplete` describe the selected declarations' own native checks.
+`nativeBodyComplete` describe the selected declarations' own native checks.
 `hasNativeBodyRequirement` indicates whether a proof or implementation check applies.
 `proofRoleComplete` is true when every selected declaration has its native contract
 and all selected mathematical proofs pass locally. A missing sibling contract leaves
@@ -481,9 +481,9 @@ their subjects, requirements, and observations. Prose without an explicit
 assessment requirement remains unassessed. Source-only previews say validation is
 unavailable until captured. Declaration-panel snapshots are display inventory.
 
-The generated manifest (version 14) records one node per included label. A bodyless node can still have an actionable proof. A second rendered view of a label does not increase its count.
+The generated manifest (version 15) records one node per included label. A bodyless node can still have an actionable proof. A second rendered view of a label does not increase its count.
 
-The graph payload uses schema version 7. Consumers should use the
+The graph payload uses schema version 8. Consumers should use the
 exported `assessment` and `actionableStage`, rather than reconstructing readiness
 from graph colors. The status query's `complete` and `declarations` are
 replaced by `validation` and `sourceDeclarationSnapshots`; the latter
@@ -1690,7 +1690,7 @@ The statement track for theorem-like nodes requires verified statement coverage
 and no statement or unlocalized hole. A proof-only verification gap can leave
 that statement track complete; the proof track remains blocked. Definitions
 require both axes for statement completion. Whole-declaration `isProved` and
-captured `nativeProofComplete` require native closure. `requiredComplete` also
+captured `nativeBodyComplete` require native closure. `requiredComplete` also
 requires the selected Blueprint prerequisites. Independently authored contracts
 have their own assessment results.
 

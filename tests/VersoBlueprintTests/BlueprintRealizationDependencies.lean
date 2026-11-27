@@ -210,7 +210,7 @@ run_cmd liftTermElabM do
     selects snapshot label `proof "unfinishedTarget" #[unfinishedProof]
     let result := assessment label
     ensure (result.selectedLeanUseCount == 2 && result.nativeLocallyComplete &&
-      result.nativeProofComplete && result.statementDependenciesComplete &&
+      result.nativeBodyComplete && result.statementDependenciesComplete &&
       !result.proofDependenciesComplete && !result.requiredComplete)
       s!"{label} lost a dependency or conflated a local proof with Blueprint completion"
 
@@ -242,7 +242,7 @@ run_cmd liftTermElabM do
   for label in #["derived", "proposition", "orphan", "lateOwner"] do
     let result := assessment label
     ensure (result.nativeStatementComplete && result.requiredComplete && result.nativeLocallyComplete &&
-      !result.hasNativeBodyRequirement && !result.nativeProofComplete &&
+      !result.hasNativeBodyRequirement && !result.nativeBodyComplete &&
       (Graph.actionableStageForAssessment? result).isNone)
       s!"Statement-only {label} acquired native proof work"
   ensure ((assessment "lateOwner").selectedLeanUseCount == 0 &&

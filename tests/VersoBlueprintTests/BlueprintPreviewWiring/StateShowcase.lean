@@ -118,9 +118,9 @@ def stateShowcaseDocBlueprint : Informal.BlueprintDocument := .capture stateShow
       model.graph.nodes.find? (·.label == Lean.Name.mkSimple label)
     let nativeBase := (assessmentFor? "def:showcase.base").any fun assessment =>
       assessment.hasNativeDeclarations && assessment.nativeStatementComplete &&
-        assessment.nativeProofComplete && assessment.requiredComplete
+        assessment.nativeBodyComplete && assessment.requiredComplete
     let incompleteTheorem := (assessmentFor? "thm:showcase.incomplete").any fun assessment =>
-      assessment.hasNativeDeclarations && !assessment.nativeProofComplete
+      assessment.hasNativeDeclarations && !assessment.nativeBodyComplete
     let proseOnly := (graphNode? "thm:showcase.proof_ready").any fun node =>
       node.assessment.any (!·.hasNativeDeclarations) && node.statementStatus == .unassessed &&
       node.proofStatus == .unassessed && node.actionableStage?.isNone &&

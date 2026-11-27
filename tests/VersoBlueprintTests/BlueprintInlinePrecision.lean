@@ -54,7 +54,7 @@ theorem inline_main_complete : True := by
         -- proof selections, just like theorems. The complete sibling cannot
         -- lend this helper a successful proof check.
         assessment.nativeStatementComplete &&
-        !assessment.nativeProofComplete && !assessment.requiredComplete &&
+        !assessment.nativeBodyComplete && !assessment.requiredComplete &&
         helperProofGapOnly
 
 #docs (Manual) inlineGeneratedDeclsDoc "Inline Generated Decls" :=

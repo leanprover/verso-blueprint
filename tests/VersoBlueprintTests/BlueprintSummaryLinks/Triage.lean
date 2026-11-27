@@ -19,12 +19,12 @@ run_cmd liftTermElabM do
   let some foundation := node (Lean.Name.mkSimple "def:triage.01") | throwError "Missing native foundation node"
   let some foundationAssessment := foundation.assessment | throwError "Missing foundation assessment"
   unless foundationAssessment.hasNativeDeclarations && !foundationAssessment.requiredComplete &&
-      !foundationAssessment.nativeProofComplete && foundationAssessment.statementDependenciesComplete &&
+      !foundationAssessment.nativeBodyComplete && foundationAssessment.statementDependenciesComplete &&
       foundationAssessment.proofDependenciesComplete && foundation.actionableStage?.isSome do
     throwError "Native debt on triage.01 should be actionable after its selected prerequisites pass"
   let some main := node (Lean.Name.mkSimple "thm:triage.main") | throwError "Missing dependent theorem node"
   let some mainAssessment := main.assessment | throwError "Missing theorem assessment"
-  unless mainAssessment.hasNativeDeclarations && !mainAssessment.nativeProofComplete &&
+  unless mainAssessment.hasNativeDeclarations && !mainAssessment.nativeBodyComplete &&
       !mainAssessment.proofDependenciesComplete && main.actionableStage?.isNone do
     throwError "Theorem proof debt should remain non-actionable while selected prerequisites are incomplete"
   let some proseOnly := node (Lean.Name.mkSimple "def:triage.02") | throwError "Missing prose-only node"

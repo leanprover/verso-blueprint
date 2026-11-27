@@ -87,7 +87,7 @@ theorem statusDirectTypeOnly (_h : (by sorry : Prop)) : True := True.intro
       hasNativeDeclarations := true
       hasNativeBodyRequirement := true
       nativeStatementComplete := false
-      nativeProofComplete := false
+      nativeBodyComplete := false
       statementDependenciesComplete := false
       proofDependenciesComplete := false
     }
@@ -390,7 +390,7 @@ theorem statusDirectTypeOnly (_h : (by sorry : Prop)) : True := True.intro
     hasNativeDeclarations := true
     hasNativeBodyRequirement := true
     nativeStatementComplete := true
-    nativeProofComplete := false
+    nativeBodyComplete := false
     statementDependenciesComplete := true
     proofDependenciesComplete := false
   }

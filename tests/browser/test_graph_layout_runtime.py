@@ -242,7 +242,7 @@ class TestGraphLayoutRuntime:
                         nativeStatementComplete: assessment.nativeStatementComplete,
                         hasNativeBodyRequirement: assessment.hasNativeBodyRequirement,
                         proofRoleComplete: assessment.proofRoleComplete,
-                        nativeProofComplete: assessment.nativeProofComplete,
+                        nativeBodyComplete: assessment.nativeBodyComplete,
                         requiredComplete: assessment.requiredComplete,
                         proofStatus: node.proofStatus,
                         actionableStage: node.actionableStage,
@@ -322,8 +322,8 @@ class TestGraphLayoutRuntime:
         assert graph_data["manifestNodes"] == graph_data["pageNodes"]
         assert graph_data["manifestEdges"] == graph_data["pageEdges"]
         assert graph_data["manifestGroups"] == graph_data["pageGroups"]
-        assert graph_data["pageSchemaVersion"] == 7
-        assert graph_data["manifestSchemaVersion"] == 7
+        assert graph_data["pageSchemaVersion"] == 8
+        assert graph_data["manifestSchemaVersion"] == 8
         assert graph_data["sampleHasAssessment"]
         assert graph_data["sampleHasActionableStage"]
         assert graph_data["topologyMatches"]
@@ -339,7 +339,7 @@ class TestGraphLayoutRuntime:
             assert assessment["hasNativeDeclarations"] is True
             assert assessment["nativeStatementComplete"] is True
             assert assessment["hasNativeBodyRequirement"] is True
-            assert assessment["nativeProofComplete"] is True
+            assert assessment["nativeBodyComplete"] is True
             assert assessment["requiredComplete"] is True
             assert assessment["sourceParseFailed"] is False
 
@@ -348,7 +348,7 @@ class TestGraphLayoutRuntime:
         assert admitted["hasNativeDeclarations"] is True
         assert admitted["nativeStatementComplete"] is True
         assert admitted["hasNativeBodyRequirement"] is True
-        assert admitted["nativeProofComplete"] is False
+        assert admitted["nativeBodyComplete"] is False
         assert admitted["proofRoleComplete"] is False
         assert admitted["requiredComplete"] is False
         assert admitted["proofStatus"] == "incomplete"
@@ -374,7 +374,8 @@ class TestGraphLayoutRuntime:
                     hoverOnNodeId: [],
                     previewKeyByNodeId: []
                 };
-                const completeRecord = (schemaVersion, key, variants) => ({
+                const schemaVersion = 8;
+                const completeRecord = (key, variants) => ({
                     schemaVersion,
                     key,
                     nodes: [],
@@ -389,7 +390,7 @@ class TestGraphLayoutRuntime:
                     nativeStatementComplete: true,
                     hasNativeBodyRequirement: true,
                     proofRoleComplete: false,
-                    nativeProofComplete: false,
+                    nativeBodyComplete: false,
                     requiredComplete: false,
                     selectedLeanUseCount: 0,
                     statementDependenciesComplete: true,
@@ -419,33 +420,38 @@ class TestGraphLayoutRuntime:
                     {
                         fetchJson: () => ({
                             graphs: [
-                                completeRecord(7, "graph:current", [fullVariant]),
+                                completeRecord("graph:current", [fullVariant]),
+                                { ...completeRecord("graph:old-schema", [fullVariant]), schemaVersion: 7 },
                                 {
-                                    ...completeRecord(7, "graph:new-assessment", [fullVariant]),
+                                    ...completeRecord("graph:new-assessment", [fullVariant]),
                                     nodes: [node]
                                 },
                                 {
-                                    ...completeRecord(7, "graph:missing-assessment", [fullVariant]),
+                                    ...completeRecord("graph:missing-assessment", [fullVariant]),
                                     nodes: [{ ...node, assessment: undefined }]
                                 },
                                 {
-                                    ...completeRecord(7, "graph:missing-proof-role", [fullVariant]),
+                                    ...completeRecord("graph:missing-proof-role", [fullVariant]),
                                     nodes: [{ ...node, assessment: { ...assessment, proofRoleComplete: undefined } }]
                                 },
                                 {
-                                    ...completeRecord(7, "graph:missing-body-requirement", [fullVariant]),
+                                    ...completeRecord("graph:missing-body-requirement", [fullVariant]),
                                     nodes: [{ ...node, assessment: { ...assessment, hasNativeBodyRequirement: undefined } }]
                                 },
+                                {
+                                    ...completeRecord("graph:missing-body-completion", [fullVariant]),
+                                    nodes: [{ ...node, assessment: { ...assessment, nativeBodyComplete: undefined } }]
+                                },
                                 ...[undefined, -1, 0.5, "1"].map((count, index) => ({
-                                    ...completeRecord(7, `graph:invalid-use-count-${index}`, [fullVariant]),
+                                    ...completeRecord(`graph:invalid-use-count-${index}`, [fullVariant]),
                                     nodes: [{ ...node, assessment: { ...assessment, selectedLeanUseCount: count } }]
                                 })),
                                 {
-                                    ...completeRecord(7, "graph:legacy-warning", [fullVariant]),
+                                    ...completeRecord("graph:legacy-warning", [fullVariant]),
                                     nodes: [{ ...node, warnings: { unknownRef: false, missingExternalDecl: false } }]
                                 },
                                 {
-                                    ...completeRecord(7, "graph:invalid-actionable-stage", [fullVariant]),
+                                    ...completeRecord("graph:invalid-actionable-stage", [fullVariant]),
                                     nodes: [{ ...node, actionableStage: "ready" }]
                                 },
                                 ...[
@@ -458,43 +464,42 @@ class TestGraphLayoutRuntime:
                                     { visual: { ...node.visual, gradientangle: 90 } },
                                     { visual: { ...node.visual, peripheries: -1 } }
                                 ].map((change, index) => ({
-                                    ...completeRecord(7, `graph:invalid-node-${index}`, [fullVariant]),
+                                    ...completeRecord(`graph:invalid-node-${index}`, [fullVariant]),
                                     nodes: [{ ...node, ...change }]
                                 })),
                                 {
-                                    ...completeRecord(7, "graph:invalid-edge", [fullVariant]),
+                                    ...completeRecord("graph:invalid-edge", [fullVariant]),
                                     edges: [{ source: "a", target: "b", axes: ["implementation"] }]
                                 },
                                 {
-                                    ...completeRecord(7, "graph:invalid-group", [fullVariant]),
+                                    ...completeRecord("graph:invalid-group", [fullVariant]),
                                     groups: [{ label: "group", title: "Group", declared: true, children: [0] }]
                                 },
                                 {
-                                    ...completeRecord(7, "graph:invalid-legend", [fullVariant]),
+                                    ...completeRecord("graph:invalid-legend", [fullVariant]),
                                     legends: [{ ...fullLegend, groups: [] }]
                                 },
-                                completeRecord(6, "graph:obsolete-schema", [fullVariant]),
-                                completeRecord(7, "graph:no-variants", []),
-                                completeRecord(7, "graph:blank-dot", [
+                                completeRecord("graph:no-variants", []),
+                                completeRecord("graph:blank-dot", [
                                     { ...fullVariant, dot: " " }
                                 ]),
-                                completeRecord(7, "graph:invalid-options", [
+                                completeRecord("graph:invalid-options", [
                                     { ...fullVariant, options: { direction: "sideways", pack: false } }
                                 ]),
-                                completeRecord(7, "graph:invalid-pair", [
+                                completeRecord("graph:invalid-pair", [
                                     { ...fullVariant, previewKeyByNodeId: [["node-only"]] }
                                 ]),
-                                completeRecord(7, "graph:duplicate-variant", [
+                                completeRecord("graph:duplicate-variant", [
                                     fullVariant,
                                     { ...fullVariant, label: "Duplicate Full Graph" }
                                 ]),
-                                completeRecord(7, "graph:missing-full", [
+                                completeRecord("graph:missing-full", [
                                     { ...fullVariant, key: "group", label: "Group View" }
                                 ]),
-                                completeRecord(7, "graph:unknown-variant-target", [
+                                completeRecord("graph:unknown-variant-target", [
                                     { ...fullVariant, selectOnNodeId: [["node-id", "missing"]] }
                                 ]),
-                                completeRecord(7, "graph:duplicate-node-mapping", [
+                                completeRecord("graph:duplicate-node-mapping", [
                                     {
                                         ...fullVariant,
                                         previewKeyByNodeId: [
@@ -504,7 +509,7 @@ class TestGraphLayoutRuntime:
                                     }
                                 ]),
                                 {
-                                    schemaVersion: 7,
+                                    schemaVersion,
                                     key: "graph:incomplete-record",
                                     nodes: [],
                                     edges: [],

@@ -134,7 +134,7 @@ private def panelIndicatorHtml (label : Name) (source : BlockCodeData) : String 
     hasNativeBodyRequirement := true
     hasAxiomLike := false
     nativeStatementComplete := true
-    nativeProofComplete := false
+    nativeBodyComplete := false
     requiredComplete := false
     statementDependenciesComplete := true
     proofDependenciesComplete := false

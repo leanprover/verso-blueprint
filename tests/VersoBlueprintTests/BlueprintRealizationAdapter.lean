@@ -767,7 +767,7 @@ private def hiddenCapture (plan : Capture.Plan) : TermElabM Unit := do
       proofRequirement.expected == .check NativeLean.bodyValidator &&
       proofRequirement.prerequisites == #[statement] && (registry.resultForRequirement statement).complete &&
       (registry.resultForRequirement proof).status == status && assessment.nativeStatementComplete &&
-      assessment.hasNativeBodyRequirement && !assessment.nativeProofComplete && !assessment.requiredComplete)
+      assessment.hasNativeBodyRequirement && !assessment.nativeBodyComplete && !assessment.requiredComplete)
       s!"Hidden theorem must retain a passing statement and unfinished proof: {name}"
   for (label, name, outcome, status) in #[
       ("hidden.completeSpec", `sorryImportCompleteSpec, Outcome.unavailable, Status.blocked),
@@ -797,7 +797,7 @@ private def hiddenCapture (plan : Capture.Plan) : TermElabM Unit := do
     match use.selected with | .ok keys => keys == #[admitted] | .error _ => false) &&
     requirement.prerequisites.contains admitted && (registry.localResult dependent).complete &&
     result.status == .blocked && result.diagnostics.any (·.code == "unfinished-prerequisite") &&
-    assessment.nativeStatementComplete && assessment.nativeProofComplete &&
+    assessment.nativeStatementComplete && assessment.nativeBodyComplete &&
     assessment.statementDependenciesComplete && !assessment.proofDependenciesComplete && !assessment.requiredComplete)
     "The authored proof use must select the hidden theorem's unfinished proof requirement"
 
