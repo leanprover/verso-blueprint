@@ -173,7 +173,7 @@ theorem omittedMixedSorry : True := by sorry
         throw <| IO.userError "A manifest-backed code panel counted an omitted declaration"
       let shell := (PreviewManifest.BlockRender.renderWithRenderedContent {} entry content).asString
       unless hasSubstr shell "bp_code_link_status_warning" &&
-          (expectedCount == 1 || hasSubstr shell "bp_external_status_ok") do
+          (expectedCount == 1 || hasSubstr shell "bp_code_panel_status bp_code_link_status_proved") do
         throw <| IO.userError "Manifest-backed heading and visible panel lost their distinct status scopes"
   unless (← errors.get).isEmpty do
     throw <| IO.userError s!"Omitted-code rendering errors: {← errors.get}"

@@ -195,7 +195,7 @@ private def checkObjectSchema (name : String) (fields : Array (String Ã— (Json â
         labelDesc? == some "Canonical target label: informal label, Lean declaration name, citation label, or external-markup witness label." &&
         authoredLabelDesc? == some "Authored/display label text, preserving string-authored punctuation without pretty-name quoting." &&
         proofUsesDesc? == some "Structured proof use metadata, preserving origin and intent tags." &&
-        displayCaptionDesc? == some "Structured heading caption for renderers that need to lay out the title." &&
+        displayCaptionDesc? == some "Structured heading caption for renderers that need to lay out the title. A\nproof's caption and label name its statement, as in \"Proof of Theorem 1\"." &&
         leanCodePreviewKeysDesc? == some "Manifest/cache-backed preview keys for Lean code previews associated with this entry." &&
         foldProofBlockDesc? ==
           some "Whether the canonical proof shell is collapsed when this is a proof entry." &&

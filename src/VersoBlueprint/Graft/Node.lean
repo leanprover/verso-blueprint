@@ -153,26 +153,4 @@ def BlueprintNodeConfig.toNode (cfg : BlueprintNodeConfig) : BlueprintNode :=
     siteBase? := cfg.siteBase
   }
 
-public structure SideBySideConfig where
-  boxed : Bool := false
-deriving Repr, BEq, Inhabited, ToJson, FromJson, Quote
-
-public meta instance : FromArgs SideBySideConfig DocElabM where
-  fromArgs :=
-    SideBySideConfig.mk <$>
-      .flag `boxed false
-
-namespace SideBySideConfig
-
-public def className (cfg : SideBySideConfig) : String :=
-  if cfg.boxed then
-    "bp_graft_side_by_side bp_graft_side_by_side_boxed"
-  else
-    "bp_graft_side_by_side"
-
-public def attrs (cfg : SideBySideConfig) : Array (String × String) :=
-  #[("class", cfg.className)]
-
-end SideBySideConfig
-
 end Informal.Graft

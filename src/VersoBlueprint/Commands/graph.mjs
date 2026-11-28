@@ -18,8 +18,7 @@ const {
   ensureGraphBlockState,
   rememberGraphLayoutMeasurements,
   resizeRenderedGraphToCanvas,
-  resetGraphvizForVariant,
-  makeGroupPanelPositioner
+  resetGraphvizForVariant
 } = graphRuntimeCoreModule;
 
 function dotWithGraphAttribute(dot, name, value) {
@@ -111,25 +110,6 @@ function appendJsonScript(doc, parent, className, value) {
   script.textContent = JSON.stringify(value || null);
   parent.appendChild(script);
   return script;
-}
-
-function createPreviewPanel(doc, classes, headerClass, titleClass, closeClass, bodyClass, closeLabel, mode, placement) {
-  const panel = createEl(doc, "aside", {
-    class: classes,
-    "data-bp-preview-mode": mode,
-    "data-bp-preview-placement": placement,
-    hidden: true
-  });
-  const header = createEl(doc, "div", { class: headerClass });
-  header.appendChild(createEl(doc, "div", { class: titleClass }));
-  header.appendChild(createEl(doc, "button", {
-    type: "button",
-    class: closeClass,
-    "aria-label": closeLabel
-  }, "Close"));
-  panel.appendChild(header);
-  panel.appendChild(createEl(doc, "div", { class: bodyClass }));
-  return panel;
 }
 
 function graphControlId(data, suffix) {
@@ -287,28 +267,6 @@ export function createGraphBlock(graphData, options) {
   });
   appendJsonScript(doc, canvas, "bp-graph-data", Object.assign({}, data, { variants: variants }));
   block.appendChild(canvas);
-  block.appendChild(createPreviewPanel(
-    doc,
-    "bp_graph_preview bp_preview_panel",
-    "bp_graph_preview_header bp_preview_panel_header",
-    "bp_graph_preview_title bp_preview_panel_title",
-    "bp_graph_preview_close bp_preview_panel_close",
-    "bp_graph_preview_body bp_preview_panel_body",
-    "Close informal preview",
-    previewMode,
-    previewPlacement
-  ));
-  block.appendChild(createPreviewPanel(
-    doc,
-    "bp_group_hover_preview bp_preview_panel",
-    "bp_group_hover_preview_header bp_preview_panel_header",
-    "bp_group_hover_preview_title bp_preview_panel_title",
-    "bp_group_hover_preview_close bp_preview_panel_close",
-    "bp_group_hover_preview_graph bp_preview_panel_body",
-    "Close group preview",
-    previewMode,
-    previewPlacement
-  ));
   return block;
 }
 
@@ -606,6 +564,26 @@ function bindOptionsPopover(previewUtils, graphBlock) {
   );
 }
 
+// Graph previews use the shared panel shell, built here so server-rendered and
+// runtime-built graph blocks get the same panels.
+function ensureGraphPreviewPanel(previewUtils, graphBlock, roleClass, closeLabel, behavior) {
+  const existing = graphBlock.querySelector("." + roleClass);
+  if (existing instanceof Element) return existing;
+  return previewUtils.createPreviewPanel({
+    document: graphBlock.ownerDocument,
+    parent: graphBlock,
+    roleClass: roleClass,
+    closeLabel: closeLabel,
+    mode: behavior.mode,
+    placement: behavior.placement
+  });
+}
+
+function selectDefault(select, attr, fallback) {
+  if (!(select instanceof Element)) return fallback;
+  return select.getAttribute(attr) || select.value || fallback;
+}
+
 export function initGraphBlock(previewUtils, graphBlock, options) {
       const opts = options && typeof options === "object" ? options : {};
       if (!(graphBlock instanceof Element)) return;
@@ -639,14 +617,16 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
       const packInput = graphBlock.querySelector(".bp_graph_pack_input");
       const previewModeSelector = graphBlock.querySelector(".bp_graph_preview_mode_select");
       const previewPlacementSelector = graphBlock.querySelector(".bp_graph_preview_placement_select");
-      const previewPanelNode = graphBlock.querySelector(".bp_graph_preview");
+      const previewPanelNode = ensureGraphPreviewPanel(
+        previewUtils, graphBlock, "bp_graph_preview", "Close informal preview", {
+          mode: selectDefault(previewModeSelector, "data-bp-graph-default-preview-mode", "pinned"),
+          placement: selectDefault(previewPlacementSelector, "data-bp-graph-default-preview-placement", "docked")
+        }
+      );
       const previewPanelBehavior = readPreviewBehaviorDefaults(previewPanelNode, "pinned", "docked");
       let previewController = null;
       previewController = previewUtils.createPreviewSurface({
         panel: previewPanelNode,
-        titleSelector: ".bp_graph_preview_title",
-        bodySelector: ".bp_graph_preview_body",
-        closeSelector: ".bp_graph_preview_close",
         defaults: {
           mode: previewPanelBehavior.mode,
           placement: previewPanelBehavior.placement
@@ -752,15 +732,15 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
         return normalizeGraphOptions(activeOptions);
       };
 
-      const groupHoverPanel = graphBlock.querySelector(".bp_group_hover_preview");
+      const groupHoverPanel = ensureGraphPreviewPanel(
+        previewUtils, graphBlock, "bp_group_hover_preview", "Close group preview",
+        { mode: "pinned", placement: "docked" }
+      );
       let groupHoverGraphviz = null;
       const groupHoverBehavior = readPreviewBehaviorDefaults(groupHoverPanel, "pinned", "docked");
       let groupHoverController = null;
       groupHoverController = previewUtils.createPreviewSurface({
         panel: groupHoverPanel,
-        titleSelector: ".bp_group_hover_preview_title",
-        bodySelector: ".bp_group_hover_preview_graph",
-        closeSelector: ".bp_group_hover_preview_close",
         defaults: {
           mode: groupHoverBehavior.mode,
           placement: groupHoverBehavior.placement
@@ -777,9 +757,16 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
             .height(height)
             .renderDot(dotForVariantOptions(variant, getActiveOptions()));
         },
-        positionPanel: makeGroupPanelPositioner(graphBlock, function () {
-          return groupHoverController ? groupHoverController.behavior : groupHoverBehavior;
-        }),
+        positionPanel: function (panel, anchorNode) {
+          const behavior = groupHoverController ? groupHoverController.behavior : groupHoverBehavior;
+          const anchored = behavior && behavior.isAnchored && anchorNode instanceof Element;
+          previewUtils.placeAnchoredPanel(panel, anchored ? anchorNode : null, {
+            side: "beside",
+            boundary: graphBlock,
+            margin: 10,
+            offset: 10
+          });
+        },
         onHide: function () {
           graphState.groupHoverAnchorNode = null;
           graphState.groupHoverShownKey = "";
@@ -805,30 +792,14 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
       const lifecycleSurface = previewController || groupHoverController;
       if (!graphState.windowHandlersBound && lifecycleSurface) {
         graphState.windowHandlersBound = true;
+        // Anchored preview panels are kept in place by placeAnchoredPanel; the toolbar
+        // popovers are positioned relative to the graph block and follow it here.
         const repositionPanels = function () {
           if (legendPopover && legendPopover.isOpen()) {
             legendPopover.position();
           }
           if (optionsPopover && optionsPopover.isOpen()) {
             optionsPopover.position();
-          }
-          if (
-            graphState.previewController &&
-            graphState.previewController.behavior &&
-            graphState.previewController.behavior.isAnchored &&
-            graphState.previewActiveNode &&
-            !graphState.previewController.panel.hidden
-          ) {
-            graphState.previewController.position(graphState.previewActiveNode);
-          }
-          if (
-            graphState.groupHoverController &&
-            graphState.groupHoverController.behavior &&
-            graphState.groupHoverController.behavior.isAnchored &&
-            graphState.groupHoverAnchorNode &&
-            !graphState.groupHoverController.panel.hidden
-          ) {
-            graphState.groupHoverController.position(graphState.groupHoverAnchorNode);
           }
         };
         lifecycleSurface.bindDismissal({
@@ -989,6 +960,7 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
           .height(height)
           .fit(true)
           .on("end", function () {
+            applyReadableInitialZoom(graphRoot, gv);
             finalizeRender();
           });
         gv.renderDot(dot);
@@ -1118,6 +1090,89 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
       }
       return controller;
     }
+
+/** Smallest on-screen node label size, in CSS pixels, that the initial view allows. */
+const readableGraphLabelPixels = 8;
+
+/** On-screen size of a node label when the whole graph is fitted, or null before layout. */
+function fittedGraphLabelPixels(svg) {
+  const viewBox = svg && svg.viewBox && svg.viewBox.baseVal;
+  const box = svg && svg.getBoundingClientRect();
+  if (!viewBox || !viewBox.width || !viewBox.height || !box || !box.width || !box.height) return null;
+  const label = svg.querySelector("g.node text");
+  const labelSize = label ? parseFloat(label.getAttribute("font-size")) : NaN;
+  if (!Number.isFinite(labelSize)) return null;
+  return labelSize * Math.min(box.width / viewBox.width, box.height / viewBox.height);
+}
+
+/** The zoom toggle in a graph block's controls, created on first use; null without controls. */
+function graphZoomToggle(graphRoot) {
+  const block = graphRoot.closest(".bp_graph_fullwidth") || graphRoot.parentElement;
+  const actions = block && block.querySelector(".bp_graph_controls_actions");
+  if (!actions) return null;
+  let toggle = actions.querySelector(".bp_graph_zoom_toggle");
+  if (!toggle) {
+    toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "bp_graph_controls_button bp_graph_zoom_toggle";
+    actions.prepend(toggle);
+  }
+  return toggle;
+}
+
+/**
+ * Show the whole graph when its labels stay legible. Otherwise zoom until labels reach
+ * a readable size, anchored at the graph's top-left, and offer the whole-graph view.
+ */
+function applyReadableInitialZoom(graphRoot, gv) {
+  const svg = graphRoot.querySelector("svg");
+  const labelPixels = fittedGraphLabelPixels(svg);
+  const toggle = graphZoomToggle(graphRoot);
+  if (labelPixels === null || labelPixels >= readableGraphLabelPixels) {
+    if (toggle) toggle.hidden = true;
+    return;
+  }
+  const viewBox = svg.viewBox.baseVal;
+  const box = svg.getBoundingClientRect();
+  const scale = readableGraphLabelPixels / labelPixels;
+  // The SVG is letterboxed, so the visible top-left lies outside the viewBox origin.
+  const fitScale = Math.min(box.width / viewBox.width, box.height / viewBox.height);
+  const margin = 12 / fitScale;
+  const visibleLeft = viewBox.x - (box.width / fitScale - viewBox.width) / 2 + margin;
+  const visibleTop = viewBox.y - (box.height / fitScale - viewBox.height) / 2 + margin;
+  const content = gv.zoomSelection().select("g").node();
+  const showReadable = function () {
+    const zoom = gv.zoomBehavior();
+    const bounds = content.getBBox();
+    zoom.scaleTo(gv.zoomSelection(), scale);
+    zoom.translateTo(gv.zoomSelection(), bounds.x, bounds.y, [visibleLeft, visibleTop]);
+    if (!toggle) return;
+    toggle.textContent = "Show whole graph";
+    toggle.title = "Zoomed in so that labels are readable. Drag to pan and scroll to zoom.";
+    toggle.onclick = showWhole;
+  };
+  const showWhole = function () {
+    gv.resetZoom();
+    toggle.textContent = "Zoom to readable size";
+    toggle.title = "Showing the whole graph. Its labels are too small to read at this size.";
+    toggle.onclick = showReadable;
+  };
+  showReadable();
+  if (toggle) toggle.hidden = false;
+}
+
+/** Replace a graph block's empty canvas with an explanation when it cannot be drawn. */
+function showGraphLoadError(graphBlock) {
+  const canvas = graphBlock.querySelector(".bp_graph_canvas");
+  if (!canvas || canvas.querySelector(".bp_graph_load_error")) return;
+  const message = document.createElement("p");
+  message.className = "bp_graph_load_error";
+  message.setAttribute("role", "alert");
+  message.textContent =
+    "The dependency graph could not be drawn because its drawing libraries " +
+    "(d3 and d3-graphviz) did not load. Check the network connection and reload the page.";
+  canvas.prepend(message);
+}
 
 const defaultGraphRuntimeLibraryUrls = {
   d3: "https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js",
@@ -1319,6 +1374,9 @@ export function bindGraphs(previewUtils, options) {
             return initGraphBlock(previewUtils, graphBlock, opts) || null;
           })
           .filter(function (controller) { return !!controller; });
+      }, function (err) {
+        graphBlocks.forEach(showGraphLoadError);
+        throw err;
       });
 }
 

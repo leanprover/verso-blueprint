@@ -402,9 +402,13 @@ private def writeSlidesPreviewDataFiles
         usedByManifestOk &&
         hasSubstr rendered "bp_extra_slot_group" &&
         hasSubstr rendered "bp_extra_slot_used_by" &&
-        hasSubstr rendered "data-bp-slide-panel=\"group\"" &&
-        hasSubstr rendered "data-bp-slide-panel=\"used-by\"" &&
-        hasSubstr rendered "Group: Preview group title. (2)" &&
+        hasSubstr rendered "bp_slide_group_wrap" &&
+        hasSubstr rendered "bp_slide_used-by_wrap" &&
+        hasSubstr rendered "data-bp-relation-eyebrow=\"Group · 2 blocks\"" &&
+        hasSubstr rendered "data-bp-relation-title=\"Preview group title.\"" &&
+        -- Rows carry their blocks' status marks, read from the manifest entries;
+        -- a row without one would end `...,null,<current>]`.
+        !hasSubstr rendered ",null,false]" && !hasSubstr rendered ",null,true]" &&
         hasSubstr rendered "class=\"bp-relation-entries\"" &&
         !hasSubstr rendered "bp_relation_item_active" &&
         !hasSubstr rendered "Loading Blueprint node"
@@ -430,8 +434,7 @@ private def writeSlidesPreviewDataFiles
       groupManifestOk &&
         hasSubstr rendered "bp_extra_slot_group" &&
         hasSubstr rendered "bp_relation_chip_warn" &&
-        hasSubstr rendered "data-bp-slide-panel=\"group\"" &&
-        hasSubstr rendered "Undeclared group"
+        hasSubstr rendered "group declaration was found"
 
 /-- info: true -/
 #guard_msgs in
@@ -492,7 +495,7 @@ private def writeSlidesPreviewDataFiles
       return false
     let index ← IO.FS.readFile indexPath
     pure <|
-      hasSubstr index "bp_graft_side_by_side" &&
+      hasSubstr index "bp_slide_side_by_side bp_slide_side_by_side_boxed" &&
         countSubstr index "data-bp-rendered=\"static\"" == 2 &&
         hasSubstr index "Slide left graft body." &&
         hasSubstr index "Slide right graft body." &&

@@ -2,7 +2,7 @@ import { collectPreviewTemplates, escapeHtml, previewDebug, previewDebugLabel } 
 import { createBlueprintDataApi } from "./preview-runtime-data.mjs";
 import { renderBlueprintNodeInto, renderBlueprintPreviewInto, renderCanonicalBlueprintPreviewInto, resolveBlueprintPreview, resolveCanonicalBlueprintPreview } from "./preview-runtime-render.mjs";
 import { hydrateRenderedPreview, registerPreviewHydrator } from "./preview-runtime-hydration.mjs";
-import { bindAnchoredPopover } from "./preview-runtime-lifecycle.mjs";
+import { bindAnchoredPopover, placeAnchoredPanel } from "./preview-runtime-lifecycle.mjs";
 import { createPreviewPanel, createPreviewSurface, hidePreviewSurfaces, previewMessageHtml, renderPreviewIntoSurface, resolvePreviewHtml } from "./preview-runtime-surface.mjs";
 import { bindTemplatePreviewDescriptors } from "./preview-runtime-template.mjs";
 
@@ -171,6 +171,7 @@ export function createPreviewRuntimeApi(options) {
 
   const previewLifecycleHelpers = {
     bindAnchoredPopover: bindAnchoredPopover,
+    placeAnchoredPanel: placeAnchoredPanel,
     hidePreviewSurfaces: hidePreviewSurfaces,
   };
 
@@ -233,6 +234,7 @@ export function createPreviewRuntimeApi(options) {
       );
     },
     bindAnchoredPopover: previewLifecycleHelpers.bindAnchoredPopover,
+    placeAnchoredPanel: previewLifecycleHelpers.placeAnchoredPanel,
     hidePreviewSurfaces: previewLifecycleHelpers.hidePreviewSurfaces
   };
 

@@ -41,8 +41,6 @@ end RelationPanelKind
 structure RelationPanelsConfig where
   wrapClass : RelationPanelKind → String :=
     fun kind => s!"bp_relation_wrap bp_preview_data_{kind.key}_wrap"
-  panelAttrs : RelationPanelKind → Array (String × String) := fun _ => #[]
-  singleMode : RelationPanelKind → Informal.RelatedPanel.PanelSingleMode := fun _ => .panel
   idPrefix : RelationPanelKind → Entry → String :=
     fun kind entry => s!"bp-preview-data-{kind.key}-{entry.label}"
 
@@ -51,11 +49,7 @@ private def RelationPanelsConfig.apply
     (kind : RelationPanelKind)
     (panelCfg : Informal.RelatedPanel.PanelConfig) :
     Informal.RelatedPanel.PanelConfig :=
-  { panelCfg with
-    wrapClass := cfg.wrapClass kind
-    panelAttrs := cfg.panelAttrs kind
-    singleMode := cfg.singleMode kind
-  }
+  { panelCfg with wrapClass := cfg.wrapClass kind }
 
 /-- Genre-specific presentation knobs for rendering a preview-data-backed Blueprint block. -/
 structure RenderConfig where
@@ -90,52 +84,60 @@ private def renderRelatedPanel
     (cfg : RelationPanelsConfig)
     (kind : RelationPanelKind)
     (panelCfg : Informal.RelatedPanel.PanelConfig)
+    (owner : Informal.RelatedPanel.PanelOwner)
     (entries : Array RelatedEntry)
     (entry : Entry)
-    (currentLabel : Name) :
+    (currentLabel : Name)
+    (statusOf : Informal.RelatedPanel.StatusLookup) :
     Html :=
-  let panelEntries :=
-    Informal.PreviewManifest.relatedPanelEntries entries currentLabel (cfg.idPrefix kind entry)
-  Informal.RelatedPanel.renderPanel (cfg.apply kind panelCfg) panelEntries
+  let panelEntries := Informal.PreviewManifest.relatedPanelEntries
+    entries currentLabel (cfg.idPrefix kind entry) statusOf
+  Informal.RelatedPanel.renderPanel (cfg.apply kind panelCfg) owner panelEntries
+
+private def entryOwner (entry : Entry) : Informal.RelatedPanel.PanelOwner :=
+  { title := entry.title, label := entry.label, href := entry.href }
 
 private def renderGroupExtra?
     (cfg : RelationPanelsConfig)
     (entry : Entry)
-    (group? : Option GroupRelation) : Option Informal.HeaderExtra := do
+    (group? : Option GroupRelation)
+    (statusOf : Informal.RelatedPanel.StatusLookup) : Option Informal.HeaderExtra := do
   let group ← group?
   if group.declared && group.entries.isEmpty then none else
     some <| Informal.HeaderExtra.group <| renderRelatedPanel cfg .group
       (Informal.RelatedPanel.groupPanelConfig group.label group.title group.declared)
-      group.entries entry entry.label
+      { title := group.title, label := group.label }
+      group.entries entry entry.label statusOf
 
-private def renderUsesExtra (cfg : RelationPanelsConfig) (entry : Entry) :
-    Informal.HeaderExtra :=
+private def renderUsesExtra (cfg : RelationPanelsConfig) (entry : Entry)
+    (statusOf : Informal.RelatedPanel.StatusLookup) : Informal.HeaderExtra :=
   Informal.HeaderExtra.uses <| renderRelatedPanel cfg .uses
     (Informal.RelatedPanel.usesPanelConfigForBlock entry.blockData)
-    entry.usesForFacet entry Name.anonymous
+    (entryOwner entry) entry.usesForFacet entry Name.anonymous statusOf
 
 private def renderCodeExtra (entry : Entry) (blockData : Informal.BlockData) :
     Informal.HeaderExtra :=
   let parts := Informal.CodeSummary.renderParts
-    blockData { source := entry.codeData } (fun _ => none)
+    blockData { source := entry.codeData } (fun _ => none) (title? := some entry.title)
   Informal.HeaderExtra.code parts.codeEntry
 
-private def renderUsedByExtra (cfg : RelationPanelsConfig) (entry : Entry) :
-    Informal.HeaderExtra :=
+private def renderUsedByExtra (cfg : RelationPanelsConfig) (entry : Entry)
+    (statusOf : Informal.RelatedPanel.StatusLookup) : Informal.HeaderExtra :=
   Informal.HeaderExtra.usedBy <| renderRelatedPanel cfg .usedBy
     (Informal.RelatedPanel.usedByPanelConfig (some entry.label))
-    entry.usedBy entry Name.anonymous
+    (entryOwner entry) entry.usedBy entry Name.anonymous statusOf
 
 private def renderHeaderExtras
     (cfg : RelationPanelsConfig)
     (entry : Entry)
     (blockData : Informal.BlockData)
-    (group? : Option GroupRelation) :
+    (group? : Option GroupRelation)
+    (statusOf : Informal.RelatedPanel.StatusLookup) :
     Informal.HeaderExtras :=
-  Informal.HeaderExtras.forFacet blockData.isProof (renderUsesExtra cfg entry) fun _ => {
-    group? := renderGroupExtra? cfg entry group?
+  Informal.HeaderExtras.forFacet blockData.isProof (renderUsesExtra cfg entry statusOf) fun _ => {
+    group? := renderGroupExtra? cfg entry group? statusOf
     code? := some (renderCodeExtra entry blockData)
-    usedBy? := some (renderUsedByExtra cfg entry)
+    usedBy? := some (renderUsedByExtra cfg entry statusOf)
     markup? := Informal.renderExternalMarkupHeaderExtra? entry.externalMarkup
   }
 
@@ -154,8 +156,9 @@ private def renderCodePanel
       (fun _ => none)
     let codeHtml := .seq content.codeBodies
     let body := Html.tag "div" (Informal.htmlClassAttrs cfg.codeBodyClass) codeHtml
-    let header := if entry.facet == .proof then Informal.proofReferencesPanelHeader else
-      { caption := s!"Lean code for {title.caption}", number? := some title.label }
+    let ownerLabel? := some s!"{entry.label}"
+    let header := if entry.facet == .proof then Informal.proofReferencesPanelHeader ownerLabel? else
+      { owner? := some s!"{title.caption} {title.label}", ownerLabel? }
     Informal.mkCodePanel
       header
       panelSummary.summaryTitle
@@ -163,13 +166,22 @@ private def renderCodePanel
       body
       (folded := entry.blockData.foldCodeBlock)
 
-/-- Render a Blueprint block shell from semantic entry data and rendered content. -/
+/-- Related blocks' status marks, read from their own manifest entries: the same
+assessment and Lean code their headings are drawn from. -/
+def _root_.Informal.PreviewManifest.Index.statusOf (index : Informal.PreviewManifest.Index) :
+    Informal.RelatedPanel.StatusLookup := fun label =>
+  (index.findEntry? (PreviewCache.statementKey label)).map
+    (Informal.CodeSummary.blockStatusVisual ·.blockData)
+
+/-- Render a Blueprint block shell from semantic entry data and rendered content.
+`statusOf` gives related blocks' status marks for relation popups. -/
 def renderWithRenderedContent
     (cfg : RenderConfig)
     (entry : Entry)
     (content : RenderedContent)
     (group? : Option GroupRelation := none)
-    (opts : RenderOptions := {}) :
+    (opts : RenderOptions := {})
+    (statusOf : Informal.RelatedPanel.StatusLookup := fun _ => none) :
     Html :=
     let blockData := entry.blockData content.assessment
     let title := entry.heading opts.displayLabelOverride?
@@ -184,9 +196,9 @@ def renderWithRenderedContent
       context := Informal.InformalBlockRenderContext.forBlock blockData
         title.label
         (statementCaption? := some title.caption)
-        (proofCaption? := some entry.title)
+        (proofOf? := some s!"{title.caption} {title.label}")
         (titleRowAttrs? := cfg.titleRowAttrs? entry)
-        (headerExtras := renderHeaderExtras cfg.relationPanels entry blockData group?)
+        (headerExtras := renderHeaderExtras cfg.relationPanels entry blockData group? statusOf)
         (sourceRefs := entry.sources)
         (folded := blockData.foldInformalShell)
       content := #[content.body]

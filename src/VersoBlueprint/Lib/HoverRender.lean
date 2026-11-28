@@ -77,55 +77,35 @@ def withInlinePreviewRenderContext {m α}
       })
     act
 
-private def previewPanel
-    (rootClass headerClass titleClass closeClass bodyClass closeLabel : String)
-    (mode : PreviewMode) (placement : PreviewPlacement) : Verso.Output.Html := {{
-  <aside class={{rootClass}}
-      "data-bp-preview-mode"={{mode.dataValue}}
-      "data-bp-preview-placement"={{placement.dataValue}}
-      hidden>
-    <div class={{headerClass}}>
-      <div class={{titleClass}}></div>
-      <button type="button" class={{closeClass}} aria-label={{closeLabel}}>"Close"</button>
-    </div>
-    <div class={{bodyClass}}></div>
-  </aside>
-}}
+/--
+Attributes that let the runtime bind template previews under one root element.
 
-private def mkPreviewPanel
-    (rootClass headerClass titleClass closeClass bodyClass closeLabel : String)
-    (mode : PreviewMode) (placement : PreviewPlacement) : Verso.Output.Html :=
-  previewPanel
-    rootClass
-    headerClass
-    titleClass
-    closeClass
-    bodyClass
-    closeLabel
-    mode placement
-
+The runtime builds the root's preview panel from the shared shell: `panelClass`
+names its role for sizing and placement, and `eyebrow` says what kind of popup it is.
+-/
 def templatePreviewDescriptorAttrs
-    (panelSelector templateSelector triggerSelector titleSelector bodySelector closeSelector : String)
+    (panelClass templateSelector triggerSelector : String)
     (keyAttr : String := "data-bp-preview-label")
     (titleAttr? : Option String := none)
     (triggerBoundAttr : String := "data-bp-bound")
     (allowHtmlCache : Bool := false)
     (mode : PreviewMode := .hover)
-    (placement : PreviewPlacement := .anchored) : Array (String × String) :=
+    (placement : PreviewPlacement := .anchored)
+    (eyebrow : String := "")
+    (closeLabel : String := "Close preview") : Array (String × String) :=
   let attrs := #[
     ("data-bp-template-preview-root", "true"),
-    ("data-bp-template-preview-panel-selector", panelSelector),
+    ("data-bp-template-preview-panel-class", panelClass),
     ("data-bp-template-preview-template-selector", templateSelector),
     ("data-bp-template-preview-trigger-selector", triggerSelector),
     ("data-bp-template-preview-key-attr", keyAttr),
     ("data-bp-template-preview-title-attr", titleAttr?.getD keyAttr),
-    ("data-bp-template-preview-title-selector", titleSelector),
-    ("data-bp-template-preview-body-selector", bodySelector),
-    ("data-bp-template-preview-close-selector", closeSelector),
     ("data-bp-template-preview-trigger-bound-attr", triggerBoundAttr),
     ("data-bp-template-preview-mode", mode.dataValue),
-    ("data-bp-template-preview-placement", placement.dataValue)
+    ("data-bp-template-preview-placement", placement.dataValue),
+    ("data-bp-template-preview-close-label", closeLabel)
   ]
+  let attrs := if eyebrow.isEmpty then attrs else attrs.push ("data-bp-template-preview-eyebrow", eyebrow)
   if allowHtmlCache then
     attrs.push ("data-bp-template-preview-allow-html-cache", "true")
   else
@@ -133,23 +113,25 @@ def templatePreviewDescriptorAttrs
 
 def templatePreviewRoot
     (rootClass triggerClass activeTriggerClass templateClass keyAttr key previewTitle : String)
-    (panelSelector titleSelector bodySelector closeSelector : String)
+    (panelClass : String)
     (titleAttr? : Option String := none)
-    (trigger body panel : Verso.Output.Html)
+    (trigger body : Verso.Output.Html)
     (focusable : Bool := false)
-    (ariaLabel? : Option String := none) :
+    (ariaLabel? : Option String := none)
+    (eyebrow : String := "")
+    (closeLabel : String := "Close preview")
+    (extraTriggerAttrs : Array (String × String) := #[]) :
     Verso.Output.Html :=
   let rootAttrs :=
     #[("class", rootClass)] ++
       templatePreviewDescriptorAttrs
-        panelSelector
+        panelClass
         s!"template.{templateClass}[{keyAttr}]"
         s!".{activeTriggerClass}[{keyAttr}]"
-        titleSelector
-        bodySelector
-        closeSelector
         keyAttr
         titleAttr?
+        (eyebrow := eyebrow)
+        (closeLabel := closeLabel)
   let triggerAttrs := Id.run do
     let mut attrs := #[
       ("class", s!"{triggerClass} {activeTriggerClass}"),
@@ -161,7 +143,7 @@ def templatePreviewRoot
       attrs := attrs.push ("role", "button")
     if let some ariaLabel := ariaLabel? then
       attrs := attrs.push ("aria-label", ariaLabel)
-    pure attrs
+    pure (attrs ++ extraTriggerAttrs)
   let templateAttrs := #[("class", templateClass), (keyAttr, key)]
   {{
     <span {{rootAttrs}}>
@@ -171,57 +153,8 @@ def templatePreviewRoot
       <template {{templateAttrs}}>
         {{body}}
       </template>
-      {{panel}}
     </span>
   }}
-
-def graphPreviewPanel
-    (mode : PreviewMode := .pinned) (placement : PreviewPlacement := .docked) :
-    Verso.Output.Html :=
-  mkPreviewPanel
-    "bp_graph_preview bp_preview_panel"
-    "bp_graph_preview_header bp_preview_panel_header"
-    "bp_graph_preview_title bp_preview_panel_title"
-    "bp_graph_preview_close bp_preview_panel_close"
-    "bp_graph_preview_body bp_preview_panel_body"
-    "Close informal preview"
-    mode placement
-
-def summaryPreviewPanel
-    (mode : PreviewMode := .hover) (placement : PreviewPlacement := .anchored) :
-    Verso.Output.Html :=
-  mkPreviewPanel
-    "bp_summary_preview_panel bp_preview_panel"
-    "bp_summary_preview_panel_header bp_preview_panel_header"
-    "bp_summary_preview_panel_title bp_preview_panel_title"
-    "bp_summary_preview_panel_close bp_preview_panel_close"
-    "bp_summary_preview_panel_body bp_preview_panel_body"
-    "Close summary preview"
-    mode placement
-
-def codeSummaryPreviewPanel
-    (mode : PreviewMode := .hover) (placement : PreviewPlacement := .anchored) :
-    Verso.Output.Html :=
-  mkPreviewPanel
-    "bp_code_summary_preview_panel bp_preview_panel"
-    "bp_code_summary_preview_header bp_preview_panel_header"
-    "bp_code_summary_preview_title bp_preview_panel_title"
-    "bp_code_summary_preview_close bp_preview_panel_close"
-    "bp_code_summary_preview_body bp_preview_panel_body"
-    "Close Lean summary preview"
-    mode placement
-
-def graphGroupPreviewPanel
-    (mode : PreviewMode := .pinned) (placement : PreviewPlacement := .docked) :
-    Verso.Output.Html :=
-  mkPreviewPanel
-    "bp_group_hover_preview bp_preview_panel"
-    "bp_group_hover_preview_header bp_preview_panel_header"
-    "bp_group_hover_preview_title bp_preview_panel_title"
-    "bp_group_hover_preview_close bp_preview_panel_close"
-    "bp_group_hover_preview_graph bp_preview_panel_body"
-    "Close group preview"
-    mode placement
 
 def summaryPreviewWrap
     (labelNode : Verso.Output.Html)
@@ -249,9 +182,9 @@ All attributes needed to bind one inline preview trigger to its runtime panel.
 
 `triggerId` is the page-local UI id used for hover state. `lookupKey?` is the
 shared preview-data key used to load the preview body; the two are often but
-not always the same value. `headerLabel?` and `headerHref?` carry an optional
-label link for the preview header. `footerHtml?` carries optional,
-already-rendered metadata for the inline preview chrome below the preview body.
+not always the same value. The rest fill the shared panel header: `eyebrow?`
+names the kind of popup, `status?` is the target's status mark (its symbol and
+status class suffix), and `headerLabel?`/`headerHref?` are a label link.
 -/
 structure InlinePreviewTarget where
   triggerId : String
@@ -259,103 +192,33 @@ structure InlinePreviewTarget where
   lookupKey? : Option String := none
   headerLabel? : Option String := none
   headerHref? : Option String := none
-  footerHtml? : Option String := none
-
-/-- Attributes consumed by the shared preview-header label-link renderer. -/
-def previewHeaderLinkAttrs
-    (headerLabel? : Option String := none)
-    (headerHref? : Option String := none) :
-    Array (String × String) := Id.run do
-  let mut attrs := #[]
-  if let some label := headerLabel? then
-    attrs := attrs.push ("data-bp-preview-header-label", label)
-  if let some href := headerHref? then
-    attrs := attrs.push ("data-bp-preview-header-href", href)
-  pure attrs
+  eyebrow? : Option String := none
+  status? : Option (String × String) := none
 
 /-- Build a target whose trigger id and manifest lookup key are the same. -/
-def InlinePreviewTarget.manifestBacked
-    (lookupKey title : String)
-    (headerLabel? : Option String := none)
-    (headerHref? : Option String := none)
-    (footerHtml? : Option String := none) : InlinePreviewTarget :=
-  {
-    triggerId := lookupKey
-    title
-    lookupKey? := some lookupKey
-    headerLabel?
-    headerHref?
-    footerHtml?
-  }
+def InlinePreviewTarget.manifestBacked (lookupKey title : String) : InlinePreviewTarget :=
+  { triggerId := lookupKey, title, lookupKey? := some lookupKey }
 
 /-- Build a target with a distinct trigger id and manifest lookup key. -/
-def InlinePreviewTarget.withLookupKey
-    (triggerId title lookupKey : String)
-    (headerLabel? : Option String := none)
-    (headerHref? : Option String := none)
-    (footerHtml? : Option String := none) : InlinePreviewTarget :=
-  {
-    triggerId
-    title
-    lookupKey? := some lookupKey
-    headerLabel?
-    headerHref?
-    footerHtml?
-  }
+def InlinePreviewTarget.withLookupKey (triggerId title lookupKey : String) : InlinePreviewTarget :=
+  { triggerId, title, lookupKey? := some lookupKey }
 
-private def inlinePreviewRefAttrs
-    (previewId previewTitle : String)
-    (previewLookupKey? : Option String := none)
-    (previewHeaderLabel? : Option String := none)
-    (previewHeaderHref? : Option String := none)
-    (previewFooterHtml? : Option String := none) :
-    Array (String × String) := Id.run do
-  let mut attrs := #[
-    ("class", "bp_inline_preview_ref"),
-    ("data-bp-preview-id", previewId),
-    ("data-bp-preview-title", previewTitle)
-  ]
-  if let some previewKey := previewLookupKey? then
-    attrs := attrs.push ("data-bp-preview-key", previewKey)
-  for attr in previewHeaderLinkAttrs previewHeaderLabel? previewHeaderHref? do
-    attrs := attrs.push attr
-  if let some footerHtml := previewFooterHtml? then
-    attrs := attrs.push ("data-bp-preview-footer-html", footerHtml)
-  pure attrs
+private def InlinePreviewTarget.attrs (target : InlinePreviewTarget) : Array (String × String) :=
+  let optional (name : String) (value? : Option String) := (value?.map ((name, ·))).toArray
+  #[("class", "bp_inline_preview_ref"),
+    ("data-bp-preview-id", target.triggerId),
+    ("data-bp-preview-title", target.title)] ++
+    optional "data-bp-preview-key" target.lookupKey? ++
+    optional "data-bp-preview-header-label" target.headerLabel? ++
+    optional "data-bp-preview-header-href" target.headerHref? ++
+    optional "data-bp-preview-eyebrow" target.eyebrow? ++
+    optional "data-bp-preview-status-symbol" (target.status?.map (·.1)) ++
+    optional "data-bp-preview-status-class" (target.status?.map (·.2))
 
-def inlinePreviewRef
-    (node : Verso.Output.Html)
-    (previewId previewTitle : String)
-    (previewLookupKey? : Option String := none)
-    (previewHeaderLabel? : Option String := none)
-    (previewHeaderHref? : Option String := none)
-    (previewFooterHtml? : Option String := none) :
-    Verso.Output.Html :=
-  .tag "span"
-    (inlinePreviewRefAttrs previewId previewTitle previewLookupKey? previewHeaderLabel?
-      previewHeaderHref? previewFooterHtml?)
-    node
-
-/--
-Render one inline preview trigger.
-
-`previewId` is the local UI identifier used to keep panel state stable, while
-`previewLookupKey?` is the shared-manifest key used to load the preview body.
-Blueprint no longer emits page-local inline preview templates.
--/
-def inlinePreviewNode (node : Verso.Output.Html)
-    (previewId previewTitle : String)
-    (previewLookupKey? : Option String := none)
-    (previewHeaderLabel? : Option String := none)
-    (previewHeaderHref? : Option String := none)
-    (previewFooterHtml? : Option String := none) : Verso.Output.Html :=
-  inlinePreviewRef node previewId previewTitle previewLookupKey? previewHeaderLabel?
-    previewHeaderHref? previewFooterHtml?
-
-/-- Render one inline preview trigger from a bundled preview target. -/
+/-- Render one inline preview trigger. Blueprint emits no page-local preview
+templates: the runtime loads the body by `lookupKey?`. -/
 def inlinePreviewTargetNode
     (node : Verso.Output.Html) (target : InlinePreviewTarget) : Verso.Output.Html :=
-  inlinePreviewNode node target.triggerId target.title target.lookupKey?
-    target.headerLabel? target.headerHref? target.footerHtml?
+  .tag "span" target.attrs node
 
 end Informal.HoverRender

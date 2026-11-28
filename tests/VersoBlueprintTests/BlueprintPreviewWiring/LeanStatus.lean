@@ -42,21 +42,20 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       ("preview root", hasSubstr out "bp_code_summary_preview_root"),
       ("preview trigger", hasSubstr out "bp_code_summary_preview_wrap_active"),
       ("preview template", hasSubstr out "bp_code_summary_preview_tpl"),
-      ("preview panel", hasSubstr out "bp_code_summary_preview_panel"),
+      ("preview panel class", hasSubstr out "data-bp-template-preview-panel-class=\"bp_code_summary_preview_panel\""),
+      ("preview eyebrow", hasSubstr out "data-bp-template-preview-eyebrow=\"Lean code\""),
+      ("no per-block panel markup", !hasSubstr out "<aside"),
       ("preview id", hasSubstr out "data-bp-preview-id=\"bp-code-summary\""),
       ("keyboard trigger", hasSubstr out "tabindex=\"0\""),
       ("incomplete glyph", hasSubstr out ">⚠</span>"),
       ("completed native validation glyph", hasSubstr out ">✓</span>"),
       ("axiom classification glyph", hasSubstr out ">A</span>"),
-      ("absent glyph", hasSubstr out ">X</span>"),
+      ("absent glyph", hasSubstr out ">○</span>"),
       ("preview CSS", hasExtraCss st ".bp_code_summary_preview_panel"),
       ("preview descriptor", hasTemplatePreviewDescriptor out
-        ".bp_code_summary_preview_panel"
+        "bp_code_summary_preview_panel"
         "template.bp_code_summary_preview_tpl[data-bp-preview-id]"
-        ".bp_code_summary_preview_wrap_active[data-bp-preview-id]"
-        ".bp_code_summary_preview_title"
-        ".bp_code_summary_preview_body"
-        ".bp_code_summary_preview_close"),
+        ".bp_code_summary_preview_wrap_active[data-bp-preview-id]"),
       ("preview title attribute", hasSubstr out "data-bp-template-preview-title-attr=\"data-bp-preview-title\""),
       ("legacy preview binder absent", removedTemplateBinderJs?.isNone)]
     pure <| checks.filterMap fun (name, ok) => if ok then none else some name

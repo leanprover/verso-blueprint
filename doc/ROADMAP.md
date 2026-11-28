@@ -350,7 +350,9 @@ above until the semantics are clearer.
 3. use compact status chips in summary and work-queue rows
 4. revisit graph layout with a CSS-first page architecture so canvas sizing is
    less runtime-driven
-5. improve the default font family used by generated Blueprint output
+5. fix the largest visual problems while staying close to the Manual style;
+   [`BPC-0001`](./roadmap/cards/BPC-0001-visual-polish-within-manual-style/README.md)
+   ranks them and records what is deferred, including serif prose
 6. add Blueprint-specific search affordances only if Verso's generated search
    cannot cover the needed workflow
 7. support per-chapter commands if real projects need chapter-local generated

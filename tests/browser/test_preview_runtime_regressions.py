@@ -7,6 +7,7 @@ from playwright.sync_api import expect, Locator, Page
 from support import (
     assert_no_runtime_errors,
     blueprint_render_api_script,
+    open_relation_popup,
     record_runtime_errors,
     wait_for_blueprint_render_api,
 )
@@ -29,6 +30,23 @@ def assert_source_location_error(result: dict, needle: str):
     source_location = result["sourceLocation"]
     assert source_location["ok"] is False
     assert needle in source_location["error"]
+
+
+def text_baseline(locator: Locator) -> float:
+    """Return the y of an element's first text baseline, which holds in any font."""
+    return locator.evaluate(
+        """element => {
+          const text = document.createTreeWalker(element, NodeFilter.SHOW_TEXT).nextNode();
+          const line = document.createElement("span");
+          const probe = document.createElement("span");
+          probe.style.cssText = "display: inline-block; width: 0; height: 0;";
+          text.replaceWith(line);
+          line.append(text, probe);
+          const baseline = probe.getBoundingClientRect().bottom;
+          line.replaceWith(text);
+          return baseline;
+        }"""
+    )
 
 
 class TestPreviewRuntimeRegressions:
@@ -68,23 +86,27 @@ class TestPreviewRuntimeRegressions:
         expect(blank_link).to_have_attribute("href", re.compile("prepared_resource_blank"))
         expect(blank_link.locator("xpath=ancestor::*[contains(@class, 'bp_inline_preview_ref')]")).to_have_count(0)
 
-        single = page.locator('.bp_wrapper[title="prepared_resource_single"] .bp_extra_slot_uses .bp_relation_wrap')
-        single.locator(".bp_relation_chip").first.hover()
+        single_chip = page.locator(
+            '.bp_wrapper[title="prepared_resource_single"] .bp_extra_slot_uses .bp_relation_chip'
+        ).first
+        single = open_relation_popup(page, single_chip)
+        # A one-row popup shows only the preview; the row keeps its link and badges.
         missing = single.locator('.bp_relation_item[data-bp-preview-header-label="prepared_resource_blank"]')
-        expect(missing).to_be_visible()
-        assert missing.get_attribute("data-bp-relation-preview-key") is None
+        expect(missing).to_have_count(1)
         expect(missing.locator("a.bp_relation_target")).to_have_attribute("href", blank_link.get_attribute("href"))
         expect(missing).to_contain_text("technical")
-        expect(single.locator(".bp_relation_preview_body")).to_contain_text("does not have a rendered preview entry")
+        expect(single.locator(".bp_relation_preview_body")).to_contain_text("has no rendered preview")
         assert cache_requests == []
+        page.keyboard.press("Escape")
 
         # Missing resources remain selectable in multi-row panels, alongside
         # available resources that load normally when selected.
-        multiple = page.locator('.bp_wrapper[title="prepared_resource_multiple"] .bp_extra_slot_uses .bp_relation_wrap')
-        multiple.locator(".bp_relation_chip").first.hover()
+        multiple_chip = page.locator(
+            '.bp_wrapper[title="prepared_resource_multiple"] .bp_extra_slot_uses .bp_relation_chip'
+        ).first
+        multiple = open_relation_popup(page, multiple_chip)
         missing = multiple.locator('.bp_relation_item[data-bp-preview-header-label="prepared_resource_blank"]')
         expect(missing).to_be_visible()
-        assert missing.get_attribute("data-bp-relation-preview-key") is None
         available = multiple.locator('.bp_relation_item[data-bp-preview-header-label="prepared_resource_target"]')
         available.hover()
         body = multiple.locator(".bp_relation_preview_body").first
@@ -120,7 +142,7 @@ class TestPreviewRuntimeRegressions:
             panel = page.locator("#bp-inline-preview-panel")
             expect(panel).to_be_visible()
             for declaration in declarations:
-                expect(panel.locator(".bp_inline_preview_panel_body")).to_contain_text(declaration)
+                expect(panel.locator(".bp_preview_panel_body")).to_contain_text(declaration)
                 expect(panel.locator(
                     f'.bp_external_decl_item:has([data-decl="PreviewRuntimeShowcase.CodePanelDecls.{declaration}"])'
                 )).to_have_count(1)
@@ -364,7 +386,7 @@ class TestPreviewRuntimeRegressions:
         assert attempts["count"] == 0
         assert status["state"] == "idle"
 
-        used_by_wrap.locator(".bp_relation_chip").first.hover()
+        used_by_wrap.locator(".bp_relation_chip").first.click()
         page.wait_for_function(
             blueprint_render_api_script(
                 'return api.readHtmlCacheStatus().state === "ready";'
@@ -415,7 +437,10 @@ class TestPreviewRuntimeRegressions:
 
         panel = page.locator(".bp_code_summary_preview_panel").first
         expect(panel).to_be_visible()
-        expect(panel.locator(".bp_code_summary_preview_title")).to_have_text("used_target")
+        # The popup names the block as readers see it, with its label beside it.
+        expect(panel.locator(".bp_preview_panel_eyebrow")).to_have_text("Lean code")
+        expect(panel.locator(".bp_preview_panel_title")).to_have_text("Definition 6.1")
+        expect(panel.locator(".bp_preview_panel_label")).to_have_text("used_target")
         expect(panel.locator(".bp_code_decl_item")).to_have_count(1)
         expect(panel.locator(".bp_code_decl_item").first).to_contain_text("Nat.add")
 
@@ -449,7 +474,7 @@ class TestPreviewRuntimeRegressions:
 
         summary_panel = page.locator(".bp_code_summary_preview_panel:not([hidden])").first
         expect(summary_panel).to_be_visible()
-        expect(summary_panel.locator(".bp_code_summary_preview_title")).to_have_text(
+        expect(summary_panel.locator(".bp_preview_panel_label")).to_have_text(
             "panel_external_short_name_definition"
         )
         expect(summary_panel.locator(".bp_code_decl_item").first).to_contain_text(
@@ -469,9 +494,9 @@ class TestPreviewRuntimeRegressions:
         decl_link.hover()
 
         panel = page.locator("#bp-inline-preview-panel")
-        body = panel.locator(".bp_inline_preview_panel_body")
+        body = panel.locator(".bp_preview_panel_body")
         expect(panel).to_be_visible()
-        expect(panel.locator(".bp_inline_preview_panel_title")).to_have_text(
+        expect(panel.locator(".bp_preview_panel_title")).to_have_text(
             "previewExternalDefinition"
         )
         expect(body).to_contain_text(
@@ -498,15 +523,16 @@ class TestPreviewRuntimeRegressions:
         trigger.hover()
 
         panel = page.locator("#bp-inline-preview-panel")
-        body = panel.locator(".bp_inline_preview_panel_body")
+        body = panel.locator(".bp_preview_panel_body")
 
         expect(panel).to_be_visible()
-        expect(panel.locator(".bp_inline_preview_panel_title")).to_have_text(re.compile(r"^Lean declaration "))
+        expect(panel.locator(".bp_preview_panel_eyebrow")).to_have_text("Lean declaration")
+        expect(panel.locator(".bp_preview_panel_title")).not_to_have_text(re.compile(r"^Lean declaration "))
 
         page.wait_for_function(
             """
             () => {
-              const body = document.querySelector("#bp-inline-preview-panel .bp_inline_preview_panel_body");
+              const body = document.querySelector("#bp-inline-preview-panel .bp_preview_panel_body");
               if (!body) return false;
               const html = body.innerHTML || "";
               const text = body.textContent || "";
@@ -541,13 +567,13 @@ class TestPreviewRuntimeRegressions:
 
         panel = page.locator(".bp_summary_preview_panel:not([hidden])").first
         expect(panel).to_be_visible()
-        expect(panel.locator(".bp_summary_preview_panel_title")).to_have_text(
+        expect(panel.locator(".bp_preview_panel_title")).to_have_text(
             "custom_client_external_markdown"
         )
-        expect(panel.locator(".bp_summary_preview_panel_body")).to_contain_text(
+        expect(panel.locator(".bp_preview_panel_body")).to_contain_text(
             "External Markdown source"
         )
-        expect(panel.locator(".bp_summary_preview_panel_body")).to_contain_text("only Markdown")
+        expect(panel.locator(".bp_preview_panel_body")).to_contain_text("only Markdown")
 
         assert_no_runtime_errors(errors)
 
@@ -572,7 +598,7 @@ class TestPreviewRuntimeRegressions:
 
         panel = page.locator(".bp_summary_preview_panel:not([hidden])").first
         expect(panel).to_be_visible()
-        expect(panel.locator(".bp_summary_preview_panel_title")).to_have_text("Definition 1.1")
+        expect(panel.locator(".bp_preview_panel_title")).to_have_text("Definition 1.1")
 
         assert_no_runtime_errors(errors)
 
@@ -1105,7 +1131,7 @@ class TestPreviewRuntimeRegressions:
         expect(proof_body.locator(".bp_wrapper").first).to_have_attribute(
             "title", "preview_facets"
         )
-        expect(proof_body.locator(".bp_heading").first).to_contain_text("Proof for Theorem")
+        expect(proof_body.locator(".bp_heading").first).to_contain_text("Proof of Theorem")
         expect(proof_body).to_contain_text("Proof facet marker")
         expect(proof_body).not_to_contain_text("Statement facet marker")
 
@@ -1200,12 +1226,12 @@ class TestPreviewRuntimeRegressions:
         external_uses_trigger.hover()
         inline_panel = page.locator("#bp-inline-preview-panel")
         expect(inline_panel).to_be_visible()
-        inline_body = inline_panel.locator(".bp_inline_preview_panel_body")
+        inline_body = inline_panel.locator(".bp_preview_panel_body")
         page.wait_for_function(
             "(el) => !!el && el.textContent.includes('Target statement with associated Lean code.')",
             arg=inline_body.element_handle(),
         )
-        expect(inline_panel.locator(".bp_inline_preview_panel_label")).to_contain_text(
+        expect(inline_panel.locator(".bp_preview_panel_label")).to_contain_text(
             "used_target"
         )
 
@@ -1221,7 +1247,7 @@ class TestPreviewRuntimeRegressions:
             "(el) => !!el && el.textContent.includes('Consumer node that gives the Markdown fallback target a used-by relation.')",
             arg=inline_body.element_handle(),
         )
-        expect(inline_panel.locator(".bp_inline_preview_panel_label")).to_contain_text(
+        expect(inline_panel.locator(".bp_preview_panel_label")).to_contain_text(
             "custom_client_external_metadata_consumer"
         )
 
@@ -1234,10 +1260,10 @@ class TestPreviewRuntimeRegressions:
         external_code_trigger.hover()
         code_panel = page.locator(".bp_code_summary_preview_panel:not([hidden])").first
         expect(code_panel).to_be_visible()
-        expect(code_panel.locator(".bp_code_summary_preview_title")).to_have_text(
+        expect(code_panel.locator(".bp_preview_panel_title")).to_have_text(
             "custom_client_external_markdown_metadata"
         )
-        expect(code_panel.locator(".bp_code_summary_preview_body")).to_contain_text(
+        expect(code_panel.locator(".bp_preview_panel_body")).to_contain_text(
             "No associated Lean code or declaration display snapshots."
         )
 
@@ -2634,19 +2660,14 @@ class TestPreviewRuntimeRegressions:
         assert "bp_relation_preview_fallback_tpl" not in page.content()
 
         chip = wrap.locator(".bp_relation_chip").first
-        panel = wrap.locator(":scope > .bp_relation_panel")
-        relation_list = panel.locator(":scope > .bp_relation_panel_body > .bp_relation_list")
-        preview_surface = panel.locator(
-            ":scope > .bp_relation_panel_body > .bp_relation_preview_surface"
-        )
-        payload = relation_list.locator(":scope > script.bp-relation-entries")
+        payload = wrap.locator(":scope > script.bp-relation-entries")
         expect(payload).to_have_count(1)
-        chip.hover()
+        panel = open_relation_popup(page, chip)
         expect(payload).to_have_count(0)
+        relation_list = panel.locator(".bp_relation_list")
+        preview_surface = panel.locator(".bp_relation_preview")
 
-        expect(
-            panel.locator(":scope > .bp_relation_panel_header > .bp_relation_panel_meta")
-        ).to_have_text("Reverse dependency previews")
+        expect(panel.locator(":scope > .bp_preview_panel_header .bp_preview_panel_eyebrow")).to_have_text(re.compile(r"^Used by · \d+$"))
         expect(
             relation_list.locator(":scope > .bp_relation_item.bp_relation_item_active")
         ).to_have_count(1)
@@ -2667,7 +2688,7 @@ class TestPreviewRuntimeRegressions:
             statement_item.locator(".bp_relation_badge_intent_technical")
         ).to_have_attribute("title", "Intent: technical")
 
-        header_label = preview_surface.locator(".bp_relation_preview_header_label")
+        header_label = preview_surface.locator(".bp_relation_preview_label")
         expect(header_label).to_be_visible()
         expect(header_label).to_contain_text("used_statement")
         expect(header_label).to_have_attribute("href", re.compile(r"#--informal-preview-used_statement"))
@@ -2726,13 +2747,10 @@ class TestPreviewRuntimeRegressions:
 
         panel = source_slot.locator(".bp_source_ref_panel").first
         expect(panel).to_be_visible()
-        expect(panel.locator(".bp_relation_panel_title")).to_have_text("Original source")
-        expect(panel.locator(".bp_relation_panel_meta")).to_have_text("Source provenance preview")
+        expect(panel.locator(":scope > .bp_preview_panel_header .bp_preview_panel_eyebrow")).to_have_text("Source provenance")
+        expect(panel.locator(".bp_preview_panel_title")).to_have_text("Original source")
 
-        preview = panel.locator(".bp_relation_preview_surface").first
-        expect(preview).to_be_visible()
-        expect(preview.locator(".bp_relation_preview_title")).to_have_text("Original source")
-        body = preview.locator(".bp_source_ref_preview_body").first
+        body = panel.locator(".bp_source_ref_preview_body").first
         expect(body).to_contain_text("custom-client-paper")
         expect(body).to_contain_text("custom-client-paper p. 42")
         expect(body).to_contain_text("citation Theorem 4.2")
@@ -2768,51 +2786,41 @@ class TestPreviewRuntimeRegressions:
         assert text.index("page 42") < text.index("page 43")
         assert_no_runtime_errors(errors)
 
-    def test_uses_single_dependency_loads_manifest_backed_inline_preview(
-        self, server: str, page: Page
-    ):
-        errors = record_runtime_errors(page)
-        page.goto(f"{server}/Preview-Relationships/")
-        page.locator("body[data-bp-inline-preview-bound='1']").wait_for()
-
-        slot = page.locator('.bp_wrapper[title="used_statement"] .bp_extra_slot_uses').first
-        trigger = slot.locator(".bp_inline_preview_ref").first
-        expect(trigger).to_have_count(1)
-        expect(slot.locator(".bp_relation_wrap")).to_have_count(0)
-        expect(slot.locator(".bp_relation_panel")).to_have_count(0)
-        assert "bp_relation_preview_fallback_tpl" not in page.content()
-
-        chip = trigger.locator(".bp_relation_chip").first
+    def _assert_single_use_popup(self, page: Page, slot, eyebrow: str) -> None:
+        # One dependency opens the same popup as many, showing only its preview.
+        chip = slot.locator(".bp_relation_chip").first
         expect(chip).to_have_text("uses 1")
-        expect(trigger).to_have_attribute("data-bp-preview-id", re.compile(r"^bp-uses-"))
-        expect(trigger).to_have_attribute("data-bp-preview-key", re.compile(r"used_target"))
-        trigger.hover()
-
-        panel = page.locator("#bp-inline-preview-panel")
+        expect(slot.locator(".bp_inline_preview_ref")).to_have_count(0)
+        panel = open_relation_popup(page, chip)
         expect(panel).to_be_visible()
+        expect(panel).to_have_class(re.compile(r"bp_relation_panel_single"))
+        expect(panel.locator(":scope > .bp_preview_panel_header .bp_preview_panel_eyebrow")).to_have_text(eyebrow)
 
-        body = panel.locator(".bp_inline_preview_panel_body")
+        body = panel.locator(".bp_relation_preview_body")
         page.wait_for_function(
             "(el) => !!el && el.innerHTML.includes('<p')",
             arg=body.element_handle(),
         )
         expect(body).to_contain_text("Target statement with associated Lean code.")
 
-        header_label = panel.locator(".bp_inline_preview_panel_label")
+        header_label = panel.locator(".bp_relation_preview_label")
         expect(header_label).to_be_visible()
         expect(header_label).to_contain_text("used_target")
         expect(header_label).to_have_attribute("href", re.compile(r"#--informal-preview-used_target"))
 
-        footer = panel.locator(".bp_inline_preview_panel_footer")
-        expect(footer).to_be_visible()
-        expect(footer).to_contain_text("statement")
+        page.keyboard.press("Escape")
+        expect(panel).to_have_count(0)
 
-        page.mouse.move(0, 0)
-        expect(panel).to_be_hidden(timeout=1000)
+    def test_uses_single_dependency_opens_one_row_popup(self, server: str, page: Page):
+        errors = record_runtime_errors(page)
+        page.goto(f"{server}/Preview-Relationships/")
+        page.locator("body[data-bp-inline-preview-bound='1']").wait_for()
 
+        slot = page.locator('.bp_wrapper[title="used_statement"] .bp_extra_slot_uses').first
+        self._assert_single_use_popup(page, slot, "Statement uses · 1")
         assert_no_runtime_errors(errors)
 
-    def test_proof_uses_single_dependency_loads_from_proof_header(
+    def test_proof_uses_single_dependency_opens_from_proof_header(
         self, server: str, page: Page
     ):
         errors = record_runtime_errors(page)
@@ -2826,42 +2834,9 @@ class TestPreviewRuntimeRegressions:
         expect(statement_uses).to_have_text("uses 0")
 
         proof = page.locator('.bp_wrapper.bp_kind_proof_wrapper[title="used_proof"]').first
-        slot = proof.locator(".bp_extra_slot_uses").first
-        trigger = slot.locator(".bp_inline_preview_ref").first
-        expect(trigger).to_have_count(1)
         expect(proof.locator(".bp_extra_slot_used_by")).to_have_count(0)
         expect(proof.locator(".bp_extra_slot_code")).to_have_count(0)
-        expect(slot.locator(".bp_relation_wrap")).to_have_count(0)
-        expect(slot.locator(".bp_relation_panel")).to_have_count(0)
-
-        chip = trigger.locator(".bp_relation_chip").first
-        expect(chip).to_have_text("uses 1")
-        expect(trigger).to_have_attribute("data-bp-preview-id", re.compile(r"^bp-uses-"))
-        expect(trigger).to_have_attribute("data-bp-preview-key", re.compile(r"used_target"))
-        trigger.hover()
-
-        panel = page.locator("#bp-inline-preview-panel")
-        expect(panel).to_be_visible()
-
-        body = panel.locator(".bp_inline_preview_panel_body")
-        page.wait_for_function(
-            "(el) => !!el && el.innerHTML.includes('<p')",
-            arg=body.element_handle(),
-        )
-        expect(body).to_contain_text("Target statement with associated Lean code.")
-
-        header_label = panel.locator(".bp_inline_preview_panel_label")
-        expect(header_label).to_be_visible()
-        expect(header_label).to_contain_text("used_target")
-        expect(header_label).to_have_attribute("href", re.compile(r"#--informal-preview-used_target"))
-
-        footer = panel.locator(".bp_inline_preview_panel_footer")
-        expect(footer).to_be_visible()
-        expect(footer).to_contain_text("proof")
-
-        page.mouse.move(0, 0)
-        expect(panel).to_be_hidden(timeout=1000)
-
+        self._assert_single_use_popup(page, proof.locator(".bp_extra_slot_uses").first, "Proof uses · 1")
         assert_no_runtime_errors(errors)
 
     def test_proof_uses_multiple_dependencies_loads_panel_previews(
@@ -2888,32 +2863,26 @@ class TestPreviewRuntimeRegressions:
         chip = wrap.locator("button.bp_relation_chip").first
         expect(chip).to_have_text("uses 2")
         statement_uses_box = require_box(statement_uses_chip)
-        caption_box = require_box(proof.locator(".bp_caption").first)
         chip_box = require_box(chip)
         assert abs(statement_uses_box["x"] - chip_box["x"]) < 1
-        assert abs((caption_box["y"] + caption_box["height"]) - (chip_box["y"] + chip_box["height"])) < 1
-        chip.hover()
+        assert abs(text_baseline(proof.locator(".bp_caption").first) - text_baseline(chip)) < 1
+        panel = open_relation_popup(page, chip)
+        expect(panel.locator(":scope > .bp_preview_panel_header .bp_preview_panel_eyebrow")).to_have_text("Proof uses · 2")
+        # Every row is a proof use, so rows do not repeat the proof badge.
+        expect(panel.locator(".bp_relation_badge_proof")).to_have_count(0)
 
-        expect(wrap.locator(".bp_relation_panel .bp_relation_panel_title")).to_have_text(
-            "Proof uses 2"
-        )
-        expect(wrap.locator(".bp_relation_panel .bp_relation_panel_meta")).to_have_text(
-            "Proof dependency previews"
-        )
-        expect(wrap.locator(".bp_relation_badge_proof").first).to_be_visible()
-
-        header_label = wrap.locator(".bp_relation_preview_header_label")
+        header_label = panel.locator(".bp_relation_preview_label")
         expect(header_label).to_be_visible()
         expect(header_label).to_contain_text("used_target")
         expect(header_label).to_have_attribute("href", re.compile(r"#--informal-preview-used_target"))
 
-        body = wrap.locator(".bp_relation_preview_body")
+        body = panel.locator(".bp_relation_preview_body")
         page.wait_for_function(
             "(el) => !!el && el.textContent.includes('Target statement with associated Lean code.')",
             arg=body.element_handle(),
         )
 
-        second_item = wrap.locator(".bp_relation_item").nth(1)
+        second_item = panel.locator(".bp_relation_item").nth(1)
         second_item.hover()
         expect(second_item).to_have_class(re.compile(r"bp_relation_item_active"))
         expect(header_label).to_contain_text("used_aux_target")
@@ -2959,15 +2928,11 @@ class TestPreviewRuntimeRegressions:
         statement_uses_box = require_box(statement_uses_chip)
         used_by_box = require_box(statement.locator(".bp_extra_slot_used_by").first)
         code_box = require_box(statement.locator(".bp_extra_slot_code").first)
-        proof_caption_box = require_box(proof.locator(".bp_caption").first)
         proof_uses_box = require_box(chip)
 
         assert group_box["x"] < statement_uses_box["x"] < used_by_box["x"] < code_box["x"]
         assert abs(statement_uses_box["x"] - proof_uses_box["x"]) < 1
-        assert abs(
-            (proof_caption_box["y"] + proof_caption_box["height"])
-            - (proof_uses_box["y"] + proof_uses_box["height"])
-        ) < 1
+        assert abs(text_baseline(proof.locator(".bp_caption").first) - text_baseline(chip)) < 1
 
         assert_no_runtime_errors(errors)
 
@@ -2987,7 +2952,7 @@ class TestPreviewRuntimeRegressions:
 
         panel = page.locator("#bp-inline-preview-panel")
         expect(panel).to_be_visible()
-        body = panel.locator(".bp_inline_preview_panel_body")
+        body = panel.locator(".bp_preview_panel_body")
         expect(body).to_contain_text("Preview showcase citation")
         expect(body).to_contain_text("Locator")
 
@@ -3010,7 +2975,7 @@ class TestPreviewRuntimeRegressions:
         expect(main_panel).to_be_visible()
 
         nested = main_panel.locator(
-            '.bp_inline_preview_panel_body .bp_inline_preview_ref[data-bp-preview-key="nested_inner--statement"]'
+            '.bp_preview_panel_body .bp_inline_preview_ref[data-bp-preview-key="nested_inner--statement"]'
         ).first
         expect(nested).to_have_count(1)
 
@@ -3018,10 +2983,10 @@ class TestPreviewRuntimeRegressions:
 
         child_panel = page.locator("#bp-inline-preview-child-panel")
         expect(child_panel).to_be_visible()
-        expect(child_panel.locator(".bp_inline_preview_panel_body")).to_contain_text(
+        expect(child_panel.locator(".bp_preview_panel_body")).to_contain_text(
             "Nested inner preview definition."
         )
-        expect(main_panel.locator(".bp_inline_preview_panel_body")).to_contain_text(
+        expect(main_panel.locator(".bp_preview_panel_body")).to_contain_text(
             "Outer theorem refers to"
         )
 

@@ -27,7 +27,7 @@ private def slideNodeHydrationModuleMjs : String := include_str "blueprint-slide
 
 def blueprintSlidesAssetBundle : Informal.Commands.BlueprintAssetBundle :=
   { css :=
-      (Informal.Commands.previewPanelInlinePreviewCssAssetBundle
+      (Informal.Commands.previewPanelCssAssetBundle
         [ Informal.Block.Assets.css,
           Informal.Graft.css,
           Verso.Genre.Manual.docstringStyle,

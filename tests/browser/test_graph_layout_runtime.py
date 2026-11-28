@@ -204,9 +204,21 @@ def assert_graph_is_well_placed(page: Page):
 
 
 def first_preview_node(page: Page):
-    node = page.locator(".bp_graph_canvas svg g.node[tabindex='0']").first
-    node.wait_for()
-    return node
+    """The first previewable node inside the visible canvas; large graphs open zoomed in."""
+    page.locator(".bp_graph_canvas svg g.node[tabindex='0']").first.wait_for()
+    index = page.evaluate(
+        """() => {
+          const canvas = document.querySelector(".bp_graph_canvas").getBoundingClientRect();
+          const nodes = [...document.querySelectorAll(".bp_graph_canvas svg g.node[tabindex='0']")];
+          return nodes.findIndex((node) => {
+            const box = node.getBoundingClientRect();
+            return box.left >= canvas.left && box.right <= canvas.right &&
+              box.top >= canvas.top && box.bottom <= canvas.bottom;
+          });
+        }"""
+    )
+    assert index >= 0, "no previewable graph node is visible in the canvas"
+    return page.locator(".bp_graph_canvas svg g.node[tabindex='0']").nth(index)
 
 
 def preview_node_by_label(page: Page, label: str):
@@ -1038,7 +1050,7 @@ class TestGraphLayoutRuntime:
                 return !!panel && !panel.hidden && panel.getAttribute("data-bp-preview-mode") === "pinned";
             }"""
         )
-        title_link = panel.locator(".bp_graph_preview_title a").first
+        title_link = panel.locator(".bp_preview_panel_title a").first
         expect(title_link).to_contain_text("Definition")
         expect(title_link).to_have_attribute(
             "href", re.compile(r"Preview-Relationships/#--informal-preview-used_target--statement$")
@@ -1087,7 +1099,7 @@ class TestGraphLayoutRuntime:
             }"""
         )
 
-        page.locator(".bp_graph_preview_close").first.click()
+        page.locator(".bp_preview_panel_close").first.click()
         page.wait_for_function(
             """() => {
                 const panel = document.querySelector(".bp_graph_preview");

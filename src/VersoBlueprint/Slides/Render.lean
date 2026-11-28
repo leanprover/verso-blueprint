@@ -29,7 +29,6 @@ private def slideManifestBlockConfig : Informal.PreviewManifest.BlockRender.Rend
          ]
     relationPanels := {
       wrapClass := fun kind => "bp_relation_wrap bp_slide_" ++ kind.key ++ "_wrap"
-      panelAttrs := fun kind => #[("data-bp-slide-panel", kind.key)]
       idPrefix := fun kind entry =>
         match kind with
         | .group => s!"bp-slide-group-{entry.label}"

@@ -97,7 +97,8 @@ public def renderNodeWithContent
     (node : BlueprintNode)
     (entry : Informal.PreviewManifest.Entry)
     (content : Informal.PreviewManifest.BlockRender.RenderedContent)
-    (group? : Option Informal.PreviewManifest.GroupRelation := none) : Html :=
+    (group? : Option Informal.PreviewManifest.GroupRelation := none)
+    (statusOf : Informal.RelatedPanel.StatusLookup := fun _ => none) : Html :=
   .tag "div" (cfg.nodeAttrs node) <|
     Informal.PreviewManifest.BlockRender.renderWithRenderedContent
       cfg.blockRenderConfig
@@ -109,6 +110,7 @@ public def renderNodeWithContent
         compact := node.compact
         showHeader := node.showHeader
       }
+      statusOf
 
 public def renderNodeFromManifestCache
     (cfg : ManifestRenderConfig)
@@ -128,6 +130,7 @@ public def renderNodeFromManifestCache
             pure <| cfg.renderMissingNode node "Blueprint HTML cache entry not found" entry.key
         | some content =>
             pure <| renderNodeWithContent cfg node entry content (index.groupForEntry? entry)
+              index.statusOf
 
 public def readBlueprintManifest (path : System.FilePath) :
     IO Informal.PreviewManifest.File :=

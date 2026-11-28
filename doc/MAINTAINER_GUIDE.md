@@ -524,8 +524,8 @@ python3 -m scripts.blueprint_harness bump-toolchain v4.34.0 --skip-validation
 
 That command rewrites the managed `lean-toolchain` files, rewrites the root
 package's direct `require verso` and `require «verso-slides»` pins, refreshes
-the committed manifests for the root package, `project_template`, and
-`tests/test_blueprints/preview_runtime_showcase/`, and by default runs the same
+the committed manifests for the root package, `project_template`, and every
+standalone package under `tests/test_blueprints/`, and by default runs the same
 build/test validation pass that maintainers would otherwise do manually. It
 also synchronizes the current release target's RC metadata for in-repo
 reference projects; external project RC overrides remain explicit. Release

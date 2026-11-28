@@ -75,11 +75,16 @@ class ToolchainBumpResult:
     verso_slides_tag_oid: str
 
 
+def standalone_test_blueprint_dirs(package_root: Path) -> tuple[Path, ...]:
+    """Every standalone test Blueprint package; each owns a toolchain and manifest."""
+    return tuple(sorted(lakefile.parent for lakefile in (package_root / "tests" / "test_blueprints").glob("*/lakefile.lean")))
+
+
 def managed_toolchain_project_dirs(package_root: Path) -> tuple[Path, ...]:
     return (
         package_root,
         package_root / "project_template",
-        package_root / "tests" / "test_blueprints" / "preview_runtime_showcase",
+        *standalone_test_blueprint_dirs(package_root),
     )
 
 
@@ -185,10 +190,8 @@ def validate_bumped_toolchain(package_root: Path) -> None:
     run(lean_low_priority_command(package_root, "lake", "build"), cwd=package_root)
     run(lean_low_priority_command(package_root, "lake", "test"), cwd=package_root)
     run(lean_low_priority_command(package_root, "lake", "build"), cwd=package_root / "project_template")
-    run(
-        lean_low_priority_command(package_root, "lake", "build"),
-        cwd=package_root / "tests" / "test_blueprints" / "preview_runtime_showcase",
-    )
+    for project_dir in standalone_test_blueprint_dirs(package_root):
+        run(lean_low_priority_command(package_root, "lake", "build"), cwd=project_dir)
 
 
 def bump_toolchain_checkout(

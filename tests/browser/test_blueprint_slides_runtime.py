@@ -198,7 +198,7 @@ class TestBlueprintSlidesRuntime:
         ).inner_text()
         assert re.fullmatch(r"\d+(?:\.\d+)*", multiplication_label)
         multiplication_title = f"Theorem {multiplication_label}"
-        multiplication_proof_title = f"Proof for {multiplication_title}"
+        multiplication_proof_title = f"Proof of {multiplication_title}"
         assert multiplication_entry["title"] == multiplication_title
         assert multiplication_proof_entry["title"] == multiplication_proof_title
         assert len(multiplication_entry["leanCodePreviewKeys"]) == 1
@@ -251,7 +251,7 @@ class TestBlueprintSlidesRuntime:
         ) == ["group", "uses", "used-by", "code"]
         assert node.locator(".bp_extras").evaluate(
             """extras => getComputedStyle(extras).gridTemplateAreas"""
-        ) == '"group uses used code"'
+        ) == '"source group uses used markup code"'
         chip_boxes = node.locator(
             ".bp_extra_slot_group .bp_relation_chip,"
             ".bp_extra_slot_uses .bp_relation_chip,"
@@ -270,21 +270,20 @@ class TestBlueprintSlidesRuntime:
         code_chip.hover()
         code_panel = page.locator(".bp_code_summary_preview_panel").first
         expect(code_panel).to_be_visible()
-        expect(code_panel.locator(".bp_code_summary_preview_title")).to_have_text("collatz_step")
-        expect(code_panel.locator(".bp_code_hover_label")).to_have_text(
-            "Associated Lean declarations (display only; validation shown in heading)"
-        )
+        expect(code_panel.locator(".bp_preview_panel_eyebrow")).to_have_text("Lean code")
+        expect(code_panel.locator(".bp_preview_panel_label")).to_have_text("collatz_step")
+        expect(code_panel.locator(".bp_code_decl_list")).to_have_count(1)
         expect(code_panel.locator(".bp_code_decl_item")).to_have_count(2)
         decl_items = code_panel.locator(".bp_code_decl_item").all_inner_texts()
-        assert any("collatzStep" in item and "[complete]" in item for item in decl_items)
+        assert any("collatzStep" in item and "complete" in item for item in decl_items)
         assert any(
-            "collatzTerminatesAtOne" in item and "[complete]" in item
+            "collatzTerminatesAtOne" in item and "complete" in item
             for item in decl_items
         )
         code_panel_metrics = code_panel.evaluate(
             """panel => {
               const panelBox = panel.getBoundingClientRect();
-              const bodyBox = panel.querySelector(".bp_code_summary_preview_body").getBoundingClientRect();
+              const bodyBox = panel.querySelector(".bp_preview_panel_body").getBoundingClientRect();
               const item = panel.querySelector(".bp_code_decl_item");
               const itemBox = item.getBoundingClientRect();
               const code = item.querySelector("code");
@@ -304,10 +303,14 @@ class TestBlueprintSlidesRuntime:
         assert code_panel_metrics["itemRight"] <= code_panel_metrics["bodyRight"] + 1
         assert code_panel_metrics["codeFontSize"] >= 12
         expect(page.locator("#bp-inline-preview-panel")).to_be_hidden()
-        expect(node.locator(".bp_code_panel_wrapper .bp_code_progress")).to_have_count(1)
         expect(
-            node.locator(".bp_code_panel_wrapper .bp_code_progress_segment_ok")
+            node.locator(".bp_code_panel_wrapper .bp_code_panel_decls code")
         ).to_have_count(2)
+        expect(
+            node.locator(
+                ".bp_code_panel_wrapper .bp_code_panel_status.bp_code_link_status_proved"
+            )
+        ).to_contain_text("complete")
         expect(node.locator(".bp_slide_code_body code.hl.lean.block")).to_have_count(1)
         assert node.locator(".bp_slide_code_body .keyword.token").count() >= 2
         expect(node.locator(".bp_slide_code_body")).to_contain_text("collatzStep")
@@ -334,14 +337,14 @@ class TestBlueprintSlidesRuntime:
             "Multiplication/#--informal-preview-multiplication_spec--statement",
             "/blueprint/Multiplication/#--informal-preview-multiplication_spec--statement",
         )
-        node.locator(".bp_extra_slot_group .bp_relation_chip").hover()
+        node.locator(".bp_extra_slot_group .bp_relation_chip").click()
         expect_slide_link(
             page,
             ".bp_extra_slot_group .bp_relation_target",
             COLLATZ_CONJECTURE_HREF,
             COLLATZ_CONJECTURE_REWRITTEN,
         )
-        node.locator(".bp_extra_slot_used_by .bp_relation_chip").hover()
+        node.locator(".bp_extra_slot_used_by .bp_relation_chip").click()
         expect_slide_link(
             page,
             ".bp_extra_slot_used_by .bp_relation_target",
@@ -387,7 +390,7 @@ class TestBlueprintSlidesRuntime:
         theorem_code_chip.hover()
         theorem_code_panel = page.locator(".bp_code_summary_preview_panel:not([hidden])")
         expect(theorem_code_panel).to_be_visible()
-        expect(theorem_code_panel.locator(".bp_code_summary_preview_title")).to_have_text(
+        expect(theorem_code_panel.locator(".bp_preview_panel_label")).to_have_text(
             "multiplication_one_right"
         )
         expect(theorem_code_panel.locator(".bp_code_decl_item")).to_have_count(1)
@@ -426,10 +429,10 @@ class TestBlueprintSlidesRuntime:
         page.evaluate("window.Reveal.slide(2)")
         page.wait_for_function("() => window.Reveal.getIndices().h === 2")
         current_slide = page.locator(".reveal .slides section.present").first
-        graft_grid = current_slide.locator(".bp_graft_side_by_side").first
+        graft_grid = current_slide.locator(".bp_slide_side_by_side").first
         expect(graft_grid).to_be_visible()
         assert graft_grid.evaluate(
-            """grid => grid.classList.contains("bp_graft_side_by_side_boxed")"""
+            """grid => grid.classList.contains("bp_slide_side_by_side_boxed")"""
         )
         expect(graft_grid.locator(".bp_slide_node")).to_have_count(2)
         expect(graft_grid.locator(".bp_heading")).to_have_count(0)
@@ -448,7 +451,7 @@ class TestBlueprintSlidesRuntime:
         ) == "grid"
         expect_slide_link(
             page,
-            ".bp_graft_side_by_side "
+            ".bp_slide_side_by_side "
             ".bp_slide_node[data-bp-label='collatz_step'] .bp_content a[title='multiplication_spec']",
             "Multiplication/#--informal-preview-multiplication_spec--statement",
             "/blueprint/Multiplication/#--informal-preview-multiplication_spec--statement",
@@ -457,10 +460,10 @@ class TestBlueprintSlidesRuntime:
         page.evaluate("window.Reveal.slide(3)")
         page.wait_for_function("() => window.Reveal.getIndices().h === 3")
         current_slide = page.locator(".reveal .slides section.present").first
-        full_grid = current_slide.locator(".bp_graft_side_by_side").first
+        full_grid = current_slide.locator(".bp_slide_side_by_side").first
         expect(full_grid).to_be_visible()
         assert not full_grid.evaluate(
-            """grid => grid.classList.contains("bp_graft_side_by_side_boxed")"""
+            """grid => grid.classList.contains("bp_slide_side_by_side_boxed")"""
         )
         full_statement = full_grid.locator(
             ".bp_slide_node[data-bp-label='addition_right_identity']"
@@ -484,10 +487,10 @@ class TestBlueprintSlidesRuntime:
         page.evaluate("window.Reveal.slide(4)")
         page.wait_for_function("() => window.Reveal.getIndices().h === 4")
         current_slide = page.locator(".reveal .slides section.present").first
-        compact_grid = current_slide.locator(".bp_graft_side_by_side").first
+        compact_grid = current_slide.locator(".bp_slide_side_by_side").first
         expect(compact_grid).to_be_visible()
         assert compact_grid.evaluate(
-            """grid => grid.classList.contains("bp_graft_side_by_side_boxed")"""
+            """grid => grid.classList.contains("bp_slide_side_by_side_boxed")"""
         )
         expect(compact_grid.locator(".bp_slide_node")).to_have_count(2)
         expect(compact_grid.locator(".bp_heading")).to_have_count(0)
@@ -505,7 +508,7 @@ class TestBlueprintSlidesRuntime:
         page.evaluate("window.Reveal.slide(5)")
         page.wait_for_function("() => window.Reveal.getIndices().h === 5")
         current_slide = page.locator(".reveal .slides section.present").first
-        four_up_grid = current_slide.locator(".bp_graft_side_by_side").first
+        four_up_grid = current_slide.locator(".bp_slide_side_by_side").first
         expect(four_up_grid).to_be_visible()
         expect(four_up_grid.locator(".bp_slide_node")).to_have_count(4)
         expect(four_up_grid.locator(".bp_heading")).to_have_count(0)

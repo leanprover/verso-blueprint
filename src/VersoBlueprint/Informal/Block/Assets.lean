@@ -7,7 +7,7 @@ Author: Emilio J. Gallego Arias
 import VersoManual
 import VersoBlueprint.Commands.Common
 import VersoBlueprint.Macros
-import VersoBlueprint.StyleSwitcher
+import VersoBlueprint.PageBehavior
 
 namespace Informal.Block.Assets
 
@@ -15,17 +15,38 @@ def css : String := r##"
 .bp_wrapper {
   scroll-margin-top: 1rem;
   margin: 0.85rem 0;
+  border: 1px solid var(--bp-color-border);
+  border-radius: var(--bp-radius-lg);
+  padding: 0.6rem 1rem 0.8rem;
+  background: var(--bp-color-surface);
 }
 
-/* Leave scroll room for relation panels opened near the end of a page. */
-.content-wrapper > section:has(.bp_relation_panel) {
-  padding-bottom: min(18rem, 42vh);
+/* A node's statement, proof and Lean code, placed together, read as one card: the
+   page marks each part that continues into the next (block-parts.mjs). */
+.bp_wrapper.bp_part_continues {
+  margin-bottom: 0;
+  border-bottom-width: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.bp_wrapper.bp_part_joined {
+  margin-top: 0;
+  border-top-color: var(--bp-color-border-soft);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+/* Joined to its statement, a proof reads "Proof." and a code panel "Lean". */
+.bp_part_joined .bp_proof_of,
+.bp_part_joined .bp_code_for {
+  display: none;
 }
 
 .bp_heading {
   display: flex;
-  align-items: center;
-  gap: 0.55rem;
+  align-items: baseline;
+  gap: 0.55rem 1rem;
   flex-wrap: wrap;
   font-style: normal;
   font-weight: bold;
@@ -33,202 +54,43 @@ def css : String := r##"
 
 .bp_heading_title_row {
   display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-
-.bp_kind_proof_heading {
   align-items: baseline;
-}
-
-.bp_heading_title_row_statement {
-  display: inline-grid;
-  grid-template-columns: 11ch 3ch;
-  align-items: baseline;
-  column-gap: 0.45rem;
+  gap: 0.3em;
+  min-width: 0;
 }
 
 .bp_caption {
   display: inline;
 }
 
-.bp_label {
-  margin-left: 0.5rem;
+.bp_kind_proof_caption {
+  font-style: italic;
 }
 
-.bp_heading_title_row_statement .bp_label {
-  margin-left: 0;
-  min-width: 0;
-  text-align: right;
+.bp_label {
   font-variant-numeric: tabular-nums;
 }
 
-.bp_label::after,
-span[class$="_thmlabel"]::after {
-  content: ".";
-}
-
+/*
+ * Header extras sit at the right in fixed columns, so chips line up from block to
+ * block and a missing chip leaves its column empty. Source and markup badges are
+ * optional and take no space when absent; spacing is padding, not grid gaps, so
+ * an empty column adds nothing.
+ */
 .bp_extras {
-  --bp-extra-source-col: minmax(5.2rem, max-content);
-  --bp-extra-group-col: minmax(5rem, max-content);
-  --bp-extra-uses-col: minmax(5.2rem, max-content);
-  --bp-extra-used-by-col: minmax(7.2rem, max-content);
-  --bp-extra-markup-col: max-content;
-  --bp-extra-code-col: max-content;
-  --bp-extra-code-placeholder-col: minmax(3.35rem, max-content);
+  /* Each minimum fits its usual chip ("used by 12", "◐ L∃∀N") with its padding, so
+     a proof row, which has only a uses chip, lines up with statement rows. */
+  --bp-extra-group-col: minmax(4.4rem, max-content);
+  --bp-extra-uses-col: minmax(5rem, max-content);
+  --bp-extra-used-by-col: minmax(6.2rem, max-content);
+  --bp-extra-code-col: minmax(5.2rem, max-content);
   display: inline-grid;
   align-items: baseline;
-  justify-content: end;
-  column-gap: 0.55rem;
-  grid-template-columns: var(--bp-extra-used-by-col) var(--bp-extra-code-col);
-  grid-template-areas: "used code";
-  margin-left: auto;
-}
-
-.bp_extras_with_uses {
   grid-template-columns:
-    var(--bp-extra-uses-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "uses used code";
-}
-
-.bp_extras_with_uses:not(.bp_extras_with_group):not(.bp_extras_with_used_by):not(.bp_extras_with_code) {
-  /* Keep proof-only uses aligned with the statement uses column. */
-  grid-template-columns:
-    var(--bp-extra-uses-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-code-placeholder-col);
-  grid-template-areas: "uses . .";
-}
-
-.bp_extras_with_group {
-  grid-template-columns:
-    var(--bp-extra-group-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "group used code";
-}
-
-.bp_extras_with_group.bp_extras_with_uses {
-  grid-template-columns:
-    var(--bp-extra-group-col)
-    var(--bp-extra-uses-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "group uses used code";
-}
-
-.bp_extras_with_markup {
-  grid-template-columns:
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-markup-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "used markup code";
-}
-
-.bp_extras_with_markup.bp_extras_with_uses {
-  grid-template-columns:
-    var(--bp-extra-uses-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-markup-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "uses used markup code";
-}
-
-.bp_extras_with_markup.bp_extras_with_group {
-  grid-template-columns:
-    var(--bp-extra-group-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-markup-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "group used markup code";
-}
-
-.bp_extras_with_markup.bp_extras_with_group.bp_extras_with_uses {
-  grid-template-columns:
-    var(--bp-extra-group-col)
-    var(--bp-extra-uses-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-markup-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "group uses used markup code";
-}
-
-.bp_extras_with_source {
-  grid-template-columns:
-    var(--bp-extra-source-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "source used code";
-}
-
-.bp_extras_with_source.bp_extras_with_uses {
-  grid-template-columns:
-    var(--bp-extra-source-col)
-    var(--bp-extra-uses-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "source uses used code";
-}
-
-.bp_extras_with_source.bp_extras_with_group {
-  grid-template-columns:
-    var(--bp-extra-source-col)
-    var(--bp-extra-group-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "source group used code";
-}
-
-.bp_extras_with_source.bp_extras_with_group.bp_extras_with_uses {
-  grid-template-columns:
-    var(--bp-extra-source-col)
-    var(--bp-extra-group-col)
-    var(--bp-extra-uses-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "source group uses used code";
-}
-
-.bp_extras_with_source.bp_extras_with_markup {
-  grid-template-columns:
-    var(--bp-extra-source-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-markup-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "source used markup code";
-}
-
-.bp_extras_with_source.bp_extras_with_markup.bp_extras_with_uses {
-  grid-template-columns:
-    var(--bp-extra-source-col)
-    var(--bp-extra-uses-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-markup-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "source uses used markup code";
-}
-
-.bp_extras_with_source.bp_extras_with_markup.bp_extras_with_group {
-  grid-template-columns:
-    var(--bp-extra-source-col)
-    var(--bp-extra-group-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-markup-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "source group used markup code";
-}
-
-.bp_extras_with_source.bp_extras_with_markup.bp_extras_with_group.bp_extras_with_uses {
-  grid-template-columns:
-    var(--bp-extra-source-col)
-    var(--bp-extra-group-col)
-    var(--bp-extra-uses-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-markup-col)
-    var(--bp-extra-code-col);
+    auto var(--bp-extra-group-col) var(--bp-extra-uses-col)
+    var(--bp-extra-used-by-col) auto var(--bp-extra-code-col);
   grid-template-areas: "source group uses used markup code";
+  margin-left: auto;
 }
 
 .bp_extra_slot {
@@ -236,6 +98,7 @@ span[class$="_thmlabel"]::after {
   align-items: center;
   min-height: 1.1rem;
   min-width: 0;
+  padding-left: 0.9rem;
 }
 
 .bp_extra_slot_code {
@@ -245,27 +108,22 @@ span[class$="_thmlabel"]::after {
 
 .bp_extra_slot_source {
   grid-area: source;
-  justify-content: flex-start;
 }
 
 .bp_extra_slot_group {
   grid-area: group;
-  justify-content: flex-start;
 }
 
 .bp_extra_slot_uses {
   grid-area: uses;
-  justify-content: flex-start;
 }
 
 .bp_extra_slot_used_by {
   grid-area: used;
-  justify-content: flex-start;
 }
 
 .bp_extra_slot_markup {
   grid-area: markup;
-  justify-content: flex-start;
 }
 
 @media (max-width: 700px) {
@@ -276,14 +134,23 @@ span[class$="_thmlabel"]::after {
     justify-content: flex-start;
     width: 100%;
     margin-left: 0;
-    gap: 0.2rem 0.5rem;
+    gap: 0.2rem 1rem;
   }
 
   .bp_extra_slot {
     max-width: 100%;
+    min-height: 1.75rem;
+    padding-left: 0;
   }
 
   .bp_extra_slot_code {
+    margin-left: auto;
+  }
+
+  /* A proof's only chip stays on its title line. */
+  .bp_kind_proof_heading .bp_extras {
+    flex: 0 0 auto;
+    width: auto;
     margin-left: auto;
   }
 }
@@ -335,17 +202,15 @@ span[class$="_thmlabel"]::after {
   background: color-mix(in srgb, #7c2d12 7%, var(--bp-color-surface-muted));
 }
 
+/* Metadata is a quiet line under the title, not a panel of its own. */
 .bp_metadata_panel {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem 0.5rem;
+  gap: 0.3rem 0.9rem;
   align-items: center;
-  margin: 0.45rem 0 0.7rem;
-  padding: 0.45rem 0.55rem;
-  border: 1px solid var(--bp-color-border-panel);
-  border-radius: var(--bp-radius-xl);
-  background: var(--bp-color-surface-muted);
-  font-size: 0.78rem;
+  margin: 0.2rem 0 0.1rem;
+  color: var(--bp-color-text-subtle);
+  font-size: 0.8rem;
   font-style: normal;
   font-weight: 400;
 }
@@ -353,40 +218,40 @@ span[class$="_thmlabel"]::after {
 .bp_metadata_item {
   display: inline-flex;
   align-items: center;
-  gap: 0.28rem;
+  gap: 0.3rem;
   min-width: 0;
   flex-wrap: wrap;
 }
 
 .bp_metadata_owner {
-  gap: 0.4rem;
+  gap: 0.35rem;
 }
 
 .bp_metadata_key {
-  font-weight: 700;
+  font-weight: 400;
   color: var(--bp-color-text-subtle);
 }
 
 .bp_metadata_value {
-  color: var(--bp-color-text-strong);
+  color: var(--bp-color-text-muted);
+  font-weight: 600;
 }
 
 .bp_metadata_tags {
   display: inline-flex;
   flex-wrap: wrap;
-  gap: 0.24rem;
+  gap: 0.3rem;
 }
 
 .bp_metadata_tag {
   display: inline-flex;
   align-items: center;
-  border: 1px solid var(--bp-color-border);
   border-radius: var(--bp-radius-pill);
-  background: var(--bp-color-surface);
+  background: var(--bp-color-surface-muted);
+  box-shadow: inset 0 0 0 1px var(--bp-color-border-soft);
   color: var(--bp-color-text-muted);
-  padding: 0.06rem 0.38rem;
-  font-size: 0.72rem;
-  font-weight: 600;
+  padding: 0.05rem 0.5rem;
+  font-size: 0.76rem;
 }
 
 .bp_metadata_link {
@@ -445,8 +310,12 @@ span[class$="_thmlabel"]::after {
   color: var(--bp-color-accent-danger);
 }
 
+.bp_code_link_status_requirements_open .bp_code_status_symbol {
+  color: var(--bp-color-status-success-text);
+}
+
 .bp_code_link_status_absent .bp_code_status_symbol {
-  color: inherit;
+  color: var(--bp-color-text-faint);
 }
 
 .bp_render_warning_badge {
@@ -496,50 +365,21 @@ span[class$="_thmlabel"]::after {
   box-shadow: 0 0 0 0.16rem var(--bp-color-focus-ring);
 }
 
-.bp_code_summary_preview_panel {
+.bp_preview_panel.bp_code_summary_preview_panel {
   position: fixed;
   z-index: 36;
-  width: min(32rem, calc(100vw - 1.25rem));
-  max-height: min(24rem, 78vh);
-  overflow: hidden;
-}
-
-.bp_code_summary_preview_header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem;
-  padding: 0.42rem 0.55rem;
-  border-bottom: 1px solid var(--bp-color-border-soft);
-  background: linear-gradient(180deg, var(--bp-color-surface-muted), var(--bp-color-surface));
-}
-
-.bp_code_summary_preview_title {
-  min-width: 0;
-  color: var(--bp-color-text-strong);
-  font-size: 0.82rem;
-  font-weight: 700;
-  line-height: 1.35;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-
-.bp_code_summary_preview_body {
-  padding: 0.55rem 0.6rem 0.6rem;
-  max-height: min(20rem, 68vh);
-  overflow: auto;
+  width: max-content;
+  min-width: min(20rem, calc(100vw - 1.5rem));
+  max-width: min(32rem, calc(100vw - 1.5rem));
+  max-height: min(26rem, 80vh);
 }
 
 .bp_code_summary_preview_content {
   display: grid;
-  gap: 0.5rem;
+  gap: 0.6rem;
 }
 
 .bp_code_summary_preview_panel .bp_code_hover_section {
-  margin-top: 0;
-}
-
-.bp_code_summary_preview_panel .bp_code_hover_section + .bp_code_hover_section {
   margin-top: 0;
   padding-top: 0.5rem;
   border-top: 1px solid var(--bp-color-border-soft);
@@ -559,17 +399,26 @@ span[class$="_thmlabel"]::after {
   list-style: none;
 }
 
-.bp_code_decl_item {
+.bp_code_decl_list {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 0.35rem 0.6rem;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.bp_code_decl_item + .bp_code_decl_item {
-  margin-top: 0.3rem;
-  padding-top: 0.3rem;
-  border-top: 1px solid var(--bp-color-border-soft);
+.bp_code_decl_item {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.5rem;
+}
+
+.bp_code_decl_mark {
+  flex: none;
+  display: inline-flex;
+  justify-content: center;
+  width: 0.9rem;
 }
 
 .bp_code_decl_name {
@@ -578,7 +427,49 @@ span[class$="_thmlabel"]::after {
 }
 
 .bp_code_decl_name code {
-  font-size: 0.76rem;
+  font-size: 0.8rem;
+}
+
+.bp_code_decl_kind {
+  color: var(--bp-color-text-faint);
+  font-size: 0.75rem;
+}
+
+/* In the popup the mark already shows the status, so the word stays quiet. */
+.bp_code_decl_item .bp_code_decl_status {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.bp_code_decl_name a {
+  color: var(--bp-color-link);
+  text-decoration: none;
+}
+
+.bp_code_decl_name a:hover {
+  text-decoration: underline;
+}
+
+.bp_code_summary_status {
+  margin: 0;
+  color: var(--bp-color-text-subtle);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.bp_code_summary_go {
+  margin-left: auto;
+  color: var(--bp-color-link);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.bp_code_summary_go:hover {
+  text-decoration: underline;
 }
 
 .bp_code_decl_status {
@@ -654,43 +545,58 @@ span[class$="_thmlabel"]::after {
   white-space: nowrap;
 }
 
-.bp_code_summary_indicator {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
+.bp_code_summary_indicator,
+.bp_code_summary_indicator .bp_code_summary_preview_root,
+.bp_code_summary_indicator .bp_code_summary_preview_wrap {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: baseline;
+  min-width: 0;
 }
 
-.bp_code_progress {
-  display: inline-flex;
-  min-width: 9rem;
-  max-width: 24rem;
-  width: min(24rem, 40vw);
-  height: 0.64rem;
-  border-radius: 999px;
+/* The code panel's summary: its declarations, then one status for all of them. */
+.bp_code_panel_summary {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: baseline;
+  gap: 0.75rem;
+  min-width: 0;
+  font-weight: 400;
+}
+
+.bp_code_panel_decls {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
-  border: 1px solid var(--bp-color-border-strong);
-  background: linear-gradient(180deg, var(--bp-color-surface-muted), var(--bp-color-border-soft));
-  box-shadow: inset 0 1px 1px rgba(15, 23, 42, 0.08);
+  color: var(--bp-color-text-faint);
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.bp_code_progress_segment {
-  min-width: 0.22rem;
+.bp_code_panel_decls code {
+  color: var(--bp-color-link);
+  font-size: 0.82rem;
 }
 
-.bp_code_progress_segment + .bp_code_progress_segment {
-  border-left: 1px solid rgba(15, 23, 42, 0.35);
+.bp_code_panel_status {
+  flex: none;
+  margin-left: auto;
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 
-.bp_code_progress_segment_ok {
-  background: var(--bp-color-accent-success);
+.bp_code_panel_status.bp_code_link_status_proved {
+  color: var(--bp-color-status-success-text);
 }
 
-.bp_code_progress_segment_sorry {
-  background: var(--bp-color-accent-warning);
+.bp_code_panel_status.bp_code_link_status_warning {
+  color: var(--bp-color-status-warning-text);
 }
 
-.bp_code_progress_segment_missing {
-  background: var(--bp-color-accent-danger);
+.bp_code_panel_status.bp_code_link_status_missing,
+.bp_code_panel_status.bp_code_link_status_axiom {
+  color: var(--bp-color-status-error-text);
 }
 
 .bp_external_status_icon {
@@ -727,11 +633,33 @@ span[class$="_thmlabel"]::after {
   margin: 0;
 }
 
+/* Lean code is a light section: joined to its statement, it reads as the card's
+   last part; on its own it is a card titled "Lean code for Theorem 1.1.4". */
 .bp_code_panel_wrapper {
-  margin-top: 0.6rem;
+  background: var(--bp-color-surface-muted);
+}
+
+.bp_part_joined.bp_code_panel_wrapper .bp_code_summary_text {
+  color: var(--bp-color-text-faint);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* A library declaration in a code panel is a row of the panel, not a card inside it. */
+.bp_code_panel .bp_external_decl_rendered .declaration {
+  --bp-box-border-width: 0;
+  --bp-box-border-left-width: 0;
+  --bp-box-background: transparent;
+  --bp-box-header-background: transparent;
+  --bp-box-header-border-bottom-width: 0;
+  --bp-box-radius: 0;
+  --bp-box-shadow: none;
 }
 
 .bp_code_panel_wrapper .bp_code_block > summary {
+  align-items: baseline;
   cursor: pointer;
   color: var(--bp-color-text-strong);
 }
@@ -749,7 +677,7 @@ span[class$="_thmlabel"]::after {
   flex: 0 0 0.52rem;
   width: 0.52rem;
   height: 0.52rem;
-  margin-top: 0.18rem;
+  align-self: center;
   border-right: 0.12rem solid var(--bp-color-text-faint);
   border-bottom: 0.12rem solid var(--bp-color-text-faint);
   transform: rotate(-45deg);
@@ -778,25 +706,41 @@ span[class$="_thmlabel"]::after {
   max-width: 100%;
 }
 
-.bp_code_panel .bp_external_decl_rendered .declaration {
-  --bp-box-border-color: var(--bp-color-border-panel);
-  --bp-box-background: var(--bp-color-surface);
-  --bp-box-header-background: linear-gradient(180deg, var(--bp-color-surface-muted), var(--bp-color-surface));
-  --bp-box-radius: var(--bp-radius-lg);
-  --bp-box-shadow: var(--bp-shadow-sm);
-  --bp-box-min-width: 0;
+/* Code sits under the summary row, indented past its chevron. */
+.bp_code_panel_wrapper .bp_code_block > code.hl.lean.block {
+  display: block;
+  margin: 0.45rem 0 0 1.1rem;
+  padding: 0;
+  overflow-x: auto;
+  font-size: 0.85rem;
 }
 
 .bp_code_panel .bp_external_decl_kicker {
-  padding: 0.38rem 0.5rem;
+  padding: 0.35rem 0 0 1.1rem;
+}
+
+/* With one declaration, the summary row already shows its status. */
+.bp_code_panel .bp_external_decl_list:not(:has(> .bp_external_decl_item + .bp_external_decl_item))
+    .bp_external_decl_kicker_status {
+  display: none;
+}
+
+.bp_code_panel .bp_external_decl_kicker .bp_external_status_badge {
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
 }
 
 .bp_code_panel .bp_external_decl_rendered .bp_external_decl_signature {
-  padding: 0.52rem 0.55rem;
+  margin: 0;
+  padding: 0.3rem 0 0 1.1rem;
+  overflow-x: auto;
+  font-size: 0.85rem;
 }
 
 .bp_code_panel .bp_external_decl_rendered .bp_external_decl_body:not(:empty) {
-  padding: 0.5rem 0.55rem;
+  padding: 0.3rem 0 0 1.1rem;
 }
 
 .bp_code_panel .bp_external_decl_head {
@@ -856,21 +800,11 @@ span[class$="_thmlabel"]::after {
   text-decoration: none;
 }
 
-.bp_relation_wrap {
+.bp_relation_wrap,
+.bp_source_ref_wrap {
   position: relative;
   display: inline-flex;
   align-items: center;
-  padding-bottom: 0.45rem;
-  margin-bottom: -0.45rem;
-}
-
-.bp_relation_wrap::after {
-  content: "";
-  position: absolute;
-  left: -0.25rem;
-  right: -0.25rem;
-  top: 100%;
-  height: 0.45rem;
 }
 
 .bp_relation_chip {
@@ -891,197 +825,142 @@ span[class$="_thmlabel"]::after {
   cursor: default;
 }
 
+/* Every chip gets the same hit area, so empty and active chips stay aligned. */
+.bp_relation_chip {
+  margin: -0.15rem -0.3rem;
+  padding: 0.15rem 0.3rem;
+  border-radius: var(--bp-radius-sm);
+}
+
+button.bp_relation_chip {
+  cursor: pointer;
+}
+
+button.bp_relation_chip:hover,
+.bp_relation_wrap_open > .bp_relation_chip {
+  background: var(--bp-color-selection-surface-soft);
+  color: var(--bp-color-text-strong);
+}
+
+button.bp_relation_chip:focus-visible {
+  outline: 2px solid var(--bp-color-focus-border);
+  outline-offset: 1px;
+}
+
 .bp_relation_chip_empty {
   color: var(--bp-color-text-faint);
   font-weight: 500;
+}
+
+/* An empty relation keeps its column, so chips stay aligned across blocks, but shows
+   nothing. An undeclared group is a warning and stays visible. */
+.bp_relation_chip_empty:not(.bp_relation_chip_warn) {
+  visibility: hidden;
 }
 
 .bp_relation_chip_warn {
   color: var(--bp-color-status-warning-text);
 }
 
-.bp_relation_panel {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  min-width: 26rem;
-  width: min(50rem, 92vw);
-  z-index: 26;
-  border: 1px solid var(--bp-color-border);
-  border-radius: var(--bp-radius-xl);
-  background: var(--bp-color-surface);
-  box-shadow: var(--bp-shadow-lg);
-  display: none;
-  font-style: normal;
-  font-weight: 400;
+/* Relation popups: the shared panel shell, with the rows beside a preview of the
+   selected one. The runtime places them next to their chip; until it has, they stay
+   invisible rather than flash over the chip. */
+.bp_preview_panel.bp_relation_panel {
+  position: fixed;
+  z-index: 60;
+  width: min(42rem, calc(100vw - 1.5rem));
+  max-height: min(32rem, 80vh);
 }
 
-.bp_relation_wrap:is(:hover, :focus-within) > .bp_relation_panel {
-  display: block;
+.bp_preview_panel.bp_relation_panel_single {
+  width: min(34rem, calc(100vw - 1.5rem));
 }
 
-.bp_relation_wrap.bp_relation_wrap_open > .bp_relation_panel {
-  display: block;
+.bp_preview_panel.bp_relation_panel_placed:not([data-bp-placed]) {
+  visibility: hidden;
 }
 
-.bp_source_ref_panel {
-  min-width: 20rem;
-  width: min(32rem, 92vw);
-}
-
-.bp_source_ref_panel_body {
-  display: block;
-  padding: 0.7rem;
-}
-
-.bp_source_ref_preview_surface {
-  min-height: 0;
-}
-
-.bp_source_ref_preview_body {
-  max-height: min(18rem, 58vh);
-}
-
-.bp_source_ref_panel_list {
-  list-style: none;
+.bp_relation_panel .bp_preview_panel_body {
   display: grid;
-  gap: 0.55rem;
-  margin: 0;
+  grid-template-columns: fit-content(18rem) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   padding: 0;
+  overflow: hidden;
 }
 
-.bp_source_ref_panel_item {
-  display: grid;
-  gap: 0.32rem;
-  padding: 0.56rem 0.62rem;
-  border: 1px solid var(--bp-color-border-panel);
-  border-radius: var(--bp-radius-md);
-  background: var(--bp-color-surface-muted);
-  color: var(--bp-color-text-muted);
-  font-size: 0.76rem;
-  line-height: 1.35;
+.bp_relation_panel_single .bp_preview_panel_body {
+  grid-template-columns: minmax(0, 1fr);
 }
 
-.bp_source_ref_panel_document {
-  display: flex;
-  align-items: baseline;
-  gap: 0.4rem;
-  flex-wrap: wrap;
-  color: var(--bp-color-text-strong);
+.bp_relation_panel_single .bp_relation_list {
+  display: none;
 }
 
-.bp_source_ref_panel_key {
-  color: var(--bp-color-text-faint);
-  font-size: 0.66rem;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.bp_source_ref_panel_summary {
-  color: var(--bp-color-text-strong);
-  font-weight: 700;
-}
-
-.bp_source_ref_panel_spans {
-  display: grid;
-  gap: 0.22rem;
-  margin: 0;
-  padding-left: 1rem;
-}
-
-.bp_source_ref_panel_span {
-  overflow-wrap: anywhere;
-}
-
-.bp_source_ref_panel_span_empty {
-  color: var(--bp-color-text-faint);
-}
-
-.bp_relation_panel_header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.55rem;
-  padding: 0.55rem 0.7rem 0.45rem;
-  border-bottom: 1px solid var(--bp-color-border-soft);
-  background: linear-gradient(180deg, var(--bp-color-surface-muted), var(--bp-color-surface));
-}
-
-.bp_relation_panel_title {
-  font-size: 0.82rem;
-  font-weight: 700;
-  color: var(--bp-color-text-strong);
-}
-
-.bp_relation_panel_meta {
-  font-size: 0.72rem;
-  color: var(--bp-color-text-faint);
-}
-
-.bp_relation_panel_body {
-  display: grid;
-  grid-template-columns: minmax(14rem, 18rem) minmax(18rem, 1fr);
-  gap: 0.75rem;
-  align-items: start;
-  padding: 0.7rem;
+.bp_relation_note {
+  grid-column: 1 / -1;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--bp-color-status-warning-border-soft);
+  background: var(--bp-color-surface-warn);
+  color: var(--bp-color-status-warning-strong);
+  font-size: 0.8rem;
 }
 
 .bp_relation_list {
+  grid-row: -2;
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0.5rem;
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
-  max-height: min(20rem, 62vh);
+  gap: 1px;
+  min-height: 0;
   overflow: auto;
-}
-
-.bp_relation_item {
-  border: 1px solid var(--bp-color-border-panel);
-  border-radius: var(--bp-radius-md);
-  background: var(--bp-color-surface-muted);
-  transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
-}
-
-.bp_relation_item:hover,
-.bp_relation_item:focus-within,
-.bp_relation_item.bp_relation_item_active {
-  border-color: var(--bp-color-focus-border);
-  background: var(--bp-color-focus-surface);
-  box-shadow: inset 0 0 0 1px var(--bp-color-focus-ring);
+  border-right: 1px solid var(--bp-color-border-soft);
 }
 
 .bp_relation_target {
-  display: block;
-  padding: 0.5rem 0.58rem;
-  color: inherit;
-  text-decoration: none;
-}
-
-.bp_relation_target:hover {
-  text-decoration: none;
-}
-
-.bp_relation_target_title {
-  display: block;
-  font-size: 0.8rem;
-  font-weight: 700;
-  color: var(--bp-color-text-strong);
-}
-
-.bp_relation_target_meta {
   display: flex;
-  align-items: center;
-  gap: 0.35rem;
+  align-items: baseline;
   flex-wrap: wrap;
-  margin-top: 0.26rem;
-  color: var(--bp-color-text-subtle);
-  font-size: 0.72rem;
+  gap: 0.15rem 0.4rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.375rem;
+  color: var(--bp-color-text-strong);
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.35;
+  text-decoration: none;
 }
 
-.bp_relation_target_meta code {
-  font-size: 0.72rem;
+a.bp_relation_target:hover {
+  text-decoration: none;
+}
+
+.bp_relation_item:hover > .bp_relation_target,
+.bp_relation_item_active > .bp_relation_target {
+  background: var(--bp-color-selection-surface-faint);
+}
+
+.bp_relation_target:focus-visible {
+  outline: 2px solid var(--bp-color-focus-border);
+  outline-offset: -2px;
+}
+
+.bp_relation_status {
+  flex: none;
+  display: inline-flex;
+  justify-content: center;
+  width: 0.9rem;
+}
+
+.bp_relation_current_tag {
+  color: var(--bp-color-text-faint);
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+
+.bp_relation_item_current .bp_relation_target {
+  color: var(--bp-color-text-subtle);
 }
 
 .bp_relation_axis_badge {
@@ -1156,88 +1035,148 @@ span[class$="_thmlabel"]::after {
   --bp-relation-badge-prefix: #4f46e5;
 }
 
-.bp_relation_preview_surface {
-  min-height: 14rem;
-  border: 1px solid var(--bp-color-border-soft);
-  border-radius: var(--bp-radius-lg);
-  background: var(--bp-color-surface-muted);
-  overflow: hidden;
+.bp_relation_preview {
+  grid-row: -2;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
 }
 
-.bp_relation_preview_header {
-  padding: 0.5rem 0.62rem 0.44rem;
-  border-bottom: 1px solid var(--bp-color-border-soft);
-  background: linear-gradient(180deg, var(--bp-color-surface-muted), var(--bp-color-surface));
-}
-
-.bp_relation_preview_label {
-  font-size: 0.66rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--bp-color-text-faint);
+.bp_relation_preview_heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.5rem;
+  padding: 0.75rem 1rem 0;
 }
 
 .bp_relation_preview_title {
-  margin-top: 0.16rem;
-  font-size: 0.8rem;
-  font-weight: 700;
   color: var(--bp-color-text-strong);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.bp_relation_preview_label {
+  color: var(--bp-color-text-faint);
+  font-family: var(--bp-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 0.72rem;
+  text-decoration: none;
+}
+
+.bp_relation_preview_label[href]:hover {
+  color: var(--bp-color-link);
+  text-decoration: underline;
+}
+
+.bp_relation_preview_label[hidden] {
+  display: none;
 }
 
 .bp_relation_preview_body {
-  max-height: min(20rem, 62vh);
+  min-height: 0;
   overflow: auto;
-  padding: 0.62rem 0.68rem 0.72rem;
-  background: var(--bp-color-surface);
+  padding: 0.4rem 1rem 0.9rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
 }
 
-.bp_relation_preview_message {
+.bp_relation_preview_body > :first-child,
+.bp_relation_preview_body > :first-child > :first-child {
+  margin-top: 0;
+}
+
+.bp_relation_preview_body > :last-child,
+.bp_relation_preview_body > :last-child > :last-child {
+  margin-bottom: 0;
+}
+
+@media (max-width: 640px) {
+  .bp_relation_panel .bp_preview_panel_body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+
+  .bp_relation_list {
+    grid-row: -3;
+    max-height: 9rem;
+    border-right: 0;
+    border-bottom: 1px solid var(--bp-color-border-soft);
+  }
+
+  .bp_relation_preview {
+    grid-row: -2;
+  }
+}
+
+/* Source provenance is static: its popup shows while its chip is hovered or focused. */
+.bp_source_ref_wrap > .bp_preview_panel.bp_source_ref_panel {
+  display: none;
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  z-index: 26;
+  width: min(32rem, calc(100vw - 1.5rem));
+  max-height: min(24rem, 70vh);
+}
+
+.bp_source_ref_wrap:is(:hover, :focus-within) > .bp_preview_panel.bp_source_ref_panel {
+  display: flex;
+}
+
+.bp_source_ref_panel_list {
+  list-style: none;
   display: grid;
-  gap: 0.18rem;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0;
+}
+
+.bp_source_ref_panel_item {
+  display: grid;
+  gap: 0.32rem;
   padding: 0.56rem 0.62rem;
-  border: 1px solid var(--bp-color-border-soft);
-  border-radius: 0.45rem;
+  border: 1px solid var(--bp-color-border-panel);
+  border-radius: var(--bp-radius-md);
   background: var(--bp-color-surface-muted);
   color: var(--bp-color-text-muted);
   font-size: 0.76rem;
-  line-height: 1.38;
+  line-height: 1.35;
 }
 
-.bp_relation_preview_message[data-bp-preview-message="loading"] {
+.bp_source_ref_panel_document {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  color: var(--bp-color-text-strong);
+}
+
+.bp_source_ref_panel_key {
   color: var(--bp-color-text-faint);
-}
-
-.bp_relation_preview_message[data-bp-preview-message="error"] {
-  border-color: var(--bp-color-status-error-border-soft);
-  background: var(--bp-color-surface-warn);
-  color: var(--bp-color-status-error-text);
-}
-
-.bp_relation_preview_message_title {
+  font-size: 0.66rem;
   font-weight: 700;
-  color: inherit;
+  text-transform: uppercase;
 }
 
-.bp_relation_preview_message_detail {
-  color: inherit;
+.bp_source_ref_panel_summary {
+  color: var(--bp-color-text-strong);
+  font-weight: 700;
 }
 
-@media (max-width: 900px) {
-  .bp_relation_panel {
-    right: auto;
-    left: 0;
-    width: min(34rem, calc(100vw - 1.4rem));
-  }
+.bp_source_ref_panel_spans {
+  display: grid;
+  gap: 0.22rem;
+  margin: 0;
+  padding-left: 1rem;
+}
 
-  .bp_relation_panel_body {
-    grid-template-columns: 1fr;
-  }
+.bp_source_ref_panel_span {
+  overflow-wrap: anywhere;
+}
 
-  .bp_relation_list,
-  .bp_relation_preview_body {
-    max-height: min(12rem, 36vh);
-  }
+.bp_source_ref_panel_span_empty {
+  color: var(--bp-color-text-faint);
 }
 
 .bp_status_mark {
@@ -1418,6 +1357,10 @@ span[class$="_thmlabel"]::after {
   font-size: 0.8rem;
   line-height: 1.5;
   color: var(--bp-color-text-strong);
+}
+
+.bp_external_decl_stmt.bp_code_hover_none {
+  color: var(--bp-color-text-faint);
 }
 
 .bp_external_decl_rendered {
@@ -1730,7 +1673,7 @@ a.bp_external_decl_source_path:hover {
 }
 
 .bp_content {
-  padding-left: 0.65rem;
+  margin-top: 0.3rem;
 }
 
 .bp_content > :first-child {
@@ -1790,31 +1733,6 @@ div.theorem-style-definition div[class$="_thmheading"] {
   font-weight: bold;
 }
 
-.bp_kind_theorem_content,
-div.theorem_thmcontent {
-  border-left: 0.15rem solid black;
-}
-
-.bp_kind_proposition_content,
-div.proposition_thmcontent {
-  border-left: 0.15rem solid black;
-}
-
-.bp_kind_lemma_content,
-div.lemma_thmcontent {
-  border-left: 0.1rem solid black;
-}
-
-.bp_kind_corollary_content,
-div.corollary_thmcontent {
-  border-left: 0.1rem solid black;
-}
-
-.bp_kind_proof_content,
-div.proof_content {
-  border-left: 0.08rem solid grey;
-}
-
 .bp_wrapper:target {
   animation: bp-target-pulse 1.6s ease-out;
   box-shadow: 0 0 0 0.18rem var(--bp-color-target-ring);
@@ -1837,9 +1755,9 @@ def codeAssetBundle : Informal.Commands.BlueprintAssetBundle :=
   Informal.Commands.blueprintCssAssetBundle [css, Verso.Genre.Manual.docstringStyle]
 
 def blockAssetBundle : Informal.Commands.BlueprintAssetBundle :=
-  Informal.Commands.previewPanelInlinePreviewAssetBundle
-    (cssExtras := [css, Informal.StyleSwitcher.css, Verso.Genre.Manual.docstringStyle])
-    (jsAfter := [Informal.Macros.blueprintMathJs, Informal.StyleSwitcher.jsInteractive])
+  Informal.Commands.previewPanelAssetBundle
+    (cssExtras := [css, Verso.Genre.Manual.docstringStyle])
+    (jsAfter := [Informal.Macros.blueprintMathJs, Informal.PageBehavior.jsInteractive])
 
 def codeCssAssets : List String :=
   codeAssetBundle.css

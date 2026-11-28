@@ -271,8 +271,8 @@ def autoDepsPreviewDocBlueprint : Informal.BlueprintDocument := .capture autoDep
       hasSubstr out "auto.demo.external_target" &&
       hasSubstr out "auto.demo.inline_target" &&
       hasSubstr out "auto.demo.external_opt_out" &&
-      hasSubstr out "Statement uses 2" &&
-      hasSubstr out "Proof uses 2" &&
-      hasSubstr out "Origin: automatic"
+      hasSubstr out "Statement uses · 2" &&
+      hasSubstr out "Proof uses · 2" &&
+      hasSubstr out "\"oa\""
 
 end Verso.VersoBlueprintTests.BlueprintAutoDeps.Preview

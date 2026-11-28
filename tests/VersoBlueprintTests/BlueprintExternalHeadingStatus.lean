@@ -136,13 +136,15 @@ private def unavailableHeading (rendered : CodeSummary.RenderParts) : Bool :=
   hasSubstr parts.summaryTitle "inlineThm [sorry in proof]" &&
   hasSubstr headingHtml "L∃∀N" &&
   hasSubstr headingHtml "class=\"bp_code_decl_item\"" &&
-  hasSubstr headingHtml "Associated Lean declarations" &&
-  hasSubstr html "bp_code_progress" &&
+  hasSubstr headingHtml "class=\"bp_code_decl_list\"" &&
+  -- One status for the panel: one of its two declarations is unfinished.
+  hasSubstr html "bp_code_panel_status bp_code_link_status_warning" &&
+  hasSubstr html "1 of 2 unfinished" &&
   hasSubstr html "class=\"bp_code_decl_item\"" &&
   hasSubstr html "inlineDef" &&
   hasSubstr html "inlineThm" &&
-  hasSubstr html ">[complete]</span>" &&
-  hasSubstr html ">[sorry in proof]</span>"
+  hasSubstr html ">complete</span>" &&
+  hasSubstr html ">sorry in proof</span>"
 
 /-- info: true -/
 #guard_msgs in
@@ -166,12 +168,13 @@ private def unavailableHeading (rendered : CodeSummary.RenderParts) : Bool :=
   hasSubstr parts.summaryTitle "Lean declarations (1/2 present)" &&
   hasSubstr headingHtml "L∃∀N" &&
   hasSubstr headingHtml "class=\"bp_code_decl_item\"" &&
-  hasSubstr html "bp_external_status_badge" &&
+  hasSubstr html "bp_code_panel_status bp_code_link_status_missing" &&
+  hasSubstr html "1 of 2 missing" &&
   hasSubstr html "class=\"bp_code_decl_item\"" &&
   hasSubstr html "Ext.external.proof_gap" &&
   hasSubstr html "Ext.external.missing" &&
-  hasSubstr html ">[sorry in proof]</span>" &&
-  hasSubstr html ">[missing declaration]</span>"
+  hasSubstr html ">sorry in proof</span>" &&
+  hasSubstr html ">missing declaration</span>"
 
 /-- info: true -/
 #guard_msgs in
@@ -191,7 +194,7 @@ private def unavailableHeading (rendered : CodeSummary.RenderParts) : Bool :=
   match rendered.statusMark with
   | some _ =>
     unavailableHeading rendered &&
-    !hasSubstr rendered.codeEntry.asString "bp_code_link_status_proved" &&
+    !hasSubstr rendered.codeEntry.asString "bp_code_link_status bp_code_link_status_proved" &&
     hasSubstr rendered.codeEntry.asString "bp_code_render_warning_badge" &&
     appearsBefore rendered.codeEntry.asString "bp_code_render_warning_badge" "bp_code_status_symbol" &&
     hasSubstr rendered.codeEntry.asString "render failed for 1 declaration" &&

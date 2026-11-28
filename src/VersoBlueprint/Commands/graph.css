@@ -28,6 +28,16 @@
   overflow: hidden;
 }
 
+.bp_graph_zoom_toggle[hidden] {
+  display: none;
+}
+
+.bp_graph_load_error {
+  margin: 1rem;
+  max-width: 40rem;
+  color: var(--bp-color-status-error-text);
+}
+
 .bp_graph_fullwidth[data-bp-graph-layout="fill"] {
   height: 100%;
   min-height: 0;
@@ -42,130 +52,51 @@
   resize: none;
 }
 
-.bp_graph_preview {
+.bp_preview_panel.bp_graph_preview {
   position: absolute;
   top: calc(var(--bp-graph-canvas-top, 0px) + 0.9rem);
   right: 0.9rem;
   z-index: 25;
   width: min(34rem, calc(100% - 1.8rem));
   max-height: min(65vh, 36rem);
-  border-color: var(--bp-color-border-muted);
-  box-shadow: var(--bp-shadow-md);
-  overflow: visible;
 }
 
-.bp_graph_preview[data-bp-preview-placement="anchored"] {
+.bp_preview_panel.bp_graph_preview[data-bp-preview-placement="anchored"] {
   position: fixed;
   right: auto;
 }
 
-.bp_graph_preview[data-bp-preview-placement="docked"] {
-  position: absolute;
-  top: calc(var(--bp-graph-canvas-top, 0px) + 0.9rem);
-  right: 0.9rem;
-  left: auto;
-}
-
-.bp_graph_preview_title {
-  font-size: 0.85rem;
-}
-
-.bp_graph_preview_title a {
-  color: inherit;
-  text-decoration: none;
-}
-
-.bp_graph_preview_title a:hover {
-  color: var(--bp-color-link);
-  text-decoration: underline;
-}
-
-.bp_graph_preview_body {
-  padding-left: 0.55rem;
-  max-height: min(56vh, 30rem);
-}
-
-.bp_group_hover_preview {
+.bp_preview_panel.bp_group_hover_preview {
   position: absolute;
   left: 0.9rem;
   top: calc(var(--bp-graph-canvas-top, 0px) + 0.9rem);
   z-index: 24;
   width: min(32rem, calc(100% - 1.8rem));
   height: min(42vh, 24rem);
-  border: 1px solid var(--bp-color-border);
-  border-radius: var(--bp-radius-xl);
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: var(--bp-shadow-lg);
-  padding: 0.55rem 0.65rem;
-  pointer-events: auto;
-  backdrop-filter: blur(1px);
 }
 
-.bp_group_hover_preview[data-bp-preview-placement="anchored"]::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: -0.85rem;
-  width: 0.85rem;
-}
-
-.bp_group_hover_preview[data-bp-preview-placement="anchored"]::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  right: -0.85rem;
-  width: 0.85rem;
-}
-
-.bp_group_hover_preview[data-bp-preview-placement="docked"] {
+.bp_preview_panel.bp_group_hover_preview[data-bp-preview-placement="docked"] {
   right: 0.9rem;
   left: auto;
-  top: calc(var(--bp-graph-canvas-top, 0px) + 0.9rem);
 }
 
-.bp_group_hover_preview_header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  margin-bottom: 0.4rem;
+/* A group preview sits beside its node, so it bridges the gap sideways. */
+.bp_preview_panel.bp_group_hover_preview[data-bp-preview-placement="anchored"]::before {
+  inset: 0 auto 0 -0.75rem;
+  width: 0.75rem;
+  height: auto;
 }
 
-.bp_group_hover_preview_title {
-  font-size: 0.82rem;
-  font-weight: 700;
-  color: var(--bp-color-text-strong);
-  min-width: 0;
-  white-space: nowrap;
+.bp_preview_panel.bp_group_hover_preview[data-bp-preview-placement="anchored"]::after {
+  inset: 0 -0.75rem 0 auto;
+  width: 0.75rem;
+  height: auto;
+}
+
+.bp_group_hover_preview .bp_preview_panel_body {
+  padding: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.bp_group_hover_preview_close {
-  border: 1px solid var(--bp-color-border);
-  border-radius: var(--bp-radius-sm);
-  background: var(--bp-color-surface);
-  color: var(--bp-color-text-strong);
-  font-size: 0.72rem;
-  font-weight: 600;
-  line-height: 1;
-  padding: 0.25rem 0.45rem;
-  cursor: pointer;
-}
-
-.bp_group_hover_preview[data-bp-preview-mode="hover"] .bp_group_hover_preview_close {
-  display: none;
-}
-
-.bp_group_hover_preview_graph {
-  width: 100%;
-  height: calc(100% - 1.6rem);
-  overflow: hidden;
-  border: 1px solid var(--bp-color-border-soft);
-  border-radius: 0.4rem;
-  background: var(--bp-color-surface);
+  border-radius: 0 0 var(--bp-preview-panel-radius) var(--bp-preview-panel-radius);
 }
 
 .bp_graph_legend {
@@ -456,6 +387,7 @@
 }
 
 .bp_graph_legend_item {
+  color: var(--bp-color-text);
   display: inline-flex;
   align-items: flex-start;
   gap: 0.34rem;
@@ -471,68 +403,6 @@
   border-radius: 0.2rem;
   border: 1px solid var(--bp-color-text-faint);
   background: var(--bp-color-surface);
-}
-
-html[data-bp-style="blueprint"] .bp_graph_legend_item {
-  color: #111827;
-}
-
-html[data-bp-style="modern"] .bp_graph_controls_button {
-  background: var(--bp-color-surface-modern);
-  border-color: var(--bp-color-modern-border);
-}
-
-html[data-bp-style="modern"] .bp_graph_legend_popover,
-html[data-bp-style="modern"] .bp_graph_options_popover {
-  background: var(--bp-color-surface-modern);
-  border: 1px solid var(--bp-color-modern-border);
-  border-radius: var(--bp-radius-2xl);
-}
-
-html[data-bp-style="modern"] .bp_graph_legend_popover_header,
-html[data-bp-style="modern"] .bp_graph_options_popover_header {
-  border-bottom-color: var(--bp-color-modern-border);
-}
-
-html[data-bp-style="modern"] .bp_graph_legend_group {
-  border-color: var(--bp-color-modern-border);
-  background: var(--bp-color-modern-surface-alt);
-}
-
-html[data-bp-style="bold"] .bp_graph_controls_button {
-  border-width: 2px;
-  box-shadow: 0 3px 0 rgba(15, 23, 42, 0.14);
-}
-
-html[data-bp-style="bold"] .bp_graph_legend_popover,
-html[data-bp-style="bold"] .bp_graph_options_popover {
-  background:
-    radial-gradient(circle at 100% 0%, var(--bp-color-bold-surface-glow-1), transparent 36%),
-    radial-gradient(circle at 0% 100%, var(--bp-color-bold-surface-glow-2), transparent 32%),
-    var(--bp-color-surface);
-  border: 2px solid var(--bp-color-text-strong);
-  border-radius: var(--bp-radius-3xl);
-  box-shadow: var(--bp-shadow-bold);
-}
-
-html[data-bp-style="bold"] .bp_graph_legend_popover_header,
-html[data-bp-style="bold"] .bp_graph_options_popover_header {
-  border-bottom-color: rgba(15, 23, 42, 0.2);
-}
-
-html[data-bp-style="bold"] .bp_graph_legend_group {
-  border: 2px solid var(--bp-color-text-strong);
-  border-radius: var(--bp-radius-xl);
-  box-shadow: 0 3px 0 rgba(15, 23, 42, 0.14);
-  background: rgba(255, 255, 255, 0.9);
-}
-
-html[data-bp-style="bold"] .bp_graph_legend_item {
-  font-weight: 700;
-}
-
-html[data-bp-style="bold"] .bp_graph_legend_swatch {
-  border-width: 2px;
 }
 
 @media (max-width: 720px) {

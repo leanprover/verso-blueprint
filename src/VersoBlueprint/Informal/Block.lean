@@ -101,7 +101,7 @@ private def informalBlockToHtml (renderPreview : PreviewResources.Render := Prev
               codeHref := Informal.TraversalIndex.InlineCode.firstHref? s data.label
               source := codeHint?
               inlineBlocks := Informal.TraversalIndex.InlineCode.blocks s data.label
-            } getDeclHref
+            } getDeclHref (title? := some (RenderingResolution.referenceOfData s data).title)
           | true => none
         let externalPanel : Output.Html ← do
           if externalDecls.isEmpty then
@@ -111,8 +111,8 @@ private def informalBlockToHtml (renderPreview : PreviewResources.Render := Prev
               source := some { externalDecls := externalDecls }
             }
             let externalSummary := CodeSummary.renderPanelIndicator data.label externalCdata getDeclHref
-            let panelHeader := if data.isProof then proofReferencesPanelHeader else
-              codePanelHeader (data.display s)
+            let panelHeader := if data.isProof then proofReferencesPanelHeader (some s!"{data.label}")
+              else codePanelHeader (data.display s)
             ExternalCode.renderPanelWithPageHovers
               panelHeader
               externalSummary.summaryTitle
@@ -137,7 +137,7 @@ private def informalBlockToHtml (renderPreview : PreviewResources.Render := Prev
           data
           context := InformalBlockRenderContext.forBlock data
             ((data.display s).number?.getD data.label.toString)
-            (proofCaption? := some (data.displayTitle s))
+            (proofOf? := some (data.display s).title)
             (attrs := attrs)
             (headerExtras := headerExtras)
             (folded := data.foldInformalShell)

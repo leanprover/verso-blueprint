@@ -414,21 +414,17 @@ private def summaryBlockToHtml
       previewKeys
       renderPreview
     }
-    let previewPanel := Informal.HoverRender.summaryPreviewPanel
     let summaryAttrs :=
       #[("class", "bp_summary")] ++
         Informal.HoverRender.templatePreviewDescriptorAttrs
-          ".bp_summary_preview_panel"
+          "bp_summary_preview_panel"
           "template.bp_summary_preview_tpl[data-bp-preview-label]"
           ".bp_summary_preview_wrap_active[data-bp-preview-label]"
-          ".bp_summary_preview_panel_title"
-          ".bp_summary_preview_panel_body"
-          ".bp_summary_preview_panel_close"
           (allowHtmlCache := true)
+          (closeLabel := "Close summary preview")
     let rows ← SummaryRows.render ctx data
     pure {{
       <div {{summaryAttrs}}>
-        {{previewPanel}}
         {{summaryOverviewSection data rows}}
         {{summaryEntryIndexSection data rows}}
         {{summaryDependencyInsightsSection rows}}

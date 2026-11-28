@@ -170,7 +170,7 @@ pub fn unrendered_attachment() {}
     (fun error => errors.modify (·.push error))
   let fullHtml ← renderManualBlocksHtmlWithState blocks manualImpls state
   unless !hasSubstr fullHtml.asString "Theorem 0" &&
-      hasSubstr fullHtml.asString "Rust code for hover:unrendered" do
+      hasSubstr fullHtml.asString " code for hover:unrendered" do
     throw <| IO.userError "Related or Rust panels invented a document number"
   let some (.concat #[.other _ references]) := blocks.back?
     | throw <| IO.userError "Missing authored reference paragraphs"

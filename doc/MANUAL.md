@@ -116,8 +116,13 @@ still be a link target without offering a hover preview. Imported nodes that
 have no document occurrence display their authored label rather than a number.
 This numbering rule also applies to dependency panels, code headings, and previews.
 The mathematical kind is independent of which chapters are rendered: including
-only a theorem's proof still gives it a caption such as `Proof for Theorem 1`.
+only a theorem's proof still gives it a caption such as `Proof of Theorem 1`.
 Custom reference text is preserved in both HTML and TeX.
+
+On a page, a node's statement, proof, and Lean code panel that directly follow
+one another render as one card: the proof is then titled `Proof.` and the code
+panel `Lean`. A proof or code panel placed elsewhere keeps its own card and its
+full title, such as `Proof of Theorem 1.` or `Lean code for Theorem 1`.
 
 A statement's Lean status and declaration tooltip cover both external associations
 and literate code. An incomplete external declaration therefore remains visible
@@ -1907,10 +1912,10 @@ are:
 Presentation options such as `-header` and `+compact` do not create new nodes,
 dependencies, groups, or manifest entries.
 
-### Side-by-side Grafts
+### Side-by-side Slides
 
-Use `blueprint_side_by_side` to place grafts next to each other. Add `+boxed`
-when each side should be visually framed:
+In Slides decks, use `blueprint_side_by_side` to place grafts next to each
+other on one slide. Add `+boxed` when each side should be visually framed:
 
 ```lean
 :::blueprint_side_by_side +boxed
@@ -1920,9 +1925,10 @@ when each side should be visually framed:
 :::
 ```
 
-The side-by-side directive is presentation-only. Each child remains an ordinary
+The directive is presentation-only. Each child remains an ordinary
 `{blueprint_node ...}` command with its own label and options; the directive does
-not create dependencies, groups, or new manifest entries.
+not create dependencies, groups, or new manifest entries. Manual documents
+reject it: place the `{blueprint_node}` commands one after another instead.
 
 ### Slides Generator Setup
 
@@ -2113,7 +2119,7 @@ renders a pointer to the HTML output, and `Not in PDF` is absent from
 | External Markdown or TeX markup attachments | Stored in the manifest; headers show attachment badges; bodyless Markdown-backed nodes can render source-backed HTML cache fragments | Partial | Explicit external-markup blocks render only when shown with `(display := summary)` or `(display := source)`; source-backed HTML cache bodies are not converted into PDF bodies |
 | Source provenance and source-PDF spans | Source chips, manifest entries, and data/preview API access for source document ids and text/PDF spans | Not in PDF | Not shown as source chips or page overlays in the PDF |
 | Dependency graph and progress summary pages | Interactive graph and summary views with runtime controls and previews | Notice only | Static notice pointing readers to the HTML output |
-| Grafted Blueprint nodes, including `{includeBlueprintModule}` and attribute-owned `{blueprint_node}` placements | Rendered from current traversal preview data and emitted to the preview manifest and HTML cache | Partial | Inserted graft nodes render as a static notice; side-by-side authored content still renders statically |
+| Grafted Blueprint nodes, including `{includeBlueprintModule}` and attribute-owned `{blueprint_node}` placements | Rendered from current traversal preview data and emitted to the preview manifest and HTML cache | Partial | Inserted graft nodes render as a static notice |
 | Browser preview runtime, relation panels, and interactive controls | Supported in generated HTML | Not in PDF | Not available in PDF |
 | Preview manifest, HTML cache, and JavaScript APIs | Emitted for generated-data and browser consumers | Not in PDF | Not embedded in `main.pdf`; still emitted alongside HTML unless those outputs are disabled |
 | Slides and other generator-side consumers | Supported through their own HTML/data render paths | Not in PDF | Not part of the `--pdf` output path |

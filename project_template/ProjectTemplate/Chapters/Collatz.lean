@@ -8,23 +8,17 @@ open Informal
 
 #doc (Manual) "Collatz" =>
 
-# Side-by-Side Views
+# Grafted Views
 
-These grafts reuse the Collatz entries below. A full card keeps the explanatory
-definition together with its attached Lean code, while compact cards keep the
-statement and proof facets easy to compare.
+These grafts reuse the Collatz entries below. A full graft keeps the explanatory
+definition together with its attached Lean code, while compact grafts show just
+the statement and proof of the conjecture.
 
-:::blueprint_side_by_side +boxed
 {blueprint_node "collatz_step" (displayLabel := "Step")}
 
-{blueprint_node "collatz_conjecture" (displayLabel := "Conjecture") -header +compact}
-:::
-
-:::blueprint_side_by_side
 {blueprint_node "collatz_conjecture" (displayLabel := "Statement") -header +compact}
 
 {blueprint_node "collatz_conjecture" (facet := "proof") (displayLabel := "Proof status") -header +compact}
-:::
 
 # Source Entries
 

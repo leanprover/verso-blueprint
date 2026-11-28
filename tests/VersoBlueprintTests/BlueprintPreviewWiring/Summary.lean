@@ -31,24 +31,19 @@ private def sourceLocationOkWithPath
       !hasSubstr out "class=\"bp_summary_preview_store\"" &&
       !hasSubstr out "class=\"bp_summary_preview_tpl\"" &&
       !hasSubstr out "class=\"bp_label_preview_tpl\"" &&
-      hasSubstr out "bp_summary_preview_panel" &&
-      hasSubstr out "data-bp-preview-mode=\"hover\"" &&
-      hasSubstr out "data-bp-preview-placement=\"anchored\"" &&
+      hasSubstr out "data-bp-template-preview-panel-class=\"bp_summary_preview_panel\"" &&
       hasSubstr out "bp_summary_preview_wrap_active" &&
       hasSubstr out "data-bp-preview-key=\"«def:preview.base»--statement\"" &&
-      hasExtraCss st ".bp_inline_preview_panel[hidden]" &&
-      hasExtraCss st ".bp_preview_header_label" &&
-      hasExtraCss st ".bp_inline_preview_panel_footer" &&
+      hasExtraCss st ".bp_preview_panel[hidden]" &&
+      hasExtraCss st ".bp_preview_panel_footer" &&
+      hasExtraCss st ".bp_preview_panel.bp_summary_preview_panel" &&
       !hasSubstr out "data-bp-tex-prelude=\"" &&
       !hasSubstr out "bp_preview_tex_prelude" &&
       !hasSubstr out "verso-tex-prelude" &&
       hasTemplatePreviewDescriptor out
-        ".bp_summary_preview_panel"
+        "bp_summary_preview_panel"
         "template.bp_summary_preview_tpl[data-bp-preview-label]"
         ".bp_summary_preview_wrap_active[data-bp-preview-label]"
-        ".bp_summary_preview_panel_title"
-        ".bp_summary_preview_panel_body"
-        ".bp_summary_preview_panel_close"
         (allowHtmlCache := true) &&
       removedTemplateBinderJs?.isNone &&
       inlineJs?.isNone &&

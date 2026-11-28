@@ -449,7 +449,7 @@ def NodeDisplay.title (display : NodeDisplay) : String :=
   display.number?.map (fun number => s!"{display.kind} {number}") |>.getD (display.label.toString (escape := false))
 
 def NodeDisplay.proofTitle (display : NodeDisplay) : String :=
-  s!"Proof for {display.title}"
+  s!"Proof of {display.title}"
 
 def BlockData.statementDeps (data : BlockData) : Array Data.Label :=
   Data.UseRef.labels data.statementUses

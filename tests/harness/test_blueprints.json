@@ -8,7 +8,8 @@
     "Metadata",
     "Imports",
     "Graph",
-    "Runtime"
+    "Runtime",
+    "Inspection"
   ],
   "fixtures": [
     {
@@ -24,6 +25,16 @@
         "panel_regression_script": "tests/harness/preview_runtime_showcase/check_blueprint_code_panels.py",
         "browser_tests_path": "tests/browser"
       }
+    },
+    {
+      "slug": "visual_inspection",
+      "title": "Visual Inspection",
+      "category": "Inspection",
+      "summary": "Standalone Blueprint for human and agent visual review: every block kind and status, narrow layouts, and a graph at real-project scale.",
+      "tags": ["inspection", "layout", "status", "graph"],
+      "project_root": "tests/test_blueprints/visual_inspection",
+      "build_command": ["lake", "build", "VisualInspection"],
+      "generate_command": ["lake", "exe", "vbp", "build", "--output", "{output_dir}"]
     }
   ]
 }

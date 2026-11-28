@@ -30,7 +30,9 @@ def RelatedEntry.badgeCodes (entry : RelatedEntry) : Array String :=
 def RelatedEntry.panelEntry
     (entry : RelatedEntry)
     (currentLabel : Name)
-    (idPrefix : String) : Informal.RelatedPanel.PanelEntry :=
+    (idPrefix : String)
+    (statusOf : Informal.RelatedPanel.StatusLookup := fun _ => none) :
+    Informal.RelatedPanel.PanelEntry :=
   {
     previewId := Informal.HoverRender.previewId idPrefix entry.displayLabel
     previewKeys := entry.previewKey.toArray
@@ -38,13 +40,16 @@ def RelatedEntry.panelEntry
     label := entry.label
     href := entry.href
     dependencies := entry.dependencies
-    active := entry.label == currentLabel
+    current := entry.label == currentLabel
+    status? := statusOf entry.label
   }
 
 def relatedPanelEntries
     (entries : Array RelatedEntry)
     (currentLabel : Name)
-    (idPrefix : String) : Array Informal.RelatedPanel.PanelEntry :=
-  entries.map fun entry => entry.panelEntry currentLabel idPrefix
+    (idPrefix : String)
+    (statusOf : Informal.RelatedPanel.StatusLookup := fun _ => none) :
+    Array Informal.RelatedPanel.PanelEntry :=
+  entries.map fun entry => entry.panelEntry currentLabel idPrefix statusOf
 
 end Informal.PreviewManifest

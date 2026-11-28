@@ -22,16 +22,13 @@ def lacksAllSubstr (s : String) (needles : List String) : Bool :=
   needles.all fun needle => !hasSubstr s needle
 
 def hasTemplatePreviewDescriptor
-    (html panelSelector templateSelector triggerSelector titleSelector bodySelector closeSelector : String)
+    (html panelClass templateSelector triggerSelector : String)
     (allowHtmlCache : Bool := false) : Bool :=
   hasAllSubstr html ([
     "data-bp-template-preview-root=\"true\"",
-    "data-bp-template-preview-panel-selector=\"" ++ panelSelector ++ "\"",
+    "data-bp-template-preview-panel-class=\"" ++ panelClass ++ "\"",
     "data-bp-template-preview-template-selector=\"" ++ templateSelector ++ "\"",
     "data-bp-template-preview-trigger-selector=\"" ++ triggerSelector ++ "\"",
-    "data-bp-template-preview-title-selector=\"" ++ titleSelector ++ "\"",
-    "data-bp-template-preview-body-selector=\"" ++ bodySelector ++ "\"",
-    "data-bp-template-preview-close-selector=\"" ++ closeSelector ++ "\"",
     "data-bp-template-preview-mode=\"hover\"",
     "data-bp-template-preview-placement=\"anchored\""
   ] ++ if allowHtmlCache then [

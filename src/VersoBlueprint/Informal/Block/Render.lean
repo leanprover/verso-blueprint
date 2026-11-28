@@ -467,12 +467,6 @@ private def sourceRefsPanelTitle (sourceRefs : Array Source.Ref) : String :=
   else
     s!"Original sources ({sourceRefs.size})"
 
-private def sourceRefsPanelMeta (sourceRefs : Array Source.Ref) : String :=
-  if sourceRefs.size == 1 then
-    "Source provenance preview"
-  else
-    "Source provenance previews"
-
 private def sourceRefsChipTitle (sourceRefs : Array Source.Ref) : String :=
   let summaries := sourceRefs.map sourceRefSummary |>.toList
   if summaries.isEmpty then
@@ -524,41 +518,34 @@ private def renderSourceRefPreviewItem (sourceRef : Source.Ref) : Verso.Output.H
     </li>
   }}
 
+/-- Source provenance is static, so its popup is server-rendered in the shared panel
+shell and shown by CSS while its chip is hovered or focused. -/
 private def renderSourceRefPreview (sourceRefs : Array Source.Ref) : Verso.Output.Html :=
   open Verso.Output.Html in
   let chipText := sourceRefsChipText sourceRefs
   let chipTitle := sourceRefsChipTitle sourceRefs
   let panelTitle := sourceRefsPanelTitle sourceRefs
-  let panelMeta := sourceRefsPanelMeta sourceRefs
   let previewItems := sourceRefs.map renderSourceRefPreviewItem
   {{
-    <div class="bp_relation_wrap bp_source_ref_wrap">
+    <div class="bp_source_ref_wrap">
       <button type="button"
           class="bp_relation_chip bp_source_ref_chip"
-          title={{chipTitle}}
-          aria-expanded="false">
+          title={{chipTitle}}>
         {{.text true chipText}}
       </button>
-      <div class="bp_relation_panel bp_source_ref_panel">
-        <div class="bp_relation_panel_header">
-          <div class="bp_relation_panel_title">{{.text true panelTitle}}</div>
-          <div class="bp_relation_panel_meta">{{.text true panelMeta}}</div>
-        </div>
-        <div class="bp_relation_panel_body bp_source_ref_panel_body">
-          <div class="bp_relation_preview_surface bp_source_ref_preview_surface">
-            <div class="bp_relation_preview_header">
-              <div class="bp_relation_preview_label">"Preview"</div>
-              <div class="bp_relation_preview_heading bp_preview_header_heading">
-                <div class="bp_relation_preview_title">{{.text true panelTitle}}</div>
-                <a class="bp_relation_preview_header_label bp_preview_header_label" hidden></a>
-              </div>
-            </div>
-            <div class="bp_relation_preview_body bp_source_ref_preview_body">
-              <ul class="bp_source_ref_panel_list">
-                {{previewItems}}
-              </ul>
+      <div class="bp_preview_panel bp_source_ref_panel" "data-bp-preview-placement"="anchored">
+        <div class="bp_preview_panel_header">
+          <div class="bp_preview_panel_heading">
+            <div class="bp_preview_panel_eyebrow">"Source provenance"</div>
+            <div class="bp_preview_panel_titleline">
+              <div class="bp_preview_panel_title">{{.text true panelTitle}}</div>
             </div>
           </div>
+        </div>
+        <div class="bp_preview_panel_body bp_source_ref_preview_body">
+          <ul class="bp_source_ref_panel_list">
+            {{previewItems}}
+          </ul>
         </div>
       </div>
     </div>
@@ -645,6 +632,8 @@ HTML IDs, header extras, and the resolved display number.
 structure InformalBlockRenderContext where
   numberText : String
   captionText? : Option String := none
+  /-- For a proof, the title of the statement it proves. -/
+  proofOf? : Option String := none
   attrs : Array (String × String) := #[]
   titleRowAttrs? : Option (Array (String × String)) := none
   headerExtras : HeaderExtras := {}
@@ -654,26 +643,24 @@ structure InformalBlockRenderContext where
 /--
 Build shell context for a concrete informal block.
 
-Statement and proof headings use different fallback captions. This helper keeps
-that policy out of phase-specific renderers: callers provide the caption they
-resolved for each block kind, and the shared renderer chooses the one that
-matches the block.
+Statements are captioned by their kind; a proof names the statement it proves
+(`proofOf?`), as in "Proof of Theorem 1.1.4". This helper keeps that policy out
+of phase-specific renderers: callers provide both, and the shared renderer uses
+the one that matches the block.
 -/
 def InformalBlockRenderContext.forBlock
     (data : BlockData)
     (numberText : String)
     (statementCaption? : Option String := none)
-    (proofCaption? : Option String := none)
+    (proofOf? : Option String := none)
     (attrs : Array (String × String) := #[])
     (titleRowAttrs? : Option (Array (String × String)) := none)
     (headerExtras : HeaderExtras := {})
     (sourceRefs : Array Source.Ref := #[])
     (folded : Bool := false) :
     InformalBlockRenderContext :=
-  let captionText? :=
-    match data.isProof with
-    | true => proofCaption?
-    | false => statementCaption?
+  let captionText? := if data.isProof then none else statementCaption?
+  let proofOf? := if data.isProof then proofOf? else none
   let sourceRefs :=
     if sourceRefs.isEmpty then
       match data.sourceRef with
@@ -684,6 +671,7 @@ def InformalBlockRenderContext.forBlock
   {
     numberText
     captionText?
+    proofOf?
     attrs
     titleRowAttrs?
     headerExtras
@@ -726,9 +714,28 @@ structure InformalBlockShell where
   metadataPanel : Verso.Output.Html := .empty
   folded : Bool := false
   showHeader : Bool := true
+  /-- Set for a proof: the title of the statement it proves. -/
+  proofOf? : Option String := none
+
+/-- A proof is titled LaTeX style, "Proof of Theorem 1.1.4.". When it directly
+follows its statement, the page joins the two and CSS hides "of Theorem 1.1.4",
+leaving "Proof.". -/
+private def renderProofTitleRow (shell : InformalBlockShell) (proofOf : String) : Verso.Output.Html :=
+  open Verso.Output.Html in
+  let style := shell.style
+  let captionClass := s!"bp_caption bp_kind_{style.kindCss}_caption {style.captionCss}"
+  {{
+    <div class="bp_heading_title_row">
+      <span class={{captionClass}} title={{shell.labelText}}>
+        "Proof"<span class="bp_proof_of">{{.text true s!" of {proofOf}"}}</span>"."
+      </span>
+    </div>
+  }}
 
 private def renderShellTitleRow (shell : InformalBlockShell) : Verso.Output.Html :=
-  let titleRow := renderBlockTitleRow shell.style shell.labelText shell.numberText shell.captionText
+  let titleRow := match shell.proofOf? with
+    | some proofOf => renderProofTitleRow shell proofOf
+    | none => renderBlockTitleRow shell.style shell.labelText shell.numberText shell.captionText
   match shell.titleRowAttrs? with
   | some attrs => .tag "a" attrs titleRow
   | none => titleRow
@@ -742,16 +749,19 @@ def renderInformalBlockShell (shell : InformalBlockShell)
   let contentClass := s!"bp_content bp_kind_{style.kindCss}_content {style.contentCss}"
   let titleRow := renderShellTitleRow shell
   let extras := renderHeaderExtras shell.headerExtras
+  -- The page joins a proof or code panel to the block just before it when both
+  -- carry the same owner, so the parts of one node read as one card.
+  let attrs := shell.attrs.push ("data-bp-owner", shell.labelText)
   if !shell.showHeader then
     {{
-      <div class={{wrapperClass}} title={{shell.labelText}} {{shell.attrs}}>
+      <div class={{wrapperClass}} title={{shell.labelText}} {{attrs}}>
         {{shell.metadataPanel}}
         <div class={{contentClass}}> {{content}} </div>
       </div>
     }}
   else if shell.folded then
     {{
-      <details class={{wrapperClass}} title={{shell.labelText}} {{shell.attrs}}>
+      <details class={{wrapperClass}} title={{shell.labelText}} {{attrs}}>
         <summary class={{headingClass}}>
           {{titleRow}}
           {{extras}}
@@ -762,7 +772,7 @@ def renderInformalBlockShell (shell : InformalBlockShell)
     }}
   else
     {{
-      <div class={{wrapperClass}} title={{shell.labelText}} {{shell.attrs}}>
+      <div class={{wrapperClass}} title={{shell.labelText}} {{attrs}}>
         <div class={{headingClass}}>
           {{titleRow}}
           {{extras}}
@@ -801,6 +811,7 @@ def renderInformalBlockHtml (data : BlockData) (ctx : InformalBlockRenderContext
       metadataPanel
       folded := ctx.folded
       showHeader
+      proofOf? := ctx.proofOf?
     }
     (.seq content)
 

@@ -734,6 +734,8 @@ private def graphRuntimeModuleMjs : String := include_str "Commands/graph.mjs"
 
 private def relationPanelModuleMjs : String := include_str "Informal/Block/relation-panel.mjs"
 
+private def blockPartsModuleMjs : String := include_str "Informal/Block/block-parts.mjs"
+
 private def previewRuntimeBaseModuleFilename : String := "preview-runtime-base.mjs"
 
 private def previewRuntimeDataModuleFilename : String := "preview-runtime-data.mjs"
@@ -788,6 +790,7 @@ private def pageRuntimeModules : Array (String × String) := #[
   ("Commands/inline-preview.mjs", inlinePreviewModuleMjs),
   ("Commands/graph-runtime-core.mjs", graphRuntimeCoreModuleMjs),
   ("Commands/graph.mjs", graphRuntimeModuleMjs),
+  ("Informal/Block/block-parts.mjs", blockPartsModuleMjs),
   ("Informal/Block/relation-panel.mjs", relationPanelModuleMjs)
 ]
 
@@ -915,7 +918,10 @@ structure Entry extends Informal.BlockMetadata where
   kind : Option Informal.Data.NodeKind := none
   /-- Resolved display title for this manifest entry. -/
   title : String
-  /-- Structured heading caption for renderers that need to lay out the title. -/
+  /--
+  Structured heading caption for renderers that need to lay out the title. A
+  proof's caption and label name its statement, as in "Proof of Theorem 1".
+  -/
   displayCaption : Option String := none
   /-- Structured heading label or number for renderers that need to lay out the title. -/
   displayLabel : Option String := none
@@ -2037,13 +2043,13 @@ private structure BlockHeadingParts where
   caption : String
   label : String
 
-private def blockHeadingParts? (state : TraverseState) (blockData : Informal.BlockData)
-    (facet : PreviewCache.Facet) : Option BlockHeadingParts := do
+/-- Heading parts of a block. A proof's parts name its statement; renderers title
+it "Proof of …". -/
+private def blockHeadingParts? (state : TraverseState) (blockData : Informal.BlockData) :
+    Option BlockHeadingParts := do
   let display := blockData.display state
   let number ← display.number?
-  match facet with
-  | .statement => some { caption := toString display.kind, label := number }
-  | .proof => some { caption := "Proof", label := s!"for {display.kind} {number}" }
+  some { caption := toString display.kind, label := number }
 
 private def externalMarkupArray (state : TraverseState) (label : Name) :
     Array Informal.Data.ExternalMarkup :=
@@ -2208,7 +2214,7 @@ private def blockSemanticManifestEntry
   let preview := resolved.preview
   let blockData := resolved.data
   let reference := RenderingResolution.referenceOfData state resolved.data (some preview.facet)
-  let headingParts? := blockHeadingParts? state blockData preview.facet
+  let headingParts? := blockHeadingParts? state blockData
   let codeData := blockCodeData? state preview blockData
   {
     key := PreviewCache.key preview.label preview.facet
@@ -2765,11 +2771,26 @@ def handleCliFlags
     else
       pure (none, options, externalMarkupConfig)
 
+/--
+Blueprint's stylesheets in a fixed order. Emitted last, these win specificity ties
+against Verso's rules.
+
+Verso keeps `extraCss` in a `HashSet` and emits it in hash order, so without this the
+content of one stylesheet decides the cascade order of all the others. `extraCss` cannot
+be rewritten here, so each page carries these rules twice until Verso orders it.
+-/
+def blueprintCascadeCss (blocks : Array String) : String :=
+  let isBlueprint (css : String) := css.contains "bp_" || css.contains "--bp-"
+  "\n\n".intercalate ((blocks.filter isBlueprint).qsort (· < ·)).toList
+
 /-- Emit only the document/layout pair admitted by the checked boundary. -/
 private def PreparedRendererState.emit (prepared : PreparedRendererState) : EmitM Unit := do
+  let stylesheet := blueprintCascadeCss (prepared.state.extraCss.toArray.map (·.css))
+  let styleTag := Verso.Output.Html.tag "style" #[] (.text false stylesheet)
+  let config := { prepared.config with extraHead := prepared.config.extraHead.push styleTag }
   match prepared.mode with
-  | .single => emitHtmlSingle prepared.config prepared.text prepared.state
-  | .multi => emitHtmlMulti prepared.config prepared.text prepared.state
+  | .single => emitHtmlSingle config prepared.text prepared.state
+  | .multi => emitHtmlMulti config prepared.text prepared.state
 
 private def emitBlueprintHtml
     (extraSteps : List BlueprintExtraStep)

@@ -40,7 +40,6 @@ INTERNAL_ONLY_HELPERS = {
     "bindTemplatePreviewDescriptor",
     "bindTemplatePreviewDescriptors",
     "pointerWithinPanel",
-    "positionAnchoredPanel",
     "readHtml",
     "readPanelBehavior",
     "readBlueprintManifestEntry",
@@ -96,7 +95,6 @@ GRAPH_RUNTIME_CORE_HELPERS = {
     "rememberGraphLayoutMeasurements",
     "resizeRenderedGraphToCanvas",
     "resetGraphvizForVariant",
-    "makeGroupPanelPositioner",
 }
 
 
