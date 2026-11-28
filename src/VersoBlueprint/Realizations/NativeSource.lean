@@ -8,7 +8,6 @@ import Lean.Elab.DeclarationRange
 import VersoBlueprint.Docstring.Compiled
 import VersoBlueprint.ExternalModuleSource
 import VersoBlueprint.Validation.Lean
-import VersoBlueprint.Translations
 
 /-! Native declaration preparation. This module does not import the Blueprint
 Environment or read accepted nodes. It prepares a typed native identity from the
@@ -19,7 +18,7 @@ Normal owning-module build is a precondition. -/
 
 namespace Informal.Realizations.NativeSource
 
-open Lean Validation Translations
+open Lean Validation
 
 private def issue (code : String) (label : Name) (message : String) : Diagnostic :=
   { code, subject := label.toString, message }
@@ -661,139 +660,5 @@ def prepareAttributeDocstring (request : Request) (registered : Document) (nativ
       attributeFenceInput request registered.key.path text registered.text parse
     catch _ =>
       return .error <| issue "source-unavailable" request.canonical "Cannot read the attribute's owning source") semantics parse
-
-/-- Source contributions for the caller-supplied node. The caller merges them
-into the complete batch for admission. Validation requirements and observations
-are added separately. -/
-structure PreparedModel where
-  input : Input
-  origin : Origin
-  witness : ObjectKey
-  /-- Base key for the role-qualified native realizations in `input`. -/
-  leanKey : RealizationKey
-  /-- Exact key of the separately owned prose statement realization. -/
-  informalKey : RealizationKey
-  moduleName : Name
-  sourcePath : String
-  /-- Direct own native format; source text does not establish proofreading. -/
-  docstringFormat : Name := `markdown
-
-private def sourceContribution (origin : Origin) (slot : Name) (value : α) : Contribution α :=
-  { origin := { origin with
-      -- Structured typed boundaries preserve the producer site and child slot.
-      id := Name.mkSimple (toJson (Vir.nameKey origin.id, Vir.nameKey slot)).compress }, value }
-
-def PreparedModel.contribution (p : PreparedModel) (slot : Name) (value : α) : Contribution α :=
-  sourceContribution p.origin slot value
-
-/-- Source-only native representation, including declarations without prose.
-The caller supplies concept metadata and producer origin. The resolved object
-carries no source document; its content is the checked declaration. No native
-proof, expected goal, prose realization or observation is synthesized. -/
-def Prepared.realizeNative (source : Prepared) (origin : Origin) (node : Realizations.Node)
-    (nativeName : Name) : Except Diagnostic Input := do
-  unless !node.label.isAnonymous && !nativeName.isAnonymous do
-    throw <| issue "invalid-source-destination" source.canonical "Expected an explicit concept and realization name"
-  unless origin.moduleName == source.moduleName && !origin.id.isAnonymous && !blank origin.source do
-    throw <| issue "invalid-source-origin" source.canonical "Expected an explicit owning producer origin"
-  let key : RealizationKey := ⟨node.label, nativeName⟩
-  let witness := source.declaration
-  unless !source.roles.isEmpty do
-    throw <| issue "unsupported-native-role" source.canonical "Checked declaration has no supported direct content role"
-  let roleSpecs ← source.roles.mapM fun role =>
-    match NativeLean.roleSpec? role with
-    | some spec => pure (role, spec)
-    | none => throw <| issue "unsupported-native-role" source.canonical
-        s!"Unsupported direct native content role: {role}"
-  let models := roleSpecs.map fun (role, spec) => ({
-    key := key.forRole role, context := witness.context, role
-    declarations := #[{
-      object := witness
-      projection := spec.projection
-      required := #[] }] } : Realization)
-  return {
-    nodes := #[sourceContribution origin `node node]
-    objects := #[sourceContribution origin `object { key := witness, resolution := .resolved }]
-    realizations := models.mapIdx fun index model =>
-      sourceContribution origin (Name.mkSimple s!"native-role-{index}") model
-    bindingInputs := roleSpecs.flatMap fun (role, spec) =>
-      let (slot, content?) := match spec.projection with
-        | .statement => (`nativeStatementContext, source.statementContext)
-        | .implementation => (`nativeSourceContext, source.semanticContext)
-      content?.toArray.map fun content => sourceContribution origin slot {
-        subject := .declaration (key.forRole role) witness, name := spec.contextName, content } }
-
-/-- Materialize two explicitly named source representations of the same concept,
-without observations or fragment admission. The native source identity comes
-from preparation, and own prose remains an independent unassessed realization. -/
-def Documented.realize (source : Documented) (origin : Origin) (node : Realizations.Node)
-    (nativeName informalName : Name) : Except Diagnostic PreparedModel := do
-  unless !node.label.isAnonymous && !nativeName.isAnonymous && !informalName.isAnonymous && nativeName != informalName do
-    throw <| issue "invalid-source-destination" source.canonical "Expected distinct named realizations of the same node"
-  let native ← source.toPrepared.realizeNative origin node nativeName
-  let leanKey : RealizationKey := ⟨node.label, nativeName⟩
-  let informalKey : RealizationKey := ⟨node.label, informalName⟩
-  let leanContext := source.declaration.context
-  let proseContext : Context := ⟨source.format, leanContext.project⟩
-  let witness := source.declaration
-  let leanDoc := source.document.key
-  let proseDoc : DocumentKey := ⟨proseContext, leanDoc.path ++ "#docstring:" ++
-    (toJson (Vir.nameKey source.canonical)).compress⟩
-  let p : PreparedModel := {
-    input := native, origin, witness, leanKey, informalKey
-    moduleName := source.moduleName, sourcePath := leanDoc.path, docstringFormat := source.format }
-  return { p with input := { native with
-    documents := native.documents.push (p.contribution `docstring { key := proseDoc, text := source.rawDocstring })
-    realizations := native.realizations ++ #[
-      p.contribution `informal {
-        key := informalKey, context := proseContext, role := `statement,
-        documents := #[proseDoc] }] } }
-
-/-- Prepare source/contracts plus a fresh observation without admission or binding.
-The complete caller batch must supply any additional goal documents. The checked
-result retains semantic-context diagnostics even when the native proof passes. -/
-def PreparedModel.prepareValidation (p : PreparedModel) (expected : Syntax)
-    (goalDocuments : Array DocumentKey := #[])
-    (semantics : NativeLean.SemanticContext := NativeLean.semanticContext) :
-    Elab.Term.TermElabM (Except Diagnostic (Input × NativeLean.Checked)) := do
-  let proofRealization := p.leanKey.forRole `proof
-  let key : RequirementKey := ⟨.declaration proofRealization p.witness, `expectedProof⟩
-  let wrongWitness := issue "wrong-proof-witness" p.leanKey.node
-    "Expected the exact native proof realization and selected witness before adding a proof requirement"
-  let models := canonical ((p.input.realizations.filter (·.value.key == proofRealization)).map (·.value))
-  let #[model] := models | return .error wrongWitness
-  let some declaration := model.declaration? p.witness | return .error wrongWitness
-  unless model.role == `proof && declaration.projection == .implementation do
-    return .error wrongWitness
-  let some updated := model.attachDeclarationRequirement? key | return .error wrongWitness
-  let docs := goalDocuments.foldl pushUnique #[]
-  let checked ← NativeLean.check p.witness.context.project p.witness expected docs semantics
-  let .ok checked := checked | return checked.map (fun checked => (p.input, checked))
-  let input := { p.input with
-    realizations := p.input.realizations.map fun record =>
-      if record.value.key == proofRealization then { record with value := updated } else record
-    requirements := p.input.requirements ++ #[p.contribution `expectedProofRequirement {
-      key, expected := .proof checked.goal p.witness
-      coverage := .dependencyClosure }]
-    bindingInputs := p.input.bindingInputs ++ checked.semanticContext.toArray.map (fun content =>
-      p.contribution `nativeExpectedContext { subject := key.subject, name := NativeLean.expectedContextFor key, content }) }
-  return .ok (input, checked)
-
-/-- Attach a freshly checked proof requirement/evidence to the returned input.
-Does not register anything in the existing Blueprint environment. -/
-def PreparedModel.validate (p : PreparedModel) (expected : Syntax) : Elab.Term.TermElabM (Except Diagnostic Input) := do
-  let prepared ← p.prepareValidation expected
-  let .ok (input, checked) := prepared | return prepared.map (·.1)
-  let key : RequirementKey := ⟨.declaration (p.leanKey.forRole `proof) p.witness, `expectedProof⟩
-  let result := admitWithEvidence input fun bindingFor => do
-    let some binding := bindingFor key
-      | throw #[issue "missing-binding" p.leanKey.node "No binding for native proof requirement"]
-    let slot := `proofEvidence ++ Name.mkSimple ((BindingEncoding.requirementKey key).compress)
-    let origin := (p.contribution slot ()).origin
-    return #[{ origin, value := {
-      id := origin.id, requirement := key, binding, observation := .proof checked.observation } }]
-  return result.map Registry.contributions |>.mapError fun diagnostics =>
-    diagnostics[0]?.getD (issue "invalid-projection" p.leanKey.node "Projected input failed admission")
-
 
 end Informal.Realizations.NativeSource

@@ -3,7 +3,8 @@ Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
-import VersoBlueprint.Realizations.NativeSource
+import VersoBlueprint.Realizations.Authoring
+import VersoBlueprint.Realizations.Capture
 import VersoBlueprint.Realizations.Report
 import VersoBlueprintTests.BlueprintRealizationAdapter.Provider
 
@@ -73,21 +74,45 @@ private def statusText (result : Result) : String :=
   | .pending => "pending"
   | .blocked => "blocked"
 
+private def flagSpecification : Prop :=
+  ∀ flag : RealizationAdapterFixture.Flag,
+    RealizationAdapterFixture.toggle (RealizationAdapterFixture.toggle flag) = flag
+
 /-- info: Flag: Lean proof=complete; Verso=unassessed; Verso-to-Lean=pending; Rocq-to-Lean=blocked; realizations=4; translations=2 -/
 #guard_msgs in
 run_cmd liftTermElabM do
   let label := Name.mkSimple "adapter.flag.involutive"
   let before ← Informal.Environment.getNodeInventory? label
   let labelsBefore ← Informal.Environment.labelsForLeanDecl `RealizationAdapterFixture.flagInvolutive
-  let p ← obtain (← RealizationAdapterFixture.prepareModel `flagPilot label `RealizationAdapterFixture.flagInvolutive)
-  ensure (p.docstringFormat == `verso) "Use actual accepted Verso source"
-  let expected ← `(term| ∀ flag : RealizationAdapterFixture.Flag,
-    RealizationAdapterFixture.toggle (RealizationAdapterFixture.toggle flag) = flag)
-  let native ← obtain (← p.validate expected)
-  let proofRealization := p.leanKey.forRole `proof
-  let statementRealization := p.leanKey.forRole `statement
-  let proof : RequirementKey := ⟨.declaration proofRealization p.witness, `expectedProof⟩
-  let nativeRegistry ← obtain (admit native)
+  let some node := before | throwError "Missing accepted Flag node"
+  let #[association] := node.nativeAssociations | throwError "Expected one accepted Flag declaration"
+  let project := association.context.project
+  let witness : ObjectKey := ⟨association.context, association.reference.canonical.toString⟩
+  let env ← getEnv
+  let nativeRegistry ← try
+    Authoring.configureProject project
+    Authoring.expectNative `flagExpectation label ``flagSpecification
+    let state := Informal.Environment.informalExt.getState (← getEnv)
+    let raw := Capture.Raw.ofState state
+    let plan := Capture.plan { raw with nodes := #[(label, node)] }
+    let observations ← obtain (← Capture.observe plan)
+    let snapshot ← obtain (Capture.evaluate plan observations)
+    pure snapshot.registry
+  finally
+    setEnv env
+  let native := nativeRegistry.contributions
+  let some prose := nativeRegistry.realizations.find? (·.context.language == `verso)
+    | throwError "Missing own Verso realization from ordinary capture"
+  let informalKey := prose.key
+  let proofRealization := association.realization.forRole `proof
+  let statementRealization := association.realization.forRole `statement
+  let proof : RequirementKey := ⟨.declaration proofRealization witness, `expectedProof⟩
+  let some actualEvidence := nativeRegistry.evidence.find? (·.requirement == proof)
+    | throwError "Missing captured expected proof evidence"
+  let .proof observation := actualEvidence.observation
+    | throwError "Expected a native proof observation"
+  ensure (observation.witness == witness && observation.outcome == .passed)
+    "Expected actual proof evidence from the selected Flag witness"
   let nativeBinding ← binding nativeRegistry proof
   ensure ((nativeRegistry.resultForRequirement proof).complete) "Actual native proof must complete"
   -- These equalities check build inputs/current bytes, not Rocq symbol resolution.
@@ -102,8 +127,8 @@ run_cmd liftTermElabM do
   let rocqObject : ObjectKey := ⟨rocqContext, "TranslationHarnessReuse.Flag.toggle_involutive"⟩
   let sourceDoc : DocumentKey := ⟨rocqContext, sourcePath⟩
   let configDoc : DocumentKey := ⟨rocqContext, configPath⟩
-  let versoTranslation : TranslationKey := ⟨`flagPilot, `versoToLean⟩
-  let rocqTranslation : TranslationKey := ⟨`flagPilot, `rocqToLean⟩
+  let versoTranslation : TranslationKey := ⟨project, `versoToLean⟩
+  let rocqTranslation : TranslationKey := ⟨project, `rocqToLean⟩
   let versoClaim : ClaimKey := ⟨versoTranslation, `statement⟩
   let rocqClaim : ClaimKey := ⟨rocqTranslation, `statement⟩
   let versoReview : RequirementKey := ⟨.claim versoClaim, `correspondence⟩
@@ -121,7 +146,7 @@ run_cmd liftTermElabM do
       declarations := #[{ object := rocqObject, projection := .statement }] })
     translations := #[
       authored `versoTranslation {
-        key := versoTranslation, source := #[{ realization := p.informalKey }]
+        key := versoTranslation, source := #[{ realization := informalKey }]
         target := #[{ realization := statementRealization }], required := #[proof] },
       authored `rocqTranslation {
         key := rocqTranslation, source := #[{ realization := rocqKey }]
@@ -140,14 +165,14 @@ run_cmd liftTermElabM do
   let r ← obtain (admit input)
   ensure (r.nodes.size == 1 && r.realizations.size == 4 && r.translations.size == 2)
     "One node has separate statement, proof, prose and Rocq realizations with two explicit translations"
-  ensure ((r.realization? p.informalKey).isSome && (r.realization? statementRealization).isSome &&
+  ensure ((r.realization? informalKey).isSome && (r.realization? statementRealization).isSome &&
     (r.realization? proofRealization).isSome &&
     (r.realization? rocqKey).isSome) "Existing identities remain discoverable"
   ensure ((← binding r proof) == nativeBinding && (r.resultForRequirement proof).complete)
     "Adding a blocked source does not stale independent actual native proof evidence"
-  ensure ((r.resultFor (.realization p.informalKey)).status == .unassessed &&
+  ensure ((r.resultFor (.realization informalKey)).status == .unassessed &&
       (r.resultFor (.realization proofRealization)).complete &&
-      (r.realization? p.informalKey).any (fun model =>
+      (r.realization? informalKey).any (fun model =>
         model.role == `statement && model.context.language == `verso))
     "Readable Verso source is not proofreading"
   ensure ((r.resultFor (.translation versoTranslation)).status == .pending &&
@@ -158,10 +183,8 @@ run_cmd liftTermElabM do
     "Rocq endpoint must select its unresolved declaration, not readable documents alone"
   ensure (r.objects.any fun o => o.key == rocqObject && o.resolution == .unsupported &&
     o.explanation.contains "resolver/checker is not connected") "Preserve the actual capability gap"
-  ensure (r.evidence.size == native.evidence.size && r.evidence.all fun e =>
-    match e.observation with
-    | .proof observation => observation.witness == p.witness && observation.outcome == .passed
-    | _ => false) "Only actual native evidence exists; no foreign success or human review"
+  ensure (r.evidence == nativeRegistry.evidence)
+    "Only actual native evidence exists; no foreign success or human review"
   ensure (r.unfinished.size == 2 && r.unfinished.any (·.key == rocqTranslation) &&
     r.actionable.size == 1 && r.actionable.any (·.key == versoTranslation))
     "Blocked work stays in unfinished inventory while actionable work excludes it"
@@ -171,7 +194,7 @@ run_cmd liftTermElabM do
     ensure ((← obtain (Json.parse report.compress)) == report && !hasPrivatePayload report)
       "Report is structured JSON without source bytes, bindings or contribution dump"
     ensure ((← reportStatus (← reportEntry report "requirements" (toJson proof))) == toJson Status.complete &&
-      (← reportStatus (← reportEntry report "realizations" (toJson p.informalKey))) == toJson Status.unassessed &&
+      (← reportStatus (← reportEntry report "realizations" (toJson informalKey))) == toJson Status.unassessed &&
       (← reportStatus (← reportEntry report "translations" (toJson versoTranslation))) == toJson Status.pending &&
       (← reportStatus (← reportEntry report "translations" (toJson rocqTranslation))) == toJson Status.blocked)
       "Report preserves four independent supplied-contract outcomes, not overall project readiness"
@@ -188,7 +211,7 @@ run_cmd liftTermElabM do
     "The proof realization and its exact declaration selection retain native completion"
   let declarationEntries ← entries leanEntry "declarations"
   ensure (declarationEntries.size == 1 &&
-    (← field declarationEntries[0]! "subject") == toJson (Subject.declaration proofRealization p.witness) &&
+    (← field declarationEntries[0]! "subject") == toJson (Subject.declaration proofRealization witness) &&
     (← reportStatus declarationEntries[0]!) == toJson Status.complete)
     "Selected declaration result is independently inspectable"
   for key in #[versoTranslation, rocqTranslation] do
@@ -209,7 +232,6 @@ run_cmd liftTermElabM do
   ensure ((← field report "unfinished") == toJson #[rocqTranslation, versoTranslation] &&
     (← field report "actionable") == toJson #[versoTranslation])
     "Blocked authored translation remains unfinished and is excluded only from actionable selection"
-  let actualEvidence := native.evidence[0]!.value
   let evidenceEntry ← reportEvidence report actualEvidence.id
   ensure ((← field evidenceEntry "observation") == toJson actualEvidence.observation &&
     (← field (← field evidenceEntry "suitability") "matchesCurrentRequirement") == toJson true &&
@@ -332,6 +354,6 @@ run_cmd liftTermElabM do
   ensure (reprStr before == reprStr after && labelsBefore ==
     (← Informal.Environment.labelsForLeanDecl `RealizationAdapterFixture.flagInvolutive))
     "Composition/querying does not mutate accepted Blueprint membership"
-  logInfo m!"Flag: Lean proof={statusText (r.resultForRequirement proof)}; Verso={statusText (r.resultFor (.realization p.informalKey))}; Verso-to-Lean={statusText (r.resultFor (.translation versoTranslation))}; Rocq-to-Lean={statusText rocqResult}; realizations={r.realizations.size}; translations={r.translations.size}"
+  logInfo m!"Flag: Lean proof={statusText (r.resultForRequirement proof)}; Verso={statusText (r.resultFor (.realization informalKey))}; Verso-to-Lean={statusText (r.resultFor (.translation versoTranslation))}; Rocq-to-Lean={statusText rocqResult}; realizations={r.realizations.size}; translations={r.translations.size}"
 
 end VersoBlueprintTests.BlueprintRealizationThreeWay

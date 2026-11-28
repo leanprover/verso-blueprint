@@ -988,23 +988,33 @@ run_cmd liftTermElabM do
     | .error issues => ensure (issues.any (·.code == "semantic-conflict")) s!"Wrong specification rejection: {repr issues}"
   finally setEnv env
 
--- The authored goal can stay in a complete capture when its checked
--- definition is known but the specification document is unavailable.
+-- A checked, owned goal stays in capture even when its specification source
+-- is unavailable or has been edited since the build.
 run_cmd liftTermElabM do
   let target := Name.mkSimple "capture.complete"
+  let sibling := Name.mkSimple "storage.source"
   let plan := Capture.plan (Capture.Raw.ofState (Environment.informalExt.getState (← getEnv)))
   let some goal := plan.expected.find? (·.node == target)
     | throwError "Missing authored expectation"
   let spec := goal.specification.document
   let sourcePath ← IO.FS.realPath spec.path
+  let text ← IO.FS.readFile sourcePath
   let observe (readSpec : IO String) := Capture.observe plan fun path =>
     if path == sourcePath then readSpec else IO.FS.readFile path
-  for (readSpec, reason) in #[
-      ((throw (IO.userError "specification source is unreadable") : IO String), "Cannot read canonical source"),
-      (pure " \n", "Canonical source is empty")] do
+  let baseline ← obtain (Capture.evaluate plan (← obtain (← observe (pure text))))
+  let requirement := key "capture.complete" ``complete `expectedProof
+  ensure ((baseline.registry.resultForRequirement requirement).complete &&
+    (baseline.assessmentFor sibling).hasNativeDeclarations)
+    "The unedited specification must complete before testing source changes"
+  let changed := "Owning source bytes disagree with the checked declaration's build input"
+  for (readSpec, code, subject, reason) in #[
+      ((throw (IO.userError "specification source is unreadable") : IO String),
+        "source-unavailable", spec.path, "Cannot read canonical source"),
+      (pure " \n", "source-unavailable", spec.path, "Canonical source is empty"),
+      (pure "def differentSpec : Prop := True\n", "source-selection-unavailable", toString goal.expected, changed),
+      (pure ("\n" ++ text), "source-selection-unavailable", toString goal.expected, changed)] do
     let observations ← obtain (← observe readSpec)
     let snapshot ← obtain (Capture.evaluate plan observations)
-    let requirement := key "capture.complete" ``complete `expectedProof
     let result := snapshot.registry.resultForRequirement requirement
     let some evidence := snapshot.registry.evidence.find? (·.requirement == requirement)
       | throwError "Missing unavailable authored specification observation"
@@ -1014,18 +1024,14 @@ run_cmd liftTermElabM do
       observation.outcome == .unavailable && observation.coverage == .subject &&
       observation.explanation.contains reason)
       "Unavailable specification did not preserve the reason its authored contract is blocked"
-    ensure (snapshot.sourceDiagnostics.nodes.any fun (label, diagnostic) =>
-      label == target && diagnostic.code == "source-unavailable" && diagnostic.subject == spec.path &&
-      diagnostic.message == reason)
+    let owners := snapshot.sourceDiagnostics.nodes.filterMap fun (label, diagnostic) =>
+      if diagnostic.code == code && diagnostic.subject == subject && diagnostic.message == reason then
+        some label else none
+    ensure (owners == #[target] && snapshot.assessmentFor sibling == baseline.assessmentFor sibling)
       "Unavailable specification lost its owning node, source path, or reason"
     let assessment := snapshot.assessmentFor target
     ensure (assessment.nativeLocallyComplete && assessment.requiredComplete)
       "Unavailable independent specification blocked a current checked native declaration"
-  match ← observe (pure "def differentSpec : Prop := True\n") with
-  | .error issues =>
-    ensure (issues.any (·.code == "source-association-unavailable"))
-      "Readable mismatched specification must reject the declared source association"
-  | .ok _ => throwError "Readable mismatched specification bypassed exact source association"
 
 run_cmd liftTermElabM do
   let env ← getEnv
@@ -1364,6 +1370,92 @@ run_cmd liftTermElabM do
     summary.missingLeanDecls.any (fun row => row.label == missing && row.canonical == ``declaredLater) &&
     !summary.missingLeanDecls.any (·.label == resolved))
     "A resolved sibling must not supply its registration, panel status or summary to a forward reference"
+
+-- A shared declaration's genuine check still needs evidence at each label.
+run_cmd liftTermElabM do
+  let state := Environment.informalExt.getState (← getEnv)
+  let raw := Capture.Raw.ofState state
+  let passed := Name.mkSimple "capture.complete"
+  let incomplete := Name.mkSimple "capture.admitted"
+  let disagreed := Name.mkSimple "capture.disagreed"
+  let some passedNode := state.inventory.get? passed | throwError "Missing passed attachment"
+  let some incompleteNode := state.inventory.get? incomplete | throwError "Missing incomplete attachment"
+  let alternatePath := "/definitely/missing/disagreed-blueprint-source.lean"
+  let alternate := (passedNode.nativeAssociations ++ incompleteNode.nativeAssociations).map fun association =>
+    { association with
+      realization := { association.realization with node := disagreed }
+      reference := { association.reference with
+        provenance := .inWorkspace `VersoBlueprintTests.BlueprintRealizationCapture alternatePath } }
+  let disagreedNode := { passedNode with sources := #[], nativeAssociations := alternate }
+  let plan := Capture.plan { raw with
+    nodes := #[(passed, passedNode), (incomplete, incompleteNode), (disagreed, disagreedNode)]
+    registered := raw.registered.insert disagreed, authored := #[] }
+  let observations ← obtain (← Capture.observe plan)
+  ensure ((observations.native.filter (·.request.sourcePath? == some alternatePath)).size == 2 &&
+    observations.checks.size == 2) "The labels must share two checks and have distinct source requests"
+  let changed := { observations with native := observations.native.map fun answer =>
+    if answer.request.sourcePath? != some alternatePath then answer else
+      { answer with result := answer.result.map fun prepared => { prepared with roles := #[`statement] } } }
+  let snapshot ← obtain (Capture.evaluate plan changed)
+  ensure ((snapshot.sourceDiagnostics.nodes.filter fun (label, issue) =>
+      label == disagreed && issue.code == "native-role-disagreement").size == 2 &&
+    !(snapshot.assessmentFor disagreed).nativeStatementComplete &&
+    (snapshot.assessmentFor passed).requiredComplete)
+    "The disagreement must reject only the sibling label's native observations"
+  let panels := TraversalIndex.Nodes.capture { state with inventory := state.inventory.insert disagreed disagreedNode }
+    (some snapshot)
+  let checks (label : Name) := (panels.find? (·.label == label)).map (·.statementExternalChecks)
+  let some checked := snapshot.nativeChecks.find? (·.declaration.native == toString ``admitted)
+    | throwError "Missing genuine incomplete observation"
+  ensure (checked.status.hasKnownSorry && checks passed == some #[(``complete, some .proved)] &&
+    checks incomplete == some #[(``admitted, some checked.status)] &&
+    (checks disagreed).any fun rows => rows.size == 2 && rows.all (·.2.isNone))
+    "A disagreed label borrowed a passing or incomplete code-panel status"
+  let summary ← Commands.buildSummary snapshot
+  ensure (summary.incompleteDetails.any (fun row => row.label == incomplete &&
+      row.decl == ``admitted && row.status == checked.status) &&
+    !summary.incompleteDetails.any (·.label == disagreed))
+    "A disagreed label borrowed another label's incomplete-declaration details"
+
+-- Facet panels use the selected realization even when a label and object are shared.
+run_cmd liftTermElabM do
+  let state := Environment.informalExt.getState (← getEnv)
+  let raw := Capture.Raw.ofState state
+  let label := Name.mkSimple "storage.native"
+  let some registered := state.inventory.get? label | throwError "Missing imported plain native fixture"
+  let #[original] := registered.nativeAssociations | throwError "Expected one native attachment"
+  ensure (original.placement == `statement) "Expected a statement panel for the original attachment"
+  let owner := `VersoBlueprintTests.BlueprintCanonicalSourcePersistence.Owner
+  let alternatePath := "/definitely/missing/alternate-realization.lean"
+  let alternate := { original with
+    realization := { original.realization with name := `alternate }
+    placement := `proof
+    reference := { original.reference with
+      provenance := .outWorkspace owner (some alternatePath) } }
+  let node := { registered with sources := #[], uses := #[], nativeAssociations := #[original, alternate] }
+  let plan := Capture.plan { raw with nodes := #[(label, node)], authored := #[] }
+  let observations ← obtain (← Capture.observe plan)
+  ensure (observations.native.size == 2 && observations.native.all (·.result.isOk) &&
+    (observations.native.filter (·.request.sourcePath? == some alternatePath)).size == 1 &&
+    observations.checks.size == 1) "The two realizations must share a real check and have distinct source requests"
+  let changed := { observations with native := observations.native.map fun answer =>
+    if answer.request.sourcePath? != some alternatePath then answer else
+      { answer with result := answer.result.map fun prepared => { prepared with roles := #[`statement] } } }
+  let snapshot ← obtain (Capture.evaluate plan changed)
+  let name := original.reference.canonical
+  let object : ObjectKey := ⟨original.context, name.toString⟩
+  let accepted : RequirementKey := ⟨.declaration (original.realization.forRole `implementation) object, `implementation⟩
+  let rejected : RequirementKey := ⟨.declaration (alternate.realization.forRole `statement) object, `statement⟩
+  ensure ((snapshot.registry.localResult accepted).complete && (snapshot.registry.requirement? rejected).isSome &&
+    !(snapshot.registry.localResult rejected).complete &&
+    snapshot.sourceDiagnostics.nodes.any (fun (owner, issue) =>
+      owner == label && issue.code == "native-role-disagreement" && issue.subject == name.toString))
+    "The replay must reject the alternate realization while keeping the original check"
+  let panels := TraversalIndex.Nodes.capture { state with inventory := state.inventory.insert label node } (some snapshot)
+  let some panel := panels.find? (·.label == label) | throwError "Missing captured panels"
+  ensure (panel.statementExternalChecks == #[(name, some .proved)] &&
+    panel.proofExternalChecks == #[(name, none)])
+    "A panel borrowed the status of another realization of the same declaration"
 
 run_cmd liftTermElabM do
   let flat := Name.mkSimple "foo.bar»"

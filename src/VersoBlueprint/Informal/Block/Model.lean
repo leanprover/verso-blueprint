@@ -8,6 +8,7 @@ import Lean
 import VersoBlueprint.Data
 import VersoBlueprint.Realizations.Projection
 import VersoBlueprint.Source.Data
+import VersoBlueprint.Validation
 
 namespace Informal
 
@@ -354,9 +355,11 @@ structure BlockData extends BlockMetadata, BlockPresentation where
 deriving FromJson, ToJson, Quote
 
 /-- Match the same association selected by the facet's snapshot fold.
-Use its full context before reducing the check to a name local to this facet. -/
+Look up checks through the association's realization and full declaration
+identity before reducing the check to a name local to this facet. -/
 private def externalChecksOn (node : Data.NodeInventory) (placement : Name)
-    (statuses : Std.HashMap Realizations.ObjectKey Data.ProvedStatus) : ExternalDeclarationChecks := Id.run do
+    (acceptedStatuses : Std.HashMap (Realizations.RealizationKey × Realizations.ObjectKey) Data.ProvedStatus) :
+    ExternalDeclarationChecks := Id.run do
   let mut selected : NameMap SourceData.NativeAssociation := {}
   for association in node.nativeAssociations do
     if association.placement == placement then
@@ -365,16 +368,22 @@ private def externalChecksOn (node : Data.NodeInventory) (placement : Name)
       if previous.isNone || (association.reference.present && !previous.any (·.reference.present)) then
         selected := selected.insert name association
   return selected.toArray.map fun (name, association) =>
-    (name, if association.reference.present then statuses.get? ⟨association.context, name.toString⟩
-      else some .missing)
+    let object : Realizations.ObjectKey := ⟨association.context, name.toString⟩
+    let status := if association.reference.present then
+      Validation.NativeLean.roleSpecs.findSome? fun (role, _) =>
+        acceptedStatuses.get? (association.realization.forRole role, object)
+      else some .missing
+    (name, status)
 
 def BlockData.visibleBody (data : BlockData) (blocks : Array α) : Array α :=
   if !data.isProof && data.adoptedStatementAvailable == some false then #[] else blocks
 
+/-- Project a node using native statuses accepted by each association's realization. -/
 def RenderNode.ofNode (label : Data.Label) (node : Data.NodeInventory)
     (author : Option Data.AuthorInfo := none)
     (assessment : Option Realizations.NodeAssessment := none)
-    (nativeChecks : Option (Std.HashMap Realizations.ObjectKey Data.ProvedStatus) := none) : RenderNode := {
+    (nativeChecks : Option (Std.HashMap (Realizations.RealizationKey × Realizations.ObjectKey) Data.ProvedStatus) :=
+      none) : RenderNode := {
   label
   kind := node.kind
   initialCount := node.count

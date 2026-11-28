@@ -413,26 +413,24 @@ private def proofModel : Realization := {
 -- Real owning-source preparation feeds the same membership boundary. It supplies
 -- no proof/review observation; membership success cannot certify native validity.
 run_cmd Lean.Elab.Command.liftTermElabM do
-  let path := "tests/VersoBlueprintTests/BlueprintRealizationAdapter/Provider.lean"
   let prepared ← NativeSource.prepare {
     project := context.project, canonical := `RealizationAdapterFixture.flagInvolutive
     moduleName := `VersoBlueprintTests.BlueprintRealizationAdapter.Provider }
   let .ok prepared := prepared | throwError "Real native owning-source preparation failed"
-  let .ok input := prepared.realizeNative {
-    id := `canonicalMembershipFlag, moduleName := prepared.moduleName, source := path }
-    { label := node, title := "Flag" } key.name
-    | throwError "Real native source model preparation failed"
+  unless prepared.roles == #[`statement, `proof] do
+    throwError "Prepared native theorem lost a checked declaration role"
+  let models : Array Realization := #[
+    { key := key.forRole `statement, role := `statement, context
+      declarations := #[{ object := prepared.declaration, projection := .statement }] },
+    { key := key.forRole `proof, role := `proof, context
+      declarations := #[{ object := prepared.declaration, projection := .implementation }] }]
   let checkedRoles : Array (Name × Array Name) := #[(prepared.canonical, prepared.roles)]
   let association : NativeAssociation := {
     realization := key, context, placement := `statement
     reference := Data.ExternalRef.ofName prepared.canonical }
-  unless input.realizations.all (fun record =>
-      (nativeMembershipIssues node record.value #[association] #[] checkedRoles).isEmpty) &&
-      input.evidence.isEmpty do
-    throwError "Real native source membership must preserve exact source identity without creating validation"
-  let some proofRecord := input.realizations.find? (·.value.role == `proof)
-    | throwError "Prepared native source omitted its proof realization"
-  let omittedProof := { proofRecord.value with declarations := #[] }
+  unless models.all (fun model => (nativeMembershipIssues node model #[association] #[] checkedRoles).isEmpty) do
+    throwError "Real native source membership must preserve exact source identity"
+  let omittedProof := { models[1]! with declarations := #[] }
   unless (nativeMembershipIssues node omittedProof #[association] #[] checkedRoles).any
       (·.code == "native-role-membership") do
     throwError "Real native proof-role source membership cannot be silently dropped"

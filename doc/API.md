@@ -484,13 +484,10 @@ reuse it sequentially within that capture only. `NativeLean.Checked` and
 inputs, never proof certificates. Ordinary consumers should use capture rather
 than assemble provider descriptors themselves.
 
-For standalone source adapters, `PreparedModel.prepareValidation` returns
-`Except Diagnostic (Input × NativeLean.Checked)`. The checked result retains the
-observation and any semantic-context diagnostics; consumers must not discard
-those diagnostics when explaining why correspondence is blocked. The
-`validate` convenience returns `Except Diagnostic Input`; use
-`prepareValidation` when diagnostics are needed.
-Ordinary graph and query consumers should continue to use `Capture.capture`.
+Standalone source adapters can use `NativeSource.prepare` for checked declaration
+identity and `NativeSource.prepareDocumented` for the declaration's own comment.
+Ordinary graph and query consumers use `Capture.capture` for admitted models and
+validation evidence.
 
 Native source association parses original bytes using the current environment's
 syntax. It does not replay elaboration or reconstruct the owning module's parser

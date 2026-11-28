@@ -190,8 +190,11 @@ This imported statement association also has a proof-facet occurrence.
       hasSubstr preview "declaration not found" && !hasSubstr preview "unverified" do
     throwError "Uncaptured display confused waiting, missing and unverified declarations"
   let name := ``attachedResult
-  let checks : Std.HashMap Realizations.ObjectKey Data.ProvedStatus :=
-    ({} : Std.HashMap Realizations.ObjectKey Data.ProvedStatus).insert ⟨⟨`lean, `otherProject⟩, name.toString⟩ .proved
+  let some association := mixed.nativeAssociations.find? (fun association =>
+    association.placement == `proof && association.reference.canonical == name)
+    | throwError "Missing proof association for the project isolation control"
+  let checks : Std.HashMap (Realizations.RealizationKey × Realizations.ObjectKey) Data.ProvedStatus := {}
+  let checks := checks.insert (association.realization.forRole `proof, ⟨⟨`lean, `otherProject⟩, name.toString⟩) .proved
   let model := RenderNode.ofNode (Name.mkSimple "proof.attachments.mixed") mixed (nativeChecks := some checks)
   unless (model.proofExternalChecks.find? (·.1 == name)) == some (name, none) do
     throwError "A declaration in another project supplied the display status"

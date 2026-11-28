@@ -308,12 +308,21 @@ def capture (state : Informal.Environment.State)
     (assessmentFor? : Name → Option Informal.Realizations.NodeAssessment :=
       fun label => snapshot?.map (·.assessmentFor label)) :
     Array Informal.RenderNode :=
-  let nativeChecks := snapshot?.map fun snapshot =>
-    snapshot.nativeChecks.foldl (init := ({} : Std.HashMap Informal.Realizations.ObjectKey Informal.Data.ProvedStatus))
-      fun checks checked => checks.insert checked.declaration checked.status
+  let nativeChecks : Std.HashMap Informal.Realizations.ObjectKey
+      Informal.Validation.NativeLean.CheckedDeclaration :=
+    (snapshot?.map (·.nativeChecks)).getD #[] |>.foldl
+      (fun checks checked => checks.insert checked.declaration checked) {}
   state.inventory.toArray.map fun (label, node) =>
+    let acceptedChecks := snapshot?.map fun snapshot =>
+      (snapshot.nativeCheckContracts (snapshot.nativeRealizationsFor label)).foldl (init := {}) fun statuses contract =>
+        match nativeChecks[contract.object]? with
+        | some checked =>
+          if snapshot.acceptsNativeCheck contract checked then
+            statuses.insert (contract.realization, contract.object) checked.status
+          else statuses
+        | none => statuses
     let rendered := Informal.RenderNode.ofNode label node (node.owner.bind state.authors.get?)
-      (assessmentFor? label) nativeChecks
+      (assessmentFor? label) acceptedChecks
     if let some snapshot := snapshot? then
       if let some source := node.sources.find? (·.adoption.isSome) then
         { rendered with adoptedStatementAvailable := some (adoptedStatementVerified snapshot source) }

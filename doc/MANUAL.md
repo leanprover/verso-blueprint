@@ -1010,6 +1010,10 @@ The consumer also records the exact UTF-8 source digest at registration, which
 capture checks before publishing the selected comment. Rebuild the consuming
 chapter after an upstream source edit. Missing, empty, inherited or ambiguous
 comments leave the native declaration available and produce a source diagnostic.
+When a declaration's own comment is identical to its `inherit_doc` target in the
+same module, Lean's `.olean` compaction can deduplicate the comment content.
+In that case, adoption can mistake the inherited comment for the declaration's own.
+See [UPC-0022](roadmap/cards/UPC-0022-expose-inherited-docstring-target/README.md).
 Module introductions remain ordinary chapter content. Adopting prose supplies
 no review judgment or proof of correspondence.
 

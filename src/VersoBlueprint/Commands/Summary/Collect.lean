@@ -20,7 +20,7 @@ Collects the assembled Blueprint environment into the serializable summary paylo
 
 open Lean
 open Informal Data Environment
-open Realizations Validation
+open Realizations
 
 register_option verso.blueprint.summary.debugDiagnostics : Bool := {
   defValue := false
@@ -126,27 +126,15 @@ private def nodeLeanSummary (snapshot : Realizations.Capture.Snapshot) (label : 
   let declarations := (realizations.flatMap (·.declarations)).foldl
     (init := #[]) fun acc declaration =>
       if acc.any (·.object == declaration.object) then acc else acc.push declaration
-  let requiredNativeChecks := snapshot.registry.requirements.filter fun requirement =>
-    match requirement.key.subject with
-    | .declaration key object =>
-      requirement.coverage == .dependencyClosure &&
-      realizations.any fun model =>
-        model.key == key &&
-        requirement.key.name == model.role &&
-        (NativeLean.roleSpec? model.role).any (fun spec => requirement.expected == .check spec.validator) &&
-        model.declarations.any fun declaration =>
-          declaration.object == object && declaration.required.contains requirement.key
-    | _ => false
+  let checks := snapshot.nativeCheckContracts realizations
   let incompleteDecls := declarations.filter fun declaration =>
-    requiredNativeChecks.any fun requirement =>
-      match requirement.key.subject with
-      | .declaration _ object => object == declaration.object &&
-          !(snapshot.registry.localResult requirement.key).complete
-      | _ => false
+    checks.any fun check => check.object == declaration.object &&
+      check.required.any fun (key, _) => !(snapshot.registry.localResult key).complete
   let missing (declaration : Realizations.Declaration) :=
     declaration.sourceIssues.any (·.code == "missing-declaration")
   let incompleteDetails := snapshot.nativeChecks.foldl (init := #[]) fun items checked =>
-    if !declarations.any (fun d => d.object == checked.declaration && !missing d) || !checked.status.isIncomplete ||
+    if !checked.status.isIncomplete || !checks.any (snapshot.acceptsNativeCheck · checked) ||
+        !declarations.any (fun d => d.object == checked.declaration && !missing d) ||
         items.any (·.decl == checked.declaration.native.toName) then
       items
     else

@@ -130,22 +130,13 @@ end RealizationAdapterFixture
 
 namespace RealizationAdapterFixture
 
-/-- Test-only construction of a source-provider model from an explicit native
-identity. This does not project a Blueprint node or test canonical capture. -/
-def prepareModel (project label canonical : Lean.Name)
-    (reader : System.FilePath → IO String := IO.FS.readFile)
-    (metadata : Informal.Data.NodeMetadata := {}) :
-    Lean.CoreM (Except Informal.Realizations.Diagnostic Informal.Realizations.NativeSource.PreparedModel) := do
-  let sourcePath := "tests/VersoBlueprintTests/BlueprintRealizationAdapter/Provider.lean"
-  let request : Informal.Realizations.NativeSource.Request := {
+/-- Read the original comment of an explicitly selected fixture declaration. -/
+def prepareOwnDocstring (project canonical : Lean.Name)
+    (reader : System.FilePath → IO String := IO.FS.readFile) :
+    Lean.CoreM (Except Informal.Realizations.Diagnostic Informal.Realizations.NativeSource.Documented) :=
+  Informal.Realizations.NativeSource.prepareDocumented {
     project, canonical
     moduleName := `VersoBlueprintTests.BlueprintRealizationAdapter.Provider }
-  match ← Informal.Realizations.NativeSource.prepareDocumented request sourcePath reader with
-  | .error diagnostic => return .error diagnostic
-  | .ok source =>
-    let origin : Informal.Realizations.Origin := {
-      id := label ++ `providerFixture, moduleName := request.moduleName, source := sourcePath }
-    return source.realize origin { toNodeMetadata := metadata, label, title := label.toString } `lean `docstring
-
+    "tests/VersoBlueprintTests/BlueprintRealizationAdapter/Provider.lean" reader
 
 end RealizationAdapterFixture

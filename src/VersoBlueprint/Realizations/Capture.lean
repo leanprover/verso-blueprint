@@ -140,6 +140,37 @@ contributions. Full authored alternatives remain available in `registry`. -/
 def Snapshot.nativeRealizationsFor (snapshot : Snapshot) (label : Name) : Array Realization :=
   ordinaryNativeRealizations snapshot.registry.contributions label
 
+/-- One declaration's ordinary native check slot, including unclassified
+fallback declarations that have no matching required contract. -/
+structure NativeCheckContract where
+  realization : RealizationKey
+  role : Name
+  object : ObjectKey
+  required : Option (RequirementKey × NativeLean.RoleSpec)
+
+/-- Find the required native check for each declaration in the selected ordinary
+native realizations of a label. -/
+def Snapshot.nativeCheckContracts (snapshot : Snapshot) (models : Array Realization) :
+    Array NativeCheckContract :=
+  models.flatMap fun model => model.declarations.map fun declaration =>
+    let key : RequirementKey := ⟨.declaration model.key declaration.object, model.role⟩
+    let required := do
+      let spec ← NativeLean.roleSpec? model.role
+      let requirement ← snapshot.registry.requirement? key
+      guard (declaration.required.contains key && requirement.expected == .check spec.validator &&
+        requirement.coverage == .dependencyClosure)
+      return (key, spec)
+    { realization := model.key, role := model.role, object := declaration.object, required }
+
+/-- A fresh check may be shared across labels. Only the exact observation
+recorded for this declaration's own contract can supply its displayed status.
+The observation may itself report an incomplete proof. -/
+def Snapshot.acceptsNativeCheck (snapshot : Snapshot) (contract : NativeCheckContract)
+    (checked : NativeLean.CheckedDeclaration) : Bool :=
+  contract.object == checked.declaration && contract.required.any fun (key, spec) =>
+    let observation := checked.observationFor spec
+    (snapshot.registry.evidenceForRequirement key).any (·.observation == .check observation)
+
 /-- Derive a consumer view from the same admitted snapshot. No source/status
 fallbacks, new checker invocation or second dependency evaluator occur here. -/
 def Snapshot.assessmentFor (snapshot : Snapshot) (label : Name) : NodeAssessment := Id.run do
@@ -147,30 +178,22 @@ def Snapshot.assessmentFor (snapshot : Snapshot) (label : Name) : NodeAssessment
   let nativeModels := snapshot.nativeRealizationsFor label
   let declarations := nativeModels.flatMap (·.declarations)
   let objects := canonical (declarations.map (·.object))
-  let nativeKey (model : Realization) (declaration : Declaration) : RequirementKey :=
-    ⟨.declaration model.key declaration.object, model.role⟩
-  let checks := nativeModels.flatMap fun model => model.declarations.map fun declaration =>
-    let key := nativeKey model declaration
-    let contract := (NativeLean.roleSpec? model.role).bind fun spec =>
-      (registry.requirement? key).filter fun value =>
-        declaration.required.contains key && value.expected == .check spec.validator &&
-          value.coverage == .dependencyClosure
-    (model.role, contract.map (·.key))
+  let checks := snapshot.nativeCheckContracts nativeModels
   -- A declaration retained at its fallback placement may have no classified
   -- role. Every selected declaration must have its native contract before a
   -- sibling can contribute to a complete node summary.
-  let coversDeclarations := !checks.isEmpty && checks.all (·.2.isSome)
-  let locallyComplete (selected : Array (Name × Option RequirementKey)) :=
+  let coversDeclarations := !checks.isEmpty && checks.all (·.required.isSome)
+  let locallyComplete (selected : Array NativeCheckContract) :=
     coversDeclarations && !selected.isEmpty &&
-      selected.all fun (_, key) => key.any fun key => (registry.localResult key).complete
+      selected.all fun check => check.required.any fun (key, _) => (registry.localResult key).complete
   -- Body checks cover selected proofs and computational implementations.
-  let bodyChecks := checks.filter (·.1 != `statement)
-  let statementComplete := locallyComplete (checks.filter (·.1 != `proof))
+  let bodyChecks := checks.filter (·.role != `statement)
+  let statementComplete := locallyComplete (checks.filter (·.role != `proof))
   let bodyComplete := locallyComplete bodyChecks
-  let proofChecks := checks.filter (·.1 == `proof)
+  let proofChecks := checks.filter (·.role == `proof)
   let proofRoleComplete := if proofChecks.isEmpty then none else some (locallyComplete proofChecks)
   let requiredComplete := coversDeclarations &&
-    checks.all fun (_, key) => key.any fun key => (registry.resultForRequirement key).complete
+    checks.all fun check => check.required.any fun (key, _) => (registry.resultForRequirement key).complete
   let uses := snapshot.uses.filter (·.source == label)
   let selects (use : SelectedUse) (model : Realization) :=
     use.context == some model.context &&
@@ -200,15 +223,7 @@ def Snapshot.assessmentFor (snapshot : Snapshot) (label : Name) : NodeAssessment
     -- accepted check, while a rejected role-disagreement check cannot borrow a
     -- sibling's accepted check.
     hasAxiomLike := snapshot.nativeChecks.any fun checked =>
-      checked.status.isAxiomLike && nativeModels.any fun model =>
-        match NativeLean.roleSpec? model.role with
-        | none => false
-        | some spec => model.declarations.any fun declaration =>
-          let key := nativeKey model declaration
-          let accepted := checked.observationFor spec
-          declaration.object == checked.declaration && declaration.required.contains key &&
-            registry.evidence.any fun evidence =>
-              evidence.requirement == key && evidence.observation == .check accepted
+      checked.status.isAxiomLike && checks.any (snapshot.acceptsNativeCheck · checked)
     nativeStatementComplete := statementComplete
     hasNativeBodyRequirement := !bodyChecks.isEmpty
     nativeBodyComplete := bodyComplete
@@ -864,15 +879,16 @@ private def ownedDefinition (name : Name) (origin : Origin) (source : Document) 
   -- The checked, owned definition still identifies the goal if its source
   -- cannot be read. Capture then records the authored validation as unavailable.
   if blank source.text then return none
-  let commands ← one (← NativeSource.parseSource name source.key.path source.text)
-  discard <| one (NativeSource.declarationAtRanges name source.text ranges.range ranges.selectionRange commands)
-  -- Equal declaration ranges identify the parsed syntax, but only the owning
-  -- compiler input can associate that syntax with the checked definition.
+  -- Verify the owning compiler input before applying ranges from the checked
+  -- definition. An edit can shift those ranges before the next build.
   let request : NativeSource.Request := {
     canonical := name, moduleName := origin.moduleName, project := source.key.context.project }
   match ← NativeSource.owningSource request source.key.path (fun _ => pure source.text) with
-  | .ok _ => return none
   | .error issue => return some { issue with origins := #[origin] }
+  | .ok text =>
+    let commands ← one (← NativeSource.parseSource name source.key.path text)
+    discard <| one (NativeSource.declarationAtRanges name text ranges.range ranges.selectionRange commands)
+    return none
 
 private def collectAuthored [Monad m] (providers : Providers m) (p : Plan)
     (collected : Collected) : ExceptT (Array Diagnostic) m Collected := do
@@ -1222,11 +1238,10 @@ private def associatedMatches (request : NativeRequest) (prepared : NativeSource
     request.range?.all (· == prepared.ranges.range) &&
     request.selectionRange?.all (· == prepared.ranges.selectionRange)
 
-/-- Pure policy evaluation of the plan against answers found by the request
-they answer. Table insertion order has no meaning, and answers to requests this
-plan does not make are ignored. Duplicate answers are rejected; missing and
-mismatched answers fail at their recipe checkpoint. The supplied facts are not
-authenticated here: production must call `observe freshly. -/
+/-- Evaluate the plan with one request-keyed table per observation family.
+Table construction rejects duplicate requests. The recipe looks up each request
+it makes and checks that its answer agrees with the request. Production uses
+`observe` to obtain fresh facts before evaluation. -/
 def evaluate (p : Plan) (observations : Observations) : Except (Array Diagnostic) Snapshot := do
   let documents ← indexResults "document" (·.path) observations.documents
   let native ← indexResults "native" (·.name.toString) observations.native

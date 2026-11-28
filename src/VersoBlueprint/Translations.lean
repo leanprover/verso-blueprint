@@ -115,6 +115,8 @@ def Registry.translations (r : Registry) : Array Translation := r.translationVal
 def Registry.claims (r : Registry) : Array Claim := r.claimValues
 def Registry.requirements (r : Registry) : Array Requirement := r.requirementValues
 def Registry.evidence (r : Registry) : Array Evidence := r.evidenceValues
+def Registry.evidenceForRequirement (r : Registry) (key : RequirementKey) : Array Evidence :=
+  r.evidenceIndex[key]?.getD #[]
 def Registry.reviewSelections (r : Registry) : Array ReviewSelection := r.reviewSelectionValues
 
 def Registry.bindingInputs (r : Registry) : Array BindingInput := r.semanticValues
@@ -570,7 +572,7 @@ def Registry.selectedReview (r : Registry) (key : RequirementKey) : Except Strin
 private def Registry.computeLocalResult (r : Registry) (key : RequirementKey) : Result := Id.run do
   let some req := r.requirement? key
     | return { status := .blocked, diagnostics := #[issue "unknown-requirement" key "Missing requirement"] }
-  let mut candidates := r.evidenceIndex[key]?.getD #[]
+  let mut candidates := r.evidenceForRequirement key
   let mut reviewIssues := #[]
   if let .review .. := req.expected then
     match r.selectedReview key with
