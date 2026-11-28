@@ -269,7 +269,11 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
               Environment.addUse blockRef dependency
             let terms ← liftM <| Docstring.persistedManualBlockTerms blocks
             pure (blocks, ← `(#[$terms,*]))
-        pure ((retainedContents, parsedContents.sourceRef?), blocks)
+        let sourceText := do
+          let first ← parsedContents.body[0]?
+          let last ← parsedContents.body.back?
+          (SourceData.originalSourceSpan? first.raw last.raw).map (·.trimAscii.toString)
+        pure ((retainedContents, parsedContents.sourceRef?), blocks, sourceText)
       | return ← ``(Block.concat #[])
     let opts ← getOptions
     let sourceLocation :=

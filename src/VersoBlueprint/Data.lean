@@ -44,7 +44,7 @@ def NodeInventory.proseView (node : NodeInventory) (realization role : Name) : O
     if source.destination.realization.name != realization || source.destination.role != some role then none
     else match source.payload with | .prose body _ => some body | _ => none
   return bodies.find? (·.hasBody) <|> bodies[0]? <|>
-    (if node.uses.any (·.role == role) then some { stx := .missing } else none)
+    (if node.uses.any (·.role == role) then some default else none)
 
 /-- The ordinary displayed prose for a role, including Markdown declaration
 docstrings. Prefer a Verso body when present, then Markdown, then placeholders. -/

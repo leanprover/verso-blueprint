@@ -17,6 +17,6 @@ run_cmd Lean.Elab.Command.liftCoreM do
     | throwError "Missing actual inline source"
   let variant : SourceData.Registration := { sources := #[{ source with
     document := ⟨⟨`lean, `otherProject⟩, source.document.path⟩
-    payload := .leanInline { stx := .missing } }] }
+    payload := .leanInline default }] }
   Environment.modify fun state => { state with
     nodeRegistrations := state.nodeRegistrations.insert label { pending with localRegistrations := #[variant] } }

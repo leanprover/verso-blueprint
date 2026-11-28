@@ -84,15 +84,13 @@ run_cmd liftTermElabM do
   let elapsed := evaluatedAt - start
   logInfo m!"split phases: observe {observedAt - start} ms; evaluate {evaluatedAt - observedAt} ms"
   let paths ← reads.get
-  ensure (paths.size == (paths.foldl (fun seen path => if seen.contains path then seen else seen.push path) #[]).size)
-    "One successful physical source read must serve every provider family"
-  ensure (paths.size < plan.documents.size + plan.native.size + plan.inline.size + plan.documented.size)
-    "Shared-reader control did not actually exercise repeated physical requests"
-  ensure (!observations.native.isEmpty && !observations.inline.isEmpty && !observations.documented.isEmpty)
-    "Native, inline and documented results must retain their separate families"
+  ensure (paths.isEmpty && plan.documents.isEmpty && observations.documents.isEmpty &&
+    !observations.native.isEmpty && !observations.documented.isEmpty &&
+    observations.native.any (·.request.name == `storedInline))
+    "Compiled inline Lean, docstrings and authored prose must perform no source reads"
   let reversed : Capture.Observations := {
     documents := observations.documents.reverse, native := observations.native.reverse
-    inline := observations.inline.reverse, documented := observations.documented.reverse
+    documented := observations.documented.reverse
     checks := observations.checks.reverse, specifications := observations.specifications.reverse
     expected := observations.expected.reverse }
   let replay ← obtain (Capture.evaluate plan reversed)
@@ -122,21 +120,15 @@ run_cmd liftTermElabM do
     match Capture.evaluate plan batch with
     | .ok _ => throwError "Malformed observation batch was admitted: {code}"
     | .error issues => ensure (issues.any (·.code == code)) s!"Wrong batch rejection: {repr issues}"
-  let some document := observations.documents[0]? | throwError "Missing actual document control"
-  rejects "missing-observation" { observations with documents := observations.documents.extract 1 observations.documents.size }
-  rejects "duplicate-observation" { observations with documents := observations.documents.push document }
-  -- An answer to a request this plan does not make is ignored.
-  let unrequestedKey := { document.request with path := "unrequested-document" }
-  let unrequested ← obtain (Capture.evaluate plan { observations with documents := observations.documents.push {
-    request := unrequestedKey, result := ({ document.result.1 with key := unrequestedKey }, #[]) } })
+  let some native := observations.native[0]? | throwError "Missing actual native request"
+  rejects "duplicate-observation" { observations with native := observations.native.push native }
+  let unrequested ← obtain (Capture.evaluate plan { observations with native := observations.native.push {
+    native with request := { native.request with name := `unrequestedDeclaration } } })
   ensure (unrequested.registry.contributions == snapshot.registry.contributions &&
     unrequested.sourceDiagnostics == snapshot.sourceDiagnostics)
-    "An unrequested answer changed the snapshot"
-  rejects "mismatched-observation" { observations with documents := observations.documents.modify 0 fun entry =>
-    { entry with result := ({ entry.result.1 with key := { entry.result.1.key with path := "wrong-document" } }, entry.result.2) } }
+    "An unrequested compiled answer changed the snapshot"
   for batch in #[
       { observations with native := observations.native.extract 1 observations.native.size },
-      { observations with inline := observations.inline.extract 1 observations.inline.size },
       { observations with documented := observations.documented.extract 1 observations.documented.size },
       { observations with checks := observations.checks.extract 1 observations.checks.size }] do
     rejects "missing-observation" batch
@@ -360,7 +352,7 @@ run_cmd liftTermElabM do
   let some leftProvider := docObservations.documented.find? (·.request == leftRequest)
     | throwError "Missing native docstring provider observation"
   let expectedDocText ← match leftProvider.result with
-    | .ok documented => pure documented.rawDocstring
+    | .ok documented => pure documented.content
     | .error issue => throwError "Native docstring provider failed: {repr issue}"
   ensure (generatedSelections.size == 2 && !expectedDocText.trimAscii.isEmpty &&
     leftSelectionKey != rightSelectionKey &&
@@ -387,45 +379,19 @@ run_cmd liftTermElabM do
     ensure ((registry.resultFor (.realization model)).status == .unassessed)
       s!"Source presence invented validation for {model.name}"
   for document in registry.documents do
-    if document.key.path.contains "#selection:" then
-      let some sourceStep := allSourceSteps.find? (·.source.selectedDocumentKey == document.key)
-        | throwError "Selected document lost its source owner"
-      let expectedText ← match sourceStep.source.fence, sourceStep.documented with
-        | some _, _ =>
-          let key := sourceStep.source.document
-          let rawText ← IO.FS.readFile key.path
-          let lfText := rawText.crlfToLf
-          let expected ← obtain (sourceStep.source.selectedFenceText { key, text := rawText })
-          let lfExpected ← obtain (sourceStep.source.selectedFenceText { key, text := lfText })
-          -- Line-ending edits outside the selected fence body keep its exact bytes.
-          let outsideCrlf := match lfText.splitOn "\n" with
-            | first :: rest => first ++ "\r\n" ++ "\n".intercalate rest
-            | [] => lfText
-          let outsideText ← obtain (sourceStep.source.selectedFenceText { key, text := outsideCrlf })
-          ensure (outsideText == lfExpected)
-            "Line-ending edit outside the selected fence body altered selected bytes"
-          -- Line-ending edits inside the selected fence body preserve raw bytes for bindings.
-          let crlfText ← obtain (sourceStep.source.selectedFenceText
-            { key, text := lfText.replace "\n" "\r\n" })
-          ensure (crlfText == lfExpected.replace "\n" "\r\n" &&
-              (!lfExpected.contains '\n' || crlfText != lfExpected))
-            "CRLF owning source lost raw fence body line endings"
-          pure expected
-        | none, some (.ok request) =>
-          let some provider := observations.documented.find? (·.request == request)
-            | throwError "Selected native docstring lost its provider observation"
-          match provider.result with
-          | .ok documented => pure documented.rawDocstring
-          | .error issue => throwError "Selected native docstring provider failed: {repr issue}"
-        | none, some (.error issue) => throwError "Selected native docstring was unavailable: {repr issue}"
-        | none, none =>
-          -- The compiled buffer is the unchanged source file in this control.
-          ensure (sourceStep.source.proseBuffer? == some (← IO.FS.readFile sourceStep.source.document.path))
-            "Selected prose syntax does not point into its original source bytes"
-          obtain sourceStep.source.selectedText
-      ensure (document.text == expectedText) "Selected document differs from exact original source bytes"
-    else
-      ensure (document.text == (← IO.FS.readFile document.key.path)) "Canonical document is not original source bytes"
+    ensure (document.key.path.startsWith "module:") "Compiled source key must be module-relative"
+    let some sourceStep := allSourceSteps.find? (·.source.selectedDocumentKey == document.key)
+      | throwError "Selected document lost its source owner"
+    let expectedText ← match sourceStep.documented with
+      | none => obtain sourceStep.source.selectedText
+      | some (.error issue) => throwError "Selected native docstring was unavailable: {repr issue}"
+      | some (.ok request) =>
+        let some provider := observations.documented.find? (·.request == request)
+          | throwError "Selected native docstring lost its provider observation"
+        match provider.result with
+        | .ok documented => pure documented.content
+        | .error issue => throwError "Selected native docstring provider failed: {repr issue}"
+    ensure (document.text == expectedText) "Selected document differs from the compiled content"
   for evidence in registry.evidence do
     ensure (registry.bindingFor evidence.requirement == some evidence.binding) "Observation belongs to another candidate"
   ensure ((registry.requirements.filter (·.key.name == `expectedProof)).isEmpty)
@@ -433,11 +399,40 @@ run_cmd liftTermElabM do
   let after := Environment.informalExt.getState (← getEnv)
   ensure (reprStr before == reprStr after) "Capture mutated persistent Blueprint state"
 
+-- Only explicit external inputs may use the document reader.
+run_cmd liftTermElabM do
+  let external : DocumentKey := ⟨⟨`rocq, `blueprintFixtures⟩, "tests/fixtures/realizations/rocq/Flag.v"⟩
+  let sameFile := { external with context.project := `otherProject }
+  let leanFile := { external with path := "tests/VersoBlueprintTests/BlueprintRealizationCapture.lean" }
+  let absolute := { external with path := "/unavailable/Flag.v" }
+  let raw : Capture.Raw := {
+    nodes := #[], registered := {}, facts := [], initialIssues := #[]
+    authored := #[{
+      origin := { id := `externalSources, moduleName := ← getMainModule, source := "external source test" }
+      project := `blueprintFixtures
+      authored := { sources := #[external, sameFile, leanFile, absolute] } }] }
+  let plan := Capture.plan raw
+  let reads ← IO.mkRef 0
+  let observations ← obtain (← Capture.observe plan (fun path => do
+    reads.modify (· + 1)
+    IO.FS.readFile path))
+  let snapshot ← obtain (Capture.evaluate plan observations)
+  let first := snapshot.registry.document? external
+  ensure ((← reads.get) == 1 && first.any (·.text.contains "Theorem toggle_involutive") &&
+    first.map (·.text) == (snapshot.registry.document? sameFile).map (·.text) &&
+    snapshot.sourceDiagnostics.documents.size == 2 &&
+    snapshot.sourceDiagnostics.documents.all (·.2.code == "invalid-external-source"))
+    "Capture must read the relative external file once and reject Lean and absolute inputs"
+  match Capture.evaluate plan { observations with documents := #[] } with
+  | .error issues => ensure (issues.any (·.code == "missing-observation")) "Wrong missing document diagnostic"
+  | .ok _ => throwError "Capture evaluated an authored external document without its observation"
+
 run_cmd liftTermElabM do
   let label := Name.mkSimple "storage.source"
   let state := Environment.informalExt.getState (← getEnv)
   let some registered := state.inventory.get? label | throwError "Missing fenced source fixture"
-  let sources := registered.sources.filter (·.fence.isSome)
+  let sources := registered.sources.filter fun source =>
+    source.context.language == `tex || source.context.language == `rust
   let texSources := sources.filter (·.context.language == `tex)
   let some firstTex := texSources[0]? | throwError "Missing first TeX fence"
   let some secondTex := texSources[1]? | throwError "Missing second TeX fence"
@@ -465,43 +460,62 @@ run_cmd liftTermElabM do
     selectedText real secondTex == some "  A second TeX source in the same file.\n" &&
     selectedText real rust == some "fn example() -> &'static str { \"𝒫::bad»name\" }\n")
     s!"Fenced selections did not retain their exact authored bytes: {repr real.registry.documents}"
-  let unrelated ← captureWith raw fun path => do
-    return (← IO.FS.readFile path).replace "A source with Unicode 𝒫 and several realizations." "Different surrounding prose."
-  ensure (unrelated.diagnostics.isEmpty && unrelated.registry.documents == real.registry.documents && sources.all (fun source =>
-      (real.registry.bindingFor (review source)).isSome &&
-      unrelated.registry.bindingFor (review source) == real.registry.bindingFor (review source)))
-    "Changing surrounding prose invalidated an unchanged fenced source"
-  let changed ← captureWith raw fun path => do
-    return (← IO.FS.readFile path).replace "\\forall x," "\\exists x,"
-  ensure (selectedText changed firstTex == some "" &&
-    changed.registry.bindingFor (review firstTex) != real.registry.bindingFor (review firstTex) &&
-    changed.sourceDiagnostics.documents.size == 1 &&
-    changed.sourceDiagnostics.documents.any (fun (key, issue) =>
-      key == firstTex.selectedDocumentKey && issue.code == "source-selection-unavailable") &&
-    (sources.filter (·.selectedDocumentKey != firstTex.selectedDocumentKey)).all (fun source =>
-      changed.registry.bindingFor (review source) == real.registry.bindingFor (review source)))
-    "A stale TeX fence affected another selection or retained its original binding"
-  let moved ← captureWith raw fun path => do
-    return "\n" ++ (← IO.FS.readFile path)
-  ensure (sources.all (fun source => selectedText moved source == some "" &&
-      moved.sourceDiagnostics.documents.any fun (key, issue) =>
-        key == source.selectedDocumentKey && issue.code == "source-selection-unavailable"))
-    "Fences moved away from their compiled locations remained available"
-  let unreadable ← captureWith raw fun _ => throw (IO.userError "injected unreadable fence owner")
-  ensure (unreadable.registry.documents.size == sources.size && sources.all (fun source =>
-      selectedText unreadable source == some "" &&
-      unreadable.sourceDiagnostics.documents.any fun (key, issue) =>
-        key == source.selectedDocumentKey && issue.code == "source-unavailable"))
-    "An unreadable fence owner did not retain per-selection unavailability"
-  let .markup markup _ := firstTex.payload | throwError "Missing actual fenced TeX selection"
-  let invalidFence := SourceData.FencedSelection.ofSyntax "" .missing .missing
-  let invalid := { firstTex with payload := .markup markup (some invalidFence) }
-  let unsupported ← captureWith { raw with
-    nodes := #[(label, { registered with sources := #[invalid], uses := #[], nativeAssociations := #[] })]
-    authored := #[] } IO.FS.readFile
-  ensure (unsupported.registry.documents.size == 1 && selectedText unsupported invalid == some "" &&
-    unsupported.diagnostics.any (·.code == "source-selection-unavailable"))
-    "A synthetic fence silently fell back to the whole owning file"
+-- Display paths cannot grant a module ownership of an inline declaration.
+run_cmd liftTermElabM do
+  let env ← getEnv
+  let path := "unqualified-old-file.lean"
+  let native := ``CaptureFenceOwner.unrelatedNative
+  let owner := `VersoBlueprintTests.BlueprintRealizationCapture.FenceOwner
+  let labels := #[
+    ("capture.inlineOwnerMissing", Name.anonymous),
+    ("capture.inlineOwnerMismatch", ← getMainModule),
+    ("capture.inlineOwnerMatched", owner)]
+  try
+    for (label, moduleName) in labels do
+      let label := Name.mkSimple label
+      let selection : SourceData.SourceSelection := {
+        destination := ⟨⟨label, `lean⟩, none⟩
+        document := ⟨⟨`lean, `blueprintFixtures⟩, path⟩
+        source := .found { path, range := default }
+        payload := .leanInline { moduleName, definedDefs := #[{ name := native }] } }
+      let some _ ← Environment.contribute label { sources := #[selection] }
+        | throwError "Inline test registration rejected"
+    let raw := Capture.Raw.ofState (Environment.informalExt.getState (← getEnv))
+    let plan := Capture.plan { raw with
+      nodes := raw.nodes.filter (fun (label, _) => labels.any (fun entry => label == Name.mkSimple entry.1)),
+      authored := #[] }
+    let observations ← obtain (← Capture.observe plan)
+    let snapshot ← obtain (Capture.evaluate plan observations)
+    for (label, moduleName) in labels do
+      let view := snapshot.assessmentFor (Name.mkSimple label)
+      let issue := snapshot.sourceDiagnostics.nodes.any fun (node, diagnostic) =>
+        node == Name.mkSimple label && diagnostic.code == "source-association-unavailable" &&
+          diagnostic.subject == native.toString
+      let accepted := moduleName == owner
+      ensure (issue == !accepted && view.requiredComplete == accepted &&
+        (snapshot.registry.localResult (implementationKey label native)).complete == accepted)
+        s!"Capture did not enforce the typed inline source owner for {label}"
+  finally
+    setEnv env
+
+-- Module DocumentKeys preserve the typed distinction even when pretty-printing collides.
+run_cmd liftTermElabM do
+  let env ← getEnv
+  let atomic := Name.mkSimple "foo.bar»"
+  let nested := Name.str (Name.mkSimple "foo") "bar»"
+  ensure (atomic != nested && atomic.toString == nested.toString) "Expected ambiguous printed module names"
+  let documentKey (moduleName : Name) : TermElabM DocumentKey := do
+    setEnv (env.setMainModule moduleName)
+    let source ← Environment.sourceAt `moduleKeyFixture `verso (some `statement) `verso
+      (.text "module key fixture") .missing
+    return source.document
+  try
+    let atomicKey ← documentKey atomic
+    let nestedKey ← documentKey nested
+    ensure (atomicKey.context == nestedKey.context && atomicKey.path != nestedKey.path)
+      "Distinct typed module names selected the same logical document path"
+  finally
+    setEnv env
 
 -- Source-association diagnostics retain typed ownership and readable subjects. They appear
 -- on the owning non-Lean node's assessment and do not leak to another node.
@@ -540,8 +554,8 @@ run_cmd liftTermElabM do
   -- observations are unchanged. Equal paths in different contexts are distinct.
   let documentIssue : Diagnostic := {
     code := "test-document-failure", subject := "provider input", message := "Injected document failure" }
-  for (document, belongs) in #[(source.document, true),
-      ({ source.document with context := { source.document.context with project := `unrelatedProject } }, false)] do
+  for (document, belongs) in #[(source.selectedDocumentKey, true),
+      ({ source.selectedDocumentKey with context := { source.context with project := `unrelatedProject } }, false)] do
     let scopedSnapshot := { snapshot with sourceDiagnostics := { documents := #[(document, documentIssue)] } }
     let details := (scopedSnapshot.assessmentFor label).details
     let errors := (details.getObjValAs? (Array Json) "sourceDiagnostics").toOption.getD #[]
@@ -577,8 +591,6 @@ run_cmd liftTermElabM do
   let real ← captureWith IO.FS.readFile
   let unreadable ← captureWith fun path => throw (IO.userError s!"injected unreadable source {path}")
   let expectedText ← obtain prose.selectedText
-  ensure (prose.proseBuffer? == some (← IO.FS.readFile prose.document.path))
-    "Prose syntax does not point into its original source bytes"
   let selected (snapshot : Capture.Snapshot) :=
     snapshot.registry.documents.find? (·.key == prose.selectedDocumentKey)
   ensure (!expectedText.trimAscii.isEmpty && (selected real).map (·.text) == some expectedText &&
@@ -607,7 +619,7 @@ run_cmd liftTermElabM do
       project := `blueprintFixtures
       authored := { requirements := #[{ key := review, expected := .review `proofCorrespondence `MockReviewer }] } }] }
   let plan := Capture.plan raw
-  ensure (plan.documents.isEmpty && plan.inline.isEmpty && plan.documented.isEmpty && !plan.native.isEmpty)
+  ensure (plan.documents.isEmpty && plan.documented.isEmpty && !plan.native.isEmpty)
     "The control must request only plain native declarations"
   let captureWith (reader : System.FilePath → IO String) : TermElabM Capture.Snapshot := do
     let observations ← obtain (← Capture.observe plan reader)
@@ -671,179 +683,21 @@ run_cmd liftTermElabM do
     (snapshot.registry.resultFor (.realization implementation)).complete)
     "A plain native declaration whose module source is not on the search path must still be captured"
 
--- Original inline text, including a supplementary Unicode character before the
--- declaration, is associated through its owning FileMap and native ranges.
+-- Docstrings from Lean fences and incremental documents come from the same
+-- compiled metadata as top-level declarations.
 run_cmd liftTermElabM do
-  let state := Environment.informalExt.getState (← getEnv)
-  let sources := (state.nodeRegistrations.getD (Name.mkSimple "storage.source") {}).registrations.flatMap (·.sources)
-  let some source := sources.find? (fun source => match source.payload with | .leanInline _ => true | _ => false)
-    | throwError "Missing real inline source"
-  let .leanInline code := source.payload | throwError "Wrong payload"
-  let request : NativeSource.Request := {
-    project := `blueprintFixtures, canonical := `storedInline
-    moduleName := `VersoBlueprintTests.BlueprintCanonicalSourcePersistence.Owner }
-  let path := source.document.path
-  let prepared ← obtain (← NativeSource.prepareInline request path code)
-  let text ← IO.FS.readFile path
-  let some ranges ← findDeclarationRanges? `storedInline | throwError "Missing inline native ranges"
-  ensure (text.contains '𝒫' && prepared.ranges.range == ranges.range &&
-    prepared.ranges.selectionRange == ranges.selectionRange) "Inline source lost its Unicode FileMap association"
-  for result in #[
-      ← NativeSource.prepareInline request path { code with stx := .missing },
-      ← NativeSource.prepareInline request path { code with definedDefs := #[] },
-      ← NativeSource.prepareInline request path code (fun _ => pure (text ++ "\n-- source changed\n")),
-      ← NativeSource.prepareInline { request with moduleName := `WrongOwner } path code,
-      ← NativeSource.prepareInline { request with range? := some { prepared.ranges.range with charUtf16 := prepared.ranges.range.charUtf16 + 1 } } path code] do
-    ensure (!result.isOk) "Invalid/synthetic/stale inline association was accepted"
-  IO.FS.withTempFile fun file alternate => do
-    file.putStr text
-    file.flush
-    ensure ((← IO.FS.realPath path) != (← IO.FS.realPath alternate))
-      "Inline impersonation control must select another physical file"
-    let result ← NativeSource.prepareInline request alternate.toString code
-    ensure (match result with
-      | .error issue => issue.code == "source-association-unavailable"
-      | .ok _ => false) "A byte-identical file with a different physical path impersonated the inline owner"
-
--- A successful native declaration inside a Lean fence has a padded parser
--- buffer. Its own comment must come from the exact actual fence in the file.
-run_cmd liftTermElabM do
-  let label := Name.mkSimple "capture.fencedAttribute"
   let raw := Capture.Raw.ofState (Environment.informalExt.getState (← getEnv))
-  let some (_, node) := raw.nodes.find? (·.1 == label)
-    | throwError "Missing fenced attribute node"
-  let some source := node.sources.find? (·.ownDocstring.isSome)
-    | throwError "Missing real attribute source from the Lean fence"
-  let some buffer := source.proseBuffer? | throwError "Missing retained padded input"
-  let physical ← IO.FS.realPath source.document.path
-  let text ← IO.FS.readFile physical
-  let comment := "\nA fenced declaration owns this 𝒫 comment.\n"
-  ensure (buffer != text && buffer.contains comment) "The fixture must retain Verso's padded fence input"
-  let plan := Capture.plan { raw with nodes := #[(label, node)], facts := raw.facts.filter (·.label == label) }
-  let capture (replacement : String) : TermElabM Capture.Snapshot := do
-    let observations ← obtain (← Capture.observe plan fun path =>
-      if path == physical then pure replacement else IO.FS.readFile path)
-    obtain (Capture.evaluate plan observations)
-  let selected (snapshot : Capture.Snapshot) :=
-    (snapshot.registry.documents.find? (·.key == source.selectedDocumentKey)).map (·.text)
-  let genuine ← capture text
-  ensure (selected genuine == some comment && genuine.sourceDiagnostics.nodes.isEmpty)
-    "The checked fence did not publish its own exact raw doc comment"
-  let crlf ← capture (text.replace "\n" "\r\n")
-  ensure (selected crlf == some (comment.replace "\n" "\r\n") && crlf.sourceDiagnostics.nodes.isEmpty)
-    "Checked fence selection lost the owning file's original CRLF comment bytes"
-  for edited in #[
-      text.replace "owns this 𝒫 comment" "lost this 𝒫 comment",
-      text.replace "```lean \"capture.fenceDisplay\"" "```rust \"capture.fenceDisplay\""] do
-    ensure (edited != text && edited.utf8ByteSize == text.utf8ByteSize)
-      "Stale source controls must preserve declaration byte ranges"
-    let rejected ← capture edited
-    ensure (selected rejected == some "" && rejected.sourceDiagnostics.nodes.any fun (owner, issue) =>
-      owner == label && issue.code == "source-selection-unavailable")
-      "Edited or non-Lean fence source reused an old checked attribute comment"
-
-run_cmd liftTermElabM do
-  let label := Name.mkSimple "capture.incrementalFencedAttribute"
-  let raw := Capture.Raw.ofState (Environment.informalExt.getState (← getEnv))
-  let some (_, node) := raw.nodes.find? (·.1 == label) | throwError "Missing incremental fenced attribute"
-  let some source := node.sources.find? (·.ownDocstring.isSome) | throwError "Missing incremental fence source"
-  let plan := Capture.plan { raw with nodes := #[(label, node)], facts := raw.facts.filter (·.label == label) }
-  let snapshot ← obtain (Capture.evaluate plan (← obtain (← Capture.observe plan)))
-  let selected := snapshot.registry.documents.find? (·.key == source.selectedDocumentKey)
-  ensure (selected.any (·.text == " An own comment in an incremental document. ") &&
-      snapshot.sourceDiagnostics.nodes.isEmpty)
-    "The checked incremental #doc fence did not publish its own exact comment"
-  let request : NativeSource.Request := {
-    project := `blueprintFixtures
-    canonical := `CaptureFenceOwner.precedingDocumented
-    moduleName := `VersoBlueprintTests.BlueprintRealizationCapture.IncrementalFenceOwner }
-  let preceding ← obtain (← NativeSource.selectDocumented request source.document.path)
-  ensure (preceding.rawDocstring == " This declaration precedes the incremental document. ")
-    "Top-level comment preceding an incremental #doc did not select cleanly"
-
--- Source attribution is per registration. Only the genuine imported block and
--- its compatible copy may use the shared declaration and native check.
-run_cmd liftTermElabM do
-  let env ← getEnv
-  try
-    let good := Name.mkSimple "storage.source"
-    let copy := Name.mkSimple "capture.inlineCopy"
-    let bad := Name.mkSimple "capture.inlineBad"
-    let repeated := Name.mkSimple "capture.inlineRepeatedName"
-    let stale := Name.mkSimple "capture.inlineStaleBuffer"
-    let shifted := Name.mkSimple "capture.inlineShiftedRange"
-    let emptyLiteral := Name.mkSimple "capture.inlineEmptyLiteral"
-    let state := Environment.informalExt.getState env
-    let some node := state.inventory.get? good | throwError "Missing source fixture"
-    let some source := node.sources.find? (·.payload matches .leanInline _) | throwError "Missing block"
-    let .leanInline code := source.payload | throwError "Expected Lean block"
-    let staleBuffer := (← IO.FS.readFile source.document.path) ++ "\n-- later revision\n"
-    let staleSyntax := code.stx.rewriteBottomUp fun stx =>
-      match stx.getInfo? with
-      | some (.original lead start trail stop) =>
-        stx.setInfo (.original { lead with str := staleBuffer } start { trail with str := staleBuffer } stop)
-      | _ => stx
-    let emptySyntax := code.stx.modifyArgs fun args => args.map fun arg =>
-      match arg.isStrLit?, arg.getHeadInfo with
-      | some _, .original lead start trail _ => arg.setInfo (.original lead start trail start)
-      | _, _ => arg
-    for (label, payload) in #[(copy, code), (bad, { code with stx := .missing }),
-        (repeated, { code with definedDefs := code.definedDefs ++ code.definedDefs }),
-        (stale, { code with stx := staleSyntax }), (shifted, code),
-        (emptyLiteral, { code with stx := emptySyntax })] do
-      let location := if label != shifted then source.source else
-        { source.source with location := source.source.location.map fun loc =>
-            { loc with range := { loc.range with start := { loc.range.start with character := loc.range.start.character + 1 } } } }
-      let registration := { source with source := location, payload := .leanInline payload, destination := {
-        source.destination with realization := { source.destination.realization with node := label } } }
-      ensure (← Environment.contribute label { sources := #[registration] }).isSome
-        "Expected a structurally accepted source registration"
-    let raw := Capture.Raw.ofState (Environment.informalExt.getState (← getEnv))
-    let labels := #[good, copy, bad, repeated, stale, shifted, emptyLiteral]
-    let rows := raw.nodes.filter fun row => labels.contains row.1
-    ensure (rows.size == labels.size) "Accepted source rows disappeared"
-    let plan := Capture.plan { raw with nodes := rows }
-    let reversed := Capture.plan { raw with nodes := rows.reverse }
-    let check (snapshot : Capture.Snapshot) := do
-      let object := snapshot.registry.objects.find? (·.key.native == "storedInline")
-      ensure (object.any (·.resolution == .resolved)) "A malformed registration hid the genuine object"
-      for label in labels do
-        let valid := label == good || label == copy
-        let req := implementationKey (Data.Label.publicString label) `storedInline
-        ensure ((snapshot.registry.localResult req).complete == valid)
-          s!"Wrong local native assessment for {label}"
-        let diagnostic := snapshot.sourceDiagnostics.nodes.any fun (owner, issue) =>
-          owner == label && issue.code == "source-association-unavailable"
-        ensure (diagnostic == !valid) s!"Source diagnostic attributed to the wrong owner: {label}"
-      ensure ((snapshot.assessmentFor copy).requiredComplete &&
-        !(snapshot.assessmentFor bad).requiredComplete) "Public assessment borrowed another owner's source"
-    for order in #[plan, reversed] do
-      let answers ← obtain (← Capture.observe order)
-      ensure (answers.inline.size == 4 && (answers.inline.filter (·.result.isOk)).size == 1)
-        "Expected one shared pass and separate failures for the buffer, block range and literal range"
-      for replay in #[plan, reversed] do
-        check (← obtain (Capture.evaluate replay answers))
-    -- Even the genuine occurrence's answer at the same owner, file and
-    -- location cannot make a later malformed selection usable during replay.
-    let goodOnly := Capture.plan { raw with nodes := rows.filter (·.1 == good) }
-    let answers ← obtain (← Capture.observe goodOnly)
-    let changedPlan (stx : Syntax) :=
-      let broken := { source with payload := .leanInline { code with stx } }
-      let changed := { node with sources := node.sources.map fun item =>
-        if item.payload matches .leanInline _ then broken else item }
-      Capture.plan { raw with nodes := #[(good, changed)] }
-    for stx in #[staleSyntax, emptySyntax] do
-      match Capture.evaluate (changedPlan stx) answers with
-      | .ok _ => throwError "An old answer served a different buffer or literal range at the same address"
-      | .error issues => ensure (issues.any (·.code == "missing-observation")) "Wrong replay rejection"
-    let changedSnapshot ← obtain (Capture.evaluate (changedPlan .missing) answers)
-    ensure (changedSnapshot.registry.objects.any (fun o => o.key.native == "storedInline" &&
-        o.resolution == .unsupported) &&
-      !(changedSnapshot.registry.localResult (implementationKey "storage.source" `storedInline)).complete &&
-      changedSnapshot.sourceDiagnostics.nodes.any (fun (owner, issue) =>
-        owner == good && issue.code == "source-association-unavailable"))
-      "A previous good answer was replayed onto a malformed occurrence at the same address"
-  finally setEnv env
+  for (label, comment) in #[("capture.fencedAttribute", "A fenced declaration owns this 𝒫 comment."),
+      ("capture.incrementalFencedAttribute", "An own comment in an incremental document.")] do
+    let label := Name.mkSimple label
+    let some (_, node) := raw.nodes.find? (·.1 == label) | throwError "Missing fenced declaration"
+    let some source := node.sources.find? (·.ownDocstring.isSome) | throwError "Missing compiled docstring"
+    let plan := Capture.plan { raw with nodes := #[(label, node)], facts := raw.facts.filter (·.label == label) }
+    let observed ← obtain (← Capture.observe plan fun _ => throw (IO.userError "Unexpected source read"))
+    let snapshot ← obtain (Capture.evaluate plan observed)
+    ensure (observed.documents.isEmpty && snapshot.sourceDiagnostics.nodes.isEmpty &&
+      (snapshot.registry.document? source.selectedDocumentKey).any (·.text.trimAscii.toString == comment))
+      "A fenced definition lost its direct compiled docstring"
 
 -- Specifications remain independently authored, with all origin variants kept.
 def expectedTrue : Prop := True
@@ -869,10 +723,9 @@ def expectedModuleOpen : Prop := scopedSourceTruth
 end
 
 -- Actual owned propositions and native proof, through ordinary authoring and
--- capture. Scoped syntax must preserve both original declaration/name ranges.
+-- capture. The compiled declaration retains both original ranges.
 run_cmd liftTermElabM do
   let originalEnv ← getEnv
-  let text := (← getFileMap).source
   for expected in #[``expectedTrue, ``expectedOption, ``expectedModuleOpen,
       ``expectedScoped, ``expectedNested] do
     try
@@ -884,27 +737,8 @@ run_cmd liftTermElabM do
         s!"Owned expected proposition lost its exact source association: {expected}"
       let some ranges ← findDeclarationRanges? expected
         | throwError "Missing original expected-proposition ranges"
-      let commands ← obtain (← NativeSource.parseSource expected (← getFileName) text)
-      let declaration ← obtain (NativeSource.declarationAtRanges expected text
-        ranges.range ranges.selectionRange commands)
-      for (whole, selection) in #[
-          ({ ranges.range with charUtf16 := ranges.range.charUtf16 + 1 }, ranges.selectionRange),
-          (ranges.range, { ranges.selectionRange with charUtf16 := ranges.selectionRange.charUtf16 + 1 })] do
-        match NativeSource.declarationAtRanges expected text whole selection commands with
-        | .error issue =>
-          ensure (issue.code == "source-association-unavailable")
-            "Scoped lookup changed range-mismatch diagnostics"
-        | .ok _ => throwError "Scoped declaration bypassed exact original/name ranges"
-      match NativeSource.declarationAtRanges expected text ranges.range ranges.selectionRange
-          (commands ++ commands) with
-      | .error issue =>
-        ensure (issue.code == "ambiguous-docstring")
-          "Scoped lookup lost ambiguity rejection"
-      | .ok _ => throwError "Duplicated scoped declaration was accepted"
-      let synthetic := declaration.rewriteBottomUp fun stx =>
-        stx.setInfo (.synthetic (stx.getPos?.getD 0) (stx.getTailPos?.getD 0) true)
-      ensure (!(NativeSource.declarationAtRanges expected text ranges.range ranges.selectionRange
-        #[synthetic]).isOk) "Scoped declaration accepted synthetic source positions"
+      ensure (ranges.range.pos.line > 0 && ranges.selectionRange.pos.line > 0)
+        "Compiled specification must retain named declaration ranges"
     finally
       setEnv originalEnv
 
@@ -971,15 +805,14 @@ run_cmd liftTermElabM do
     { observations with expected := observations.expected.push unrequestedAnswer })
   ensure (unrequested.registry.contributions == snapshot.registry.contributions)
     "An unrequested expected-goal answer changed the snapshot"
-  -- An answer for other documents or other specification bytes answers a
-  -- different request; an answer whose content disagrees with its request is
-  -- mismatched.
+  -- Compiled expectations are identified by owner and witness.
+  let unrelated : DocumentKey := ⟨⟨`rocq, `unrequested⟩, "foreign.v"⟩
   rejects "missing-observation" { observations with expected := observations.expected.modify 0 fun entry =>
-    { entry with request := { entry.request with documents := #[] } } }
+    { entry with request := { entry.request with documents := #[unrelated] } } }
   rejects "mismatched-observation" { observations with expected := observations.expected.modify 0 fun entry =>
-    { entry with result := .ok { originalChecked with goal := { originalChecked.goal with documents := #[] } } } }
+    { entry with result := .ok { originalChecked with goal := { originalChecked.goal with documents := #[unrelated] } } } }
   rejects "missing-observation" { observations with specifications := observations.specifications.modify 0 fun entry =>
-    { entry with request := { entry.request with document := { entry.request.document with text := "different specification bytes" } } } }
+    { entry with request := { entry.request with expected := `wrongSpecification } } }
   let env ← getEnv
   try
     Authoring.expectNative `competingExpectation (Name.mkSimple "capture.complete") `RealizationCaptureFixture.expectedFalse
@@ -988,50 +821,17 @@ run_cmd liftTermElabM do
     | .error issues => ensure (issues.any (·.code == "semantic-conflict")) s!"Wrong specification rejection: {repr issues}"
   finally setEnv env
 
--- A checked, owned goal stays in capture even when its specification source
--- is unavailable or has been edited since the build.
+-- A compiled specification requires no document observation.
 run_cmd liftTermElabM do
-  let target := Name.mkSimple "capture.complete"
-  let sibling := Name.mkSimple "storage.source"
   let plan := Capture.plan (Capture.Raw.ofState (Environment.informalExt.getState (← getEnv)))
-  let some goal := plan.expected.find? (·.node == target)
-    | throwError "Missing authored expectation"
-  let spec := goal.specification.document
-  let sourcePath ← IO.FS.realPath spec.path
-  let text ← IO.FS.readFile sourcePath
-  let observe (readSpec : IO String) := Capture.observe plan fun path =>
-    if path == sourcePath then readSpec else IO.FS.readFile path
-  let baseline ← obtain (Capture.evaluate plan (← obtain (← observe (pure text))))
-  let requirement := key "capture.complete" ``complete `expectedProof
-  ensure ((baseline.registry.resultForRequirement requirement).complete &&
-    (baseline.assessmentFor sibling).hasNativeDeclarations)
-    "The unedited specification must complete before testing source changes"
-  let changed := "Owning source bytes disagree with the checked declaration's build input"
-  for (readSpec, code, subject, reason) in #[
-      ((throw (IO.userError "specification source is unreadable") : IO String),
-        "source-unavailable", spec.path, "Cannot read canonical source"),
-      (pure " \n", "source-unavailable", spec.path, "Canonical source is empty"),
-      (pure "def differentSpec : Prop := True\n", "source-selection-unavailable", toString goal.expected, changed),
-      (pure ("\n" ++ text), "source-selection-unavailable", toString goal.expected, changed)] do
-    let observations ← obtain (← observe readSpec)
-    let snapshot ← obtain (Capture.evaluate plan observations)
-    let result := snapshot.registry.resultForRequirement requirement
-    let some evidence := snapshot.registry.evidence.find? (·.requirement == requirement)
-      | throwError "Missing unavailable authored specification observation"
-    let .proof observation := evidence.observation
-      | throwError "Authored specification observation was not an expected-goal proof"
-    ensure (result.status == .blocked && result.diagnostics.any (·.code == "validation-unavailable") &&
-      observation.outcome == .unavailable && observation.coverage == .subject &&
-      observation.explanation.contains reason)
-      "Unavailable specification did not preserve the reason its authored contract is blocked"
-    let owners := snapshot.sourceDiagnostics.nodes.filterMap fun (label, diagnostic) =>
-      if diagnostic.code == code && diagnostic.subject == subject && diagnostic.message == reason then
-        some label else none
-    ensure (owners == #[target] && snapshot.assessmentFor sibling == baseline.assessmentFor sibling)
-      "Unavailable specification lost its owning node, source path, or reason"
-    let assessment := snapshot.assessmentFor target
-    ensure (assessment.nativeLocallyComplete && assessment.requiredComplete)
-      "Unavailable independent specification blocked a current checked native declaration"
+  let reads ← IO.mkRef 0
+  let observed ← obtain (← Capture.observe plan (fun _ => do
+    reads.modify (· + 1)
+    throw (IO.userError "Unexpected source read")))
+  let snapshot ← obtain (Capture.evaluate plan observed)
+  ensure ((← reads.get) == 0 && observed.documents.isEmpty &&
+    (snapshot.registry.resultForRequirement (key "capture.complete" ``complete `expectedProof)).complete)
+    "A compiled expectation must be checked without opening its specification file"
 
 run_cmd liftTermElabM do
   let env ← getEnv
@@ -1042,24 +842,28 @@ run_cmd liftTermElabM do
     | .error issues => ensure (issues.any (·.code == "ambiguous-native-expectation")) "Wrong multi-witness diagnostic"
   finally setEnv env
 
--- A plain native declaration rests on the compiled environment: an association
--- whose recorded owning path cannot be read neither reports an unavailable
--- source nor blocks the declaration's real passed native check.
+private def withDifferentRange (association : SourceData.NativeAssociation) :
+    TermElabM SourceData.NativeAssociation := do
+  let some ranges ← findDeclarationRanges? association.reference.canonical
+    | throwError "Missing compiled ranges for replay control"
+  let range? := if association.reference.range?.isSome then none else some ranges.range
+  return { association with reference := { association.reference with range? } }
+
+-- Two distinct range snapshots of one declaration must agree when both prepare.
 run_cmd liftTermElabM do
   let raw := Capture.Raw.ofState (Environment.informalExt.getState (← getEnv))
   let target := Name.mkSimple "capture.complete"
   let some (_, node) := raw.nodes.find? (·.1 == target) | throwError "Missing native source control"
   let #[association] := node.nativeAssociations | throwError "Expected one registered native source"
-  let alternatePath := "/definitely/missing/blueprint-source.lean"
-  let alternate := { association with reference := { association.reference with
-    provenance := .inWorkspace `VersoBlueprintTests.BlueprintRealizationCapture alternatePath } }
+  let alternate ← withDifferentRange association
+  let alternateRequest := Capture.NativeRequest.ofAssociation alternate.context alternate
   let planFor (associations : Array SourceData.NativeAssociation) :=
     Capture.plan { raw with nodes := #[(target, { node with nativeAssociations := associations })], authored := #[] }
   let plan := planFor #[association, alternate]
   let reversed := planFor #[alternate, association]
   let observed ← obtain (← Capture.observe plan)
   ensure (observed.native.size == 2 && observed.native.all (·.result.isOk) &&
-    observed.native.any (·.request.sourcePath? == some alternatePath))
+    observed.native.any (·.request == alternateRequest))
     "Sibling control must exercise distinct successful source requests for one declaration"
   let proofKey := key "capture.complete" ``complete
   let snapshot ← obtain (Capture.evaluate plan observed)
@@ -1075,7 +879,7 @@ run_cmd liftTermElabM do
       (fun source => { source with statementContext := some "changed statement descriptor" }),
       (fun source => { source with semanticContext := some "changed body descriptor" })] do
     let changed := { observed with native := observed.native.map fun answer =>
-      if answer.request.sourcePath? == some alternatePath then
+      if answer.request == alternateRequest then
         { answer with result := answer.result.map change }
       else answer }
     let first ← obtain (Capture.evaluate plan changed)
@@ -1380,21 +1184,20 @@ run_cmd liftTermElabM do
   let disagreed := Name.mkSimple "capture.disagreed"
   let some passedNode := state.inventory.get? passed | throwError "Missing passed attachment"
   let some incompleteNode := state.inventory.get? incomplete | throwError "Missing incomplete attachment"
-  let alternatePath := "/definitely/missing/disagreed-blueprint-source.lean"
-  let alternate := (passedNode.nativeAssociations ++ incompleteNode.nativeAssociations).map fun association =>
-    { association with
-      realization := { association.realization with node := disagreed }
-      reference := { association.reference with
-        provenance := .inWorkspace `VersoBlueprintTests.BlueprintRealizationCapture alternatePath } }
+  let alternate ← (passedNode.nativeAssociations ++ incompleteNode.nativeAssociations).mapM fun association => do
+    let association ← withDifferentRange association
+    return { association with realization := { association.realization with node := disagreed } }
+  let alternateRequests := alternate.map fun association =>
+    Capture.NativeRequest.ofAssociation association.context association
   let disagreedNode := { passedNode with sources := #[], nativeAssociations := alternate }
   let plan := Capture.plan { raw with
     nodes := #[(passed, passedNode), (incomplete, incompleteNode), (disagreed, disagreedNode)]
     registered := raw.registered.insert disagreed, authored := #[] }
   let observations ← obtain (← Capture.observe plan)
-  ensure ((observations.native.filter (·.request.sourcePath? == some alternatePath)).size == 2 &&
+  ensure ((observations.native.filter (fun answer => alternateRequests.contains answer.request)).size == 2 &&
     observations.checks.size == 2) "The labels must share two checks and have distinct source requests"
   let changed := { observations with native := observations.native.map fun answer =>
-    if answer.request.sourcePath? != some alternatePath then answer else
+    if !(alternateRequests.contains answer.request) then answer else
       { answer with result := answer.result.map fun prepared => { prepared with roles := #[`statement] } } }
   let snapshot ← obtain (Capture.evaluate plan changed)
   ensure ((snapshot.sourceDiagnostics.nodes.filter fun (label, issue) =>
@@ -1425,21 +1228,18 @@ run_cmd liftTermElabM do
   let some registered := state.inventory.get? label | throwError "Missing imported plain native fixture"
   let #[original] := registered.nativeAssociations | throwError "Expected one native attachment"
   ensure (original.placement == `statement) "Expected a statement panel for the original attachment"
-  let owner := `VersoBlueprintTests.BlueprintCanonicalSourcePersistence.Owner
-  let alternatePath := "/definitely/missing/alternate-realization.lean"
-  let alternate := { original with
+  let alternate ← withDifferentRange { original with
     realization := { original.realization with name := `alternate }
-    placement := `proof
-    reference := { original.reference with
-      provenance := .outWorkspace owner (some alternatePath) } }
+    placement := `proof }
+  let alternateRequest := Capture.NativeRequest.ofAssociation alternate.context alternate
   let node := { registered with sources := #[], uses := #[], nativeAssociations := #[original, alternate] }
   let plan := Capture.plan { raw with nodes := #[(label, node)], authored := #[] }
   let observations ← obtain (← Capture.observe plan)
   ensure (observations.native.size == 2 && observations.native.all (·.result.isOk) &&
-    (observations.native.filter (·.request.sourcePath? == some alternatePath)).size == 1 &&
+    (observations.native.filter (·.request == alternateRequest)).size == 1 &&
     observations.checks.size == 1) "The two realizations must share a real check and have distinct source requests"
   let changed := { observations with native := observations.native.map fun answer =>
-    if answer.request.sourcePath? != some alternatePath then answer else
+    if answer.request != alternateRequest then answer else
       { answer with result := answer.result.map fun prepared => { prepared with roles := #[`statement] } } }
   let snapshot ← obtain (Capture.evaluate plan changed)
   let name := original.reference.canonical
@@ -1481,5 +1281,45 @@ run_cmd liftTermElabM do
       { edge with reference := { edge.reference with intent := .regular } }.bindingData !=
       { edge with reference := { edge.reference with intent := .auxiliary } }.bindingData)
     "Selected use bindings must distinguish origin and intent"
+
+set_option doc.verso true in
+/-- The value {Lean.Doc.lean}`x` is the owner's parameter. -/
+@[blueprint "capture.bareOwnerHighlight"]
+theorem bareOwnerHighlight (x : Nat) : x = x := rfl
+
+set_option doc.verso true in
+/-- The function {Lean.Doc.lean}`fun (x : Nat) => x` introduces a snippet binder. -/
+@[blueprint "capture.bareSnippetHighlight"]
+theorem bareSnippetHighlight (x : Nat) : x = x := rfl
+
+set_option doc.verso true in
+/-- The name {name}`x` selects the owner's parameter. -/
+@[blueprint "capture.localNameDoc"]
+theorem localNameDoc (x : Nat) : x = x := rfl
+
+run_cmd liftTermElabM do
+  let cases := #[
+    (Name.mkSimple "capture.bareOwnerHighlight", ``bareOwnerHighlight, true),
+    (Name.mkSimple "capture.bareSnippetHighlight", ``bareSnippetHighlight, true),
+    (Name.mkSimple "capture.localNameDoc", ``localNameDoc, false)]
+  let raw := Capture.Raw.ofState (Environment.informalExt.getState (← getEnv))
+  let plan := Capture.plan { raw with
+    nodes := raw.nodes.filter (fun (label, _) => cases.any (·.1 == label)), authored := #[] }
+  let observations ← obtain (← Capture.observe plan)
+  let snapshot ← obtain (Capture.evaluate plan observations)
+  for (label, declaration, unsupported) in cases do
+    let rejected := snapshot.sourceDiagnostics.nodes.any fun (owner, diagnostic) =>
+      owner == label && diagnostic.subject == declaration.toString &&
+        diagnostic.code == "unsupported-docstring-extension" &&
+        diagnostic.message == "Compiled highlighted local variable has no captured local-context binder identity"
+    let statement := (⟨label, `verso⟩ : RealizationKey).forRole `statement
+    let some model := snapshot.registry.realization? statement
+      | throwError "Missing compiled docstring realization for {label}"
+    let #[key] := model.documents | throwError "Expected one docstring selection for {label}"
+    let some document := snapshot.registry.documents.find? (·.key == key)
+      | throwError "Missing compiled docstring selection for {label}"
+    ensure (rejected == unsupported && document.text.isEmpty == unsupported &&
+      (snapshot.assessmentFor label).requiredComplete)
+      s!"Expected exact local-context identity for {label} with native checks complete"
 
 end RealizationCaptureFixture

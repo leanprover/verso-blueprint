@@ -228,14 +228,9 @@ private def docstringSelection (refs : Array Data.ExternalRef) (name : String) (
   let format := match Docstring.directCompiled env canonical with
     | .ok (.inl _) | .error .missing => `markdown
     | .ok (.inr _) | .error .ambiguous => `verso
-  let owner : Except Realizations.Diagnostic (String × String) ← do
-    match ← ExternalModuleSource.verifiedSource env idx with
-    | .ok (source, text) => pure (.ok (source.path.toString, SHA256.text text))
-    | .error message =>
-      pure (.error { code := "source-association-unavailable", subject := name, message })
   return ({
     consumerModule := env.mainModule, canonical, moduleName
-    package := env.getModulePackageByIdx? idx, owner }, format)
+    package := env.getModulePackageByIdx? idx }, format)
 
 /--
 Resolve a directive config for environment registration.

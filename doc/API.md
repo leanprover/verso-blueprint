@@ -489,14 +489,22 @@ identity and `NativeSource.prepareDocumented` for the declaration's own comment.
 Ordinary graph and query consumers use `Capture.capture` for admitted models and
 validation evidence.
 
-Native source association parses original bytes using the current environment's
-syntax. It does not replay elaboration or reconstruct the owning module's parser
-environment. Later imports can reserve a name such as `map` that was a valid
-structure field in the owning module. Such input remains unsupported with
-`source-parse-failed` and the first parser-error position (Lean's one-based line,
-zero-based column), even if the declaration was successfully checked. Source
-association does not skip the failing prefix or substitute nearby text. Native
-proof checking and source-association availability remain separate observations.
+Capture resolves native declarations, including inline Lean code and named
+specifications, from the checked environment. Direct documentation comes from
+Lean's compiled metadata. Markdown binds the stored string and Verso binds a
+tagged encoding of its elaborated structure and supported extension payloads.
+An unsupported extension produces `unsupported-docstring-extension` and
+leaves the declaration's native checks available. Rebuild the owner to update
+any of these inputs.
+
+Verso registration copies the authored prose or fence body during elaboration.
+Directive headers and options are separate from the prose selection. Inline
+Lean registrations carry the typed module that compiled their declarations.
+The `DocumentKey` encodes the module name losslessly and identifies the selection.
+Source links and physical paths are presentation metadata. Only `AuthoredBatch.sources`
+uses the document reader. Those keys must have project-relative paths to
+external non-Lean files. Reviews over migrated selections may need to be
+recaptured and reassessed.
 
 During Manual traversal, Blueprint records preview identities, rendered bodies, Lean-code
 associations, citations, graph data, and external-markup witnesses in traversal

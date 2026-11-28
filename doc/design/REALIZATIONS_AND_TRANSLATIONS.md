@@ -172,26 +172,14 @@ Native statement meaning includes relevant computational dependencies. Selected
 proof implementation includes its own body, with theorem dependencies interpreted
 through their statements; a review of helper implementations must select them
 explicitly. Fresh native completeness independently inspects the required closure.
-Byte-bound selections remain conservative: a whole-file selection is affected by
-any byte change. A supported prose selection takes its bytes from the original
-source buffer recorded in its compiled syntax, checked against its stored range;
-capture reads no file for it, so a prose source edited or removed after its module
-was built still yields the compiled text. A plain native declaration is likewise
-taken from the compiled environment: its kind, roles, semantic descriptors and
-declaration ranges come from the environment, and any recorded snapshot ranges
-must agree with them. Capture reads and locates no owning file for it and gives
-its object no source document, so its availability rests on the environment and
-its semantic descriptor. An owning file that is unreadable, edited, deleted, or
-absent from the source search path (as for a dependency shipped without sources)
-yields no `source-unavailable` for it and blocks none of its native checks or
-realizations, and an independent expected goal binds its specification documents. Capture still reads the owning file where its bytes are the content: a
-declaration's own doc comment, whose raw bytes the environment does not keep, and
-an inline Blueprint block, whose original syntax is checked against the file.
-Capture checks each inline registration's declaration membership and original
-block and literal ranges before sharing a native answer. Two concepts may select
-the same declaration. If one registration fails, its selection reports the source
-diagnostic and stays unavailable. A genuine selection on the other concept can
-still resolve and use the checked declaration.
+Selected prose and fenced text bind the body copied during elaboration. Keys
+use logical module identities and exact selections. Lean declarations and named
+specifications bind checked semantic inputs from their compiled environment.
+Inline Lean uses the same declaration path as plain native references. Direct
+Markdown docstrings bind Lean's stored string. Verso docstrings bind their
+elaborated tree and decoded supported extension data. An opaque extension makes
+the prose selection unavailable. Rebuilding the owning modules updates these
+inputs. Only explicitly authored external documents use the disk reader.
 
 Earlier binding versions are stale; no automatic review migration is performed.
 SHA-256 fingerprints are compact content identities, not kernel certificates,

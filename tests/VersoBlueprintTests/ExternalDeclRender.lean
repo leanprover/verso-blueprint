@@ -319,117 +319,22 @@ private def htmlTestContext :
       | .error _ => true
       | .ok _ => false)
 
-/-- Resolve a compiled declaration from outside the consumer root. A foreign
-library search location with the same module's trace name must not own it. -/
-private def importedSourceLinkControl : CoreM Bool := IO.FS.withTempDir fun consumer => do
+/-- Presentation links resolve through the workspace without Lake trace inputs. -/
+private def importedSourceLinkControl : CoreM Bool := do
   let workspace ← Informal.workspaceRoot
   let relative := "tests/VersoBlueprintTests/SorryImport/Provider.lean"
   let source ← IO.FS.realPath (workspace / relative)
-  let mod := `VersoBlueprintTests.SorryImport.Provider
-  let shadowTrace := Lean.modToFilePath consumer mod "trace"
-  IO.FS.createDirAll (shadowTrace.parent.getD consumer)
-  IO.FS.writeFile shadowTrace "{}"
-  let searchPath ← Lean.searchPathRef.get
-  Lean.searchPathRef.set (consumer :: searchPath)
-  try
-    let reference := Informal.Data.ExternalRef.ofName `sorryImportCompleteDef
-    let automatic ← Informal.registerExternalRef {} consumer reference
-    let template := "https://source.example.invalid/{repoRelpath}#L{line}"
-    let options := ({} : Options).set `verso.blueprint.externalCode.sourceLinkTemplate template
-    let custom ← Informal.registerExternalRef options consumer reference
-    let some range := automatic.range? | return false
-    let gitRoot? ← Informal.Git.toplevelAt? workspace
-    let repository? ← liftM <| gitRoot?.bindM Informal.Git.repositoryInfoAtRoot?
-    let repoRelative := (gitRoot?.map fun root =>
-      (source.toString.drop (root.toString.length + 1)).toString).getD source.toString
-    let expectedCustom := s!"https://source.example.invalid/{repoRelative}#L{range.pos.line}"
-    let lineFragment := if range.endPos.line > range.pos.line then
-      s!"#L{range.pos.line}-L{range.endPos.line}" else s!"#L{range.pos.line}"
-    let expectedAutomatic := repository?.map fun repository =>
-      s!"{repository.githubUrl}/blob/{repository.commit}/{repoRelative}{lineFragment}"
-    let html := (Informal.ExternalCode.renderPreviewHtml #[custom]).asString
-    return automatic.provenance == .outWorkspace mod (some source.toString) &&
-      custom.provenance == automatic.provenance && automatic.selectionRange?.isSome &&
-      automatic.sourceHref? == expectedAutomatic && custom.sourceHref? == some expectedCustom &&
-      html.contains s!"href=\"{expectedCustom}\""
-  finally
-    Lean.searchPathRef.set searchPath
+  let reference := Informal.Data.ExternalRef.ofName `sorryImportCompleteDef
+  let template := "https://source.example.invalid/{repoRelpath}#L{line}"
+  let options := ({} : Options).set `verso.blueprint.externalCode.sourceLinkTemplate template
+  let custom ← Informal.registerExternalRef options workspace reference
+  let some range := custom.range? | return false
+  let expected := s!"https://source.example.invalid/{relative}#L{range.pos.line}"
+  return custom.provenance == .inWorkspace `VersoBlueprintTests.SorryImport.Provider source.toString &&
+    custom.selectionRange?.isSome && custom.sourceHref? == some expected
 
 /-- info: true -/
 #guard_msgs in
 #eval importedSourceLinkControl
-
-private def buildTraceCollision (wrapper root : System.FilePath) (toolchain word : String) :
-    IO (System.FilePath × Array String) := do
-  IO.FS.createDirAll root
-  IO.FS.writeFile (root / "lean-toolchain") toolchain
-  IO.FS.writeFile (root / "lakefile.lean")
-    "import Lake\nopen Lake DSL\npackage trace_collision\nlean_lib TraceCollision\n"
-  IO.FS.writeFile (root / "TraceCollision.lean")
-    s!"module\n\nset_option doc.verso true in\n/-- {word} -/\npublic theorem traceCollision : True := True.intro\n"
-  let result ← IO.Process.output {
-    cmd := wrapper.toString, cwd := some root, args := #["lake", "--no-cache", "build", "TraceCollision"]
-    env := #[("LAKE_ARTIFACT_CACHE", some "false"), ("LAKE_RESTORE_ARTIFACTS", some "true")] }
-  unless result.exitCode == 0 do
-    throw <| IO.userError s!"Cannot build source-owner control: {result.stdout}\n{result.stderr}"
-  let lib := root / ".lake" / "build" / "lib" / "lean"
-  let trace ← IO.FS.readFile (lib / "TraceCollision.trace")
-  let artifacts ← match Lake.BuildMetadata.parse trace >>= fun data =>
-      (data.outputs?.getD Json.null).getObjValAs? (Array String) "o" with
-    | .ok artifacts => pure artifacts
-    | .error error => throw <| IO.userError s!"Cannot read source-owner control trace: {error}"
-  return (lib, artifacts)
-
-private unsafe def loadTraceCollision (files : Array System.FilePath) : IO Environment := do
-  enableInitializersExecution
-  importModules #[{ module := `TraceCollision }] {} (loadExts := true) (level := .server)
-    (arts := ({} : Lean.NameMap ImportArtifacts).insert `TraceCollision (.ofArrays #[files, #[]]))
-
-/-- Equal public digests do not authorize a trace for different server metadata. -/
-private unsafe def importedServerProvenanceControl : IO Unit := IO.FS.withTempDir fun root => do
-  let wrapper ← IO.FS.realPath "./scripts/lean-low-priority"
-  let toolchain ← IO.FS.readFile "lean-toolchain"
-  let (appleLib, appleParts) ← buildTraceCollision wrapper (root / "apple") toolchain "apple"
-  let (peachLib, peachParts) ← buildTraceCollision wrapper (root / "peach") toolchain "peach"
-  unless appleParts.size == 3 && peachParts.size == 3 &&
-      appleParts[0]? == peachParts[0]? && appleParts[1]? != peachParts[1]? do
-    throw <| IO.userError "Expected equal public artifacts and different server artifacts"
-
-  -- Lake can load regions directly by content-addressed filenames. Use the
-  -- actual first build's bytes while retaining both conventional trace roots.
-  let loaded := root / "loaded"
-  IO.FS.createDirAll loaded
-  let mut files := #[]
-  for (suffix, artifact) in (#["olean", "olean.server", "olean.private"]).zip appleParts do
-    let path := loaded / artifact
-    IO.FS.writeBinFile path (← IO.FS.readBinFile (appleLib / s!"TraceCollision.{suffix}"))
-    files := files.push path
-  let env ← loadTraceCollision files
-  let some idx := env.getModuleIdxFor? `traceCollision
-    | throw <| IO.userError "Missing loaded declaration"
-  let .ok (.inr _) := Informal.Docstring.directCompiled env `traceCollision
-    | throw <| IO.userError "Expected loaded direct Verso metadata"
-  unless (← findDocString? env `traceCollision).any (·.contains "apple") do
-    throw <| IO.userError "Loaded docstring did not come from the first build"
-  let searchPath ← searchPathRef.get
-  try
-    searchPathRef.set (peachLib :: searchPath)
-    unless !(← Informal.ExternalModuleSource.verifiedSource env idx).isOk do
-      throw <| IO.userError "A different server artifact's source was verified"
-    searchPathRef.set (peachLib :: appleLib :: searchPath)
-    let .ok (owner, text) ← Informal.ExternalModuleSource.verifiedSource env idx
-      | throw <| IO.userError "Loaded server artifact did not select its own source"
-    unless owner.path == root / "apple" / "TraceCollision.lean" && text.contains "/-- apple -/" do
-      throw <| IO.userError "Verified source does not match the loaded Verso comment"
-    let restored ← loadTraceCollision (#["olean", "olean.server", "olean.private"].map
-      (fun suffix => appleLib / s!"TraceCollision.{suffix}"))
-    let some restoredIdx := restored.getModuleIdxFor? `traceCollision
-      | throw <| IO.userError "Missing restored declaration"
-    unless (← Informal.ExternalModuleSource.verifiedSource restored restoredIdx).isOk do
-      throw <| IO.userError "Could not verify source for a conventionally named server artifact"
-  finally
-    searchPathRef.set searchPath
-
-#eval! importedServerProvenanceControl
 
 end Verso.VersoBlueprintTests.ExternalDeclRender

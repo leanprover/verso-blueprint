@@ -72,9 +72,9 @@ private def rustImpl : CodeBlockExpanderOf Informal.CodeConfig
       foldCodeBlock := verso.blueprint.foldCodeBlocks.get (← getOptions)
     }
     let fenceRef ← getRef
-    let fence := SourceData.FencedSelection.ofSyntax (← getFileMap).source fenceRef contents.raw
+    let sourceText := SourceData.originalSourceText? contents.raw
     let source ← liftM <| Environment.sourceAt cfg.label `rust (some `implementation) `rust
-      (.text contents.getString (some fence)) fenceRef
+      (.text contents.getString sourceText) fenceRef
     let some _ ← Environment.contribute cfg.label { sources := #[source] }
       | ``(Block.concat #[])
     ``(Block.other (Block.informalRustCode $(quote data)) #[])

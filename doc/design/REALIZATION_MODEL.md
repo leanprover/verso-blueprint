@@ -30,6 +30,31 @@ and safe capture-local memoization. Persist authored facts, not native validatio
 success. Make assessment reproducible from the same
 captured input; measure before adding caching or a new incremental engine.
 
+### Compiled-artifact authority
+
+Production capture resolves Lean declarations, inline Lean membership and named
+specifications in the checked environment. Declaration ownership, ranges and
+own docstrings come from the loaded Lean artifacts, including server metadata.
+Verso prose and fenced source bodies are copied during elaboration and persist in
+the compiled Blueprint registrations. Capture uses these inputs without opening
+the owning Lean or Verso file or reading its Lake trace.
+
+The module and exact selection identify compiled documents independently of the
+checkout path. The document key encodes the typed module name losslessly.
+Markdown docstrings bind Lean's stored string. Verso docstrings bind the
+elaborated tree and supported decoded extension data. Local references bind
+through stable binder positions, and resolved global names retain their identity.
+Unsupported extensions leave the prose selection unavailable. Rebuilding updates
+compiled content. Proof-only changes leave statement bindings current when the
+selected statement and its meaning stay the same. A change to a selected
+statement, prose body or compiled docstring changes its binding. Directive
+header options can change dependency selection independently of the local
+prose review.
+
+Only explicitly authored external documents use the disk provider. Their keys
+are relative to the project. Diagnostic source ranges and links remain
+presentation metadata.
+
 ### Objects and supported content
 
 | Object | Responsibility |

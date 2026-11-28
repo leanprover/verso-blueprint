@@ -301,41 +301,26 @@ block_extension Block.externalMarkup (data : ExternalMarkupBlockData) where
         | .summary => ExternalMarkupView.summaryHtml (ExternalMarkupView.displaySummary cdata.markup)
         | .source => ExternalMarkupView.sourceDetailsHtml cdata.markup
 
-private def inlineDeclSourceLocation (declName : Name) (stx : Syntax) : DocElabM Data.SourceLocationResult := do
-  match ← Data.SourceLocation.ofSyntax? stx with
-  | some location => pure <| Data.SourceLocationResult.found location
-  | none =>
-      pure <| Data.SourceLocationResult.unavailable
-        s!"inline Lean declaration source location unavailable for {declName}"
-
 /-- Interpreting Embedded Lean Code blocks -/
 private def leanImpl : CodeBlockExpanderOf CodeConfig
   | cfg, contents => do
     let codeRef ← getRef
     let some position := codeRef.getPos?
       | throwError "Blueprint code blocks require a source position"
-    let blockId := Name.num (Name.str (← getEnv).mainModule "blueprintCode") position.byteIdx
+    let moduleName ← getMainModule
+    let blockId := Name.num (Name.str moduleName "blueprintCode") position.byteIdx
     let leanCfg : Lean.LeanBlockConfig := { Lean.defaultConfig with name := some cfg.leanLabel }
     let some block ← Environment.withCodeRegistration (Lean.elabCommands leanCfg contents) fun res => do
       let codeBlock := res.block
-      let definedDefs ← res.definedDefs.mapM fun decl => do
-        let sourceLocation ← inlineDeclSourceLocation decl.name decl.commandStx
-        pure <| CodeDeclData.ofLiterateDef decl sourceLocation
-      let definedTheorems ← res.definedTheorems.mapM fun decl => do
-        let sourceLocation ← inlineDeclSourceLocation decl.name decl.commandStx
-        pure <| CodeDeclData.ofLiterateThm decl sourceLocation
+      let definedDefs := res.definedDefs.map fun decl => CodeDeclData.ofLiterateDef decl decl.sourceLocation
+      let definedTheorems := res.definedTheorems.map fun decl => CodeDeclData.ofLiterateThm decl decl.sourceLocation
       let inferredUses ←
         if DependencyAnalysis.enabled (← getOptions) cfg.autoDeps then
           let decls := (res.definedDefs.map (·.name)) ++ (res.definedTheorems.map (·.name))
           liftM <| DependencyAnalysis.inferDeclUses cfg.label decls
         else pure #[]
-      let fileName ← getFileName
-      let ownerPath? ← try
-        pure (some (← IO.FS.realPath fileName).toString)
-      catch _ => pure none
       let code : Data.Code := {
-        stx := codeRef
-        ownerPath?
+        moduleName
         definedDefs := res.definedDefs
         definedTheorems := res.definedTheorems }
       let source ← liftM <| Environment.sourceAt cfg.label `lean none `lean (.leanInline code) codeRef
@@ -414,10 +399,10 @@ private def externalMarkupImpl
     match cfg.label? with
     | some label =>
       let fenceRef ← getRef
-      let fence := SourceData.FencedSelection.ofSyntax (← getFileMap).source fenceRef contents.raw
+      let sourceText := SourceData.originalSourceText? contents.raw
       let source ← liftM <| Environment.sourceAt label
         (Name.str (Name.mkSimple language.key) cfg.slot) (some `statement) (Name.mkSimple language.key)
-        (.markup markup (some fence)) fenceRef
+        (.markup markup sourceText) fenceRef
       let some _ ← Environment.contribute label { sources := #[source] }
         | ``(Block.concat #[])
       let display := cfg.display.getD <| ExternalMarkupDisplayMode.fromOptions (← getOptions)

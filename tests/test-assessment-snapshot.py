@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise saved mock-review bindings through real source edits and Lake imports.
+"""Exercise saved mock-review bindings through rebuilt Lean artifacts.
 
 Run inside the maintainer's whole-tree resource cap. Only the owner fixture is
 edited, with its exact original bytes restored even on ordinary failure. No
@@ -33,7 +33,15 @@ def main() -> None:
     prose = "The proposition is true. Ω 🧭 The Lean declaration provides its proof.".encode("utf-8")
     proof_use = b'(proofUses := ["assessment.docDependencyA"])'
     docstring = "/-- The attribute statement is true. Ω 🧭 -/".encode("utf-8")
-    if any(original.count(marker) != 1 for marker in (proof, mapping, prose, proof_use, docstring)):
+    local_doc_proof = b"theorem localDoc (x : Nat) : x = x := by rfl"
+    local_doc_target = b"{name}`x` with {Lean.Doc.lean}`x`"
+    highlighted_doc = "theorem modelAReviewed (x y : Nat) : x ≤ y → x ≤ y := id".encode("utf-8")
+    macro_rule = b"macro_rules | `(underBinder $v:ident) => `(fun (_inner : Nat) => $v)"
+    inner_binder_rule = b"macro_rules | `(underBinder $v:ident) => `(fun ($v : Nat) => $v)"
+    header_use = b'(uses := "assessment.docDependencyA")'
+    markers = (proof, mapping, prose, proof_use, docstring, local_doc_proof, local_doc_target,
+        highlighted_doc, macro_rule, header_use)
+    if any(original.count(marker) != 1 for marker in markers):
         raise RuntimeError("Expected exact source-edit fixture baseline")
     swapped = original.replace(proof_use, proof_use.replace(b"docDependencyA", b"docDependencyB"))
     variants = [
@@ -46,7 +54,17 @@ def main() -> None:
             prose,
             "The proposition remains true. Ω 🧭 A different proof is described here.".encode("utf-8"))),
         ("docstring-proof-use", swapped),
-        ("docstring-text", swapped.replace(docstring, docstring.replace(b" -/", b"  -/"))),
+        ("docstring-text", swapped.replace(docstring, docstring.replace(b"statement is true", b"statement is still true"))),
+        ("local-doc-proof", original.replace(local_doc_proof,
+            b"theorem localDoc (x : Nat) : x = x := by\n  have h : x = x := rfl\n  exact h")),
+        ("local-doc-target", original.replace(local_doc_target,
+            b"{name (full := BlueprintAssessmentSnapshot.DocTargets.x)}`x` with {Lean.Doc.lean}`x`")),
+        ("directive-header-use", original.replace(header_use, header_use.replace(b"docDependencyA", b"docDependencyB"))),
+        ("highlighted-doc-proof", original.replace(highlighted_doc,
+            highlighted_doc.removesuffix(b"id") + b"fun h => by exact h")),
+        ("highlighted-doc-position", original.replace(highlighted_doc,
+            "theorem modelAReviewed (y x : Nat) : y ≤ x → y ≤ x := id".encode("utf-8"))),
+        ("highlighted-doc-macro", original.replace(macro_rule, inner_binder_rule)),
     ]
     commands = []
 

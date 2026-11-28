@@ -201,10 +201,6 @@ private def sourcePathForModule? (workspaceRoot : System.FilePath)
   let env ← getEnv
   if moduleIdx?.isNone && moduleName == env.mainModule then
     return ← currentSourcePath? workspaceRoot
-  if let some idx := moduleIdx? then
-    if (env.getModulePackageByIdx? idx).isSome then
-      let .ok (owner, _) ← liftM (ExternalModuleSource.verifiedSource env idx) | return none
-      return ← liftM <| normalizeSourcePath? workspaceRoot owner.path
   RuntimeCache.cachedModuleSourcePath? workspaceRoot moduleName do
     let srcSearchPath ← Lean.getSrcSearchPath
     match ← srcSearchPath.findModuleWithExt "lean" moduleName with

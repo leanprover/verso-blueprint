@@ -128,7 +128,7 @@ private def elabBlueprintConfig (decl : Name) : Syntax → CoreM BlueprintAttrCo
     elabBlueprintOptions { label := defaultLabelForDecl decl } opts
   | _ => throwError "invalid syntax for '[blueprint]' attribute"
 
-private def statementFromDocstring? (decl : Name) (ref : Syntax) :
+private def statementFromDocstring? (decl : Name) :
     CoreM (Option (Data.InformalBody × Array Data.UseRef × Name)) := do
   let env ← getEnv
   let .ok internalDoc := Informal.Docstring.directCompiled env decl | return none
@@ -136,10 +136,7 @@ private def statementFromDocstring? (decl : Name) (ref : Syntax) :
   if blocks.isEmpty then
     pure none
   else
-    pure <| some ({
-      stx := ref
-      blocks
-    }, deps, format)
+    pure <| some ({ blocks }, deps, format)
 
 private def labelsForManualTarget
     (currentDecl currentLabel : Name) (target : AutoDepTarget) : CoreM (Array Data.Label) := do
@@ -199,7 +196,7 @@ private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref
   -- Only the declaration introducing a label owns its implicit statement.
   -- Attachments never compete with or fill an existing node's informal prose.
   let current? ← Environment.getNodeInventory? label
-  let docstring? ← if current?.isNone then statementFromDocstring? decl ref else pure none
+  let docstring? ← if current?.isNone then statementFromDocstring? decl else pure none
   let deps ← resolveAutoDeps decl label cfg (docstring?.map (fun (_, deps, _) => deps) |>.getD #[])
   let opts ← getOptions
   let extRef ←

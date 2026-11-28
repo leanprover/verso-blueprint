@@ -26,10 +26,12 @@ run_cmd Lean.Elab.Command.liftCoreM do
     throwError "Diamond import duplicated a source or re-exported imported registrations"
   unless sources.all (fun source => source.context.project == `blueprintFixtures &&
       source.destination.realization.node == label &&
-      source.source.ok && source.source.location.any (·.path == source.document.path)) do
+      source.source.ok && source.source.location.any (·.path.endsWith ".lean") &&
+      source.document.path.startsWith "module:") do
     throwError "Owning document, project, destination or UTF-16 source location was lost"
-  unless sources.all (fun source => source.document.path.endsWith "Owner.lean" ||
-      source.document.path.endsWith "Attachment.lean") do
+  let ownerPath := SourceData.modulePath `VersoBlueprintTests.BlueprintCanonicalSourcePersistence.Owner
+  let attachmentPath := SourceData.modulePath `VersoBlueprintTests.BlueprintCanonicalSourcePersistence.Attachment
+  unless sources.all (fun source => source.document.path == ownerPath || source.document.path == attachmentPath) do
     throwError "Consumer module replaced the owning source path"
   unless sources.any (fun source => source.destination == ⟨⟨label, `verso⟩, some `statement⟩) &&
       sources.any (fun source => source.destination == ⟨⟨label, `verso⟩, some `proof⟩) &&
@@ -37,7 +39,7 @@ run_cmd Lean.Elab.Command.liftCoreM do
     throwError "Realization and facet identities were flattened"
   unless sources.any (fun source =>
       source.destination == ⟨⟨label, `rocqTranslation⟩, some `implementation⟩ &&
-      source.context.language == `rocq && source.document.path.endsWith "Attachment.lean" &&
+      source.context.language == `rocq && source.document.path == attachmentPath &&
       (match source.payload with
       | .text raw _ => raw == "Definition flag_identity (b : bool) := b."
       | _ => false)) do
@@ -119,11 +121,11 @@ run_cmd Lean.Elab.Command.liftCoreM do
     CanonicalNativePersistence.rejected "source-context-mismatch" <|
       Environment.contribute label { sources := #[{ source with
         document := ⟨⟨`verso, `otherProject⟩, source.document.path⟩
-        payload := .prose { stx := .missing } }] }
+        payload := .prose default }] }
     CanonicalNativePersistence.rejected "source-document-context" <|
       Environment.contribute label { sources := #[{ source with
         document := ⟨⟨`verso, .anonymous⟩, source.document.path⟩
-        payload := .prose { stx := .missing } }] }
+        payload := .prose default }] }
     CanonicalNativePersistence.rejected "invalid-use-destination" <|
       Environment.contribute label { uses := #[{
         node := `sibling, role := `proof, reference := { label := `target } }] }

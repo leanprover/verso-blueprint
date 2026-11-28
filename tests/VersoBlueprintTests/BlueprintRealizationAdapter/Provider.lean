@@ -40,7 +40,7 @@ theorem undocumented : True := True.intro
 def number : Nat := 1
 
 set_option doc.verso true in
-/-- An own *Verso* docstring with {name}`Nat` and é 😀. -/
+/-- An own *Verso* docstring with {name}`Nat`, {lean}`Nat.zero`, {kw}`funext` and é 😀. -/
 @[blueprint "adapter.verso"]
 theorem versoDocstring : True := True.intro
 
@@ -55,10 +55,6 @@ set_option doc.verso true in
 /-- Même *texte* 😀 λ with {name}`Nat`. -/ @[blueprint "adapter.unicode"] theorem «état😀» : True := True.intro
 
 set_option doc.verso true in
-/-- Même *texte* 😀 λ with {name}`Nat`. -/
-theorem neighboringComment : True := True.intro
-
-set_option doc.verso true in
 /-- Actual Verso metadata with an intentionally conflicting Markdown entry. -/
 @[blueprint "adapter.ambiguous"]
 theorem ambiguousFormat : True := True.intro
@@ -69,8 +65,7 @@ run_cmd Lean.addDocStringCore ``ambiguousFormat "injected competing Markdown"
 
 theorem noOriginalComment : True := True.intro
 
--- Own native text injected before attribute registration still cannot supply a
--- source comment where the actual declaration has none.
+-- Direct compiled documentation can be registered without a literal comment.
 open Lean Elab Command in
 run_cmd do
   let name := ``noOriginalComment
@@ -130,13 +125,11 @@ end RealizationAdapterFixture
 
 namespace RealizationAdapterFixture
 
-/-- Read the original comment of an explicitly selected fixture declaration. -/
-def prepareOwnDocstring (project canonical : Lean.Name)
-    (reader : System.FilePath → IO String := IO.FS.readFile) :
+/-- Read the compiled documentation of an explicitly selected fixture declaration. -/
+def prepareOwnDocstring (project canonical : Lean.Name) :
     Lean.CoreM (Except Informal.Realizations.Diagnostic Informal.Realizations.NativeSource.Documented) :=
   Informal.Realizations.NativeSource.prepareDocumented {
     project, canonical
     moduleName := `VersoBlueprintTests.BlueprintRealizationAdapter.Provider }
-    "tests/VersoBlueprintTests/BlueprintRealizationAdapter/Provider.lean" reader
 
 end RealizationAdapterFixture

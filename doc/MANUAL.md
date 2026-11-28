@@ -453,7 +453,11 @@ expected proposition. It is not required as a separate opt-in for ordinary
 Blueprint attributes or directives.
 
 For Lean consumers, `Informal.Realizations.Capture.capture` collects ordinary
-Blueprint registrations after the owning modules have been built. Its successful
+Blueprint registrations after the owning modules have been built. Capture uses
+the loaded declarations and compiled registrations. It reads files only for
+explicitly authored external documents with project-relative paths. Lean and
+Verso document identities use the owning module and the selected content or
+declaration. Moving a checkout leaves these identities stable. Its successful
 snapshot contains the admitted registry, selected dependency edges and diagnostics;
 consumers do not construct a registry manually. A checked native declaration, an
 independently specified proposition and correspondence with prose are separate
@@ -556,13 +560,12 @@ enabled, standard structural content such as paragraphs, emphasis, lists,
 links, code, math, quotations, and section content is converted into Manual
 blocks. The same structural content is rendered inside the attached “Lean code
 for…” declaration panel. If no docstring is available, the node is still
-registered, but there is no imported informal statement body. Capture checks an
-attribute-owned comment against the source file and original compiler input
-retained by its registration. Inside a Lean fence, capture reconstructs the
-padded compiler input from the fence in the owning file. Lean's normalized
-line endings locate the comment, while the selected prose preserves its
-original line endings. This also works when Lake restores the owning module
-from its artifact cache.
+registered, but there is no imported informal statement body. Capture selects the declaration's direct
+compiled documentation. Markdown uses Lean's stored string. Verso uses a
+structural encoding of the elaborated document, including supported extension
+payloads such as Lean name links. Unknown extensions produce a diagnostic and
+leave the native declaration available. Rebuild the owning module to update the
+selected comment, including when the declaration occurs inside a Lean fence.
 
 For authored realization endpoints, use the `markdown` base name with role
 `statement` for a default Markdown docstring. A `doc.verso` docstring uses the
@@ -1003,13 +1006,11 @@ comment supplies a separate statement realization. Add a normal `:::proof` to
 supply independently authored proof prose. An explicit statement body conflicts
 with adoption. A declaration list still selects exactly one docstring.
 
-This requires readable source and a normal owning Lake build with a source input
-and matching loaded artifact. For module-system imports, both the public artifact
-and its server companion must match. Lake verifies text with normalized line endings.
-The consumer also records the exact UTF-8 source digest at registration, which
-capture checks before publishing the selected comment. Rebuild the consuming
-chapter after an upstream source edit. Missing, empty, inherited or ambiguous
-comments leave the native declaration available and produce a source diagnostic.
+Capture selects the direct docstring from the loaded declaration's compiled
+metadata, including server metadata in module-system imports. Rebuild the owner
+and consuming chapter after a docstring edit. Missing, empty, inherited,
+ambiguous, or unsupported comments leave the native declaration available and
+produce a source diagnostic.
 When a declaration's own comment is identical to its `inherit_doc` target in the
 same module, Lean's `.olean` compaction can deduplicate the comment content.
 In that case, adoption can mistake the inherited comment for the declaration's own.
@@ -2187,9 +2188,8 @@ prefixes with document-order block counts.
     Git checkout with a GitHub `origin` remote)
   - builds source links for external declarations using `{path}`, `{relpath}`,
     `{repoRelpath}`, `{module}`, `{line}`, `{column}`, `{endLine}`, and `{endColumn}`
-  - Lake package imports, including sibling path dependencies, use the source
-    input of the loaded module's build. This uses the build trace and the
-    matching source file.
+  - Imported source links are resolved from the Lean source search path or the
+    workspace. They use compiled declaration ranges and serve as presentation metadata.
   - `{relpath}` is relative to the Blueprint workspace when available.
     `{repoRelpath}` is relative to the source file's own Git checkout when
     available, and otherwise has the same value as `{relpath}`.

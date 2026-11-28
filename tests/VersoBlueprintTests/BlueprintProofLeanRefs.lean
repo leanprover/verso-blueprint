@@ -67,7 +67,7 @@ theorem dependentAttachedResult : True := True.intro
             throw <| IO.userError "Same-facet deduplication discarded status evidence"
   for status in #[known, unverified, Data.ProvedStatus.incomplete {}, .missing, .axiomLike] do
     let ref := { good with provedStatus := some status, present := status != .missing }
-    let code : Data.Code := { stx := .missing, definedTheorems := #[{
+    let code : Data.Code := { definedTheorems := #[{
       name := good.canonical, provedStatus := .proved }] }
     let node : Data.NodeInventory := {
       kind := .theorem
@@ -85,7 +85,7 @@ theorem dependentAttachedResult : True := True.intro
     unless rendered.statusMark.any (fun mark =>
         mark.title.contains "Validation unavailable" && mark.symbolOverride? == some "?") do
       throw <| IO.userError "Provider display status supplied a missing realization assessment"
-  let code : Data.Code := { stx := .missing, definedTheorems := #[{
+  let code : Data.Code := { definedTheorems := #[{
     name := good.canonical, provedStatus := .proved }] }
   let node : Data.NodeInventory := {
     kind := .theorem
@@ -265,7 +265,7 @@ run_meta do
     let ref ← registerExternalRefAtCurrentDir {}
       (Data.ExternalRef.ofName ``Provider.admittedProof)
     let ref := { ref with provedStatus := some (← Data.analyzeDeclaration ref.canonical) }
-    let code : Data.Code := { stx := .missing, definedTheorems := #[{
+    let code : Data.Code := { definedTheorems := #[{
       name := ``Provider.admittedProof, provedStatus := .proved }] }
     let some _ ← contributeProofReferences (Name.mkSimple "proof.inline.overlap") #[ref] {
       kind := some .theorem, sources := #[BlueprintNativeFixture.source (Name.mkSimple "proof.inline.overlap") `lean none `lean (.leanInline code)] }

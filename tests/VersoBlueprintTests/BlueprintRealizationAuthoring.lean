@@ -225,11 +225,7 @@ run_cmd liftTermElabM do
       | .proof observation => observation.outcome == .passed
       | _ => false)))
     "The independently authored proposition must have a current passing native proof observation"
-  ensure (goal.documents.size == 1 && goal.documents.any (·.path.endsWith "/BlueprintRealizationAuthoring.lean"))
-    "Binding must include the independently authored specification source and no native witness file"
-  for key in goal.documents do
-    let some document := r.documents.find? (·.key == key) | throwError "Missing bound source"
-    ensure (document.text == (← IO.FS.readFile key.path)) "Bound source is not the original canonical bytes"
+  ensure goal.documents.isEmpty "Compiled specification must not attach owning Lean source files"
   for evidence in r.evidence do
     ensure (r.bindingFor evidence.requirement == some evidence.binding) "Observation bound to another snapshot"
     match evidence.observation with
@@ -256,48 +252,23 @@ run_cmd liftTermElabM do
     Realizations.Authoring.expectNative `secondFlagSpec Owner.node
       `VersoBlueprintTests.BlueprintRealizationAuthoring.expectedFlag
     let plan := Capture.plan (Capture.Raw.ofState (Environment.informalExt.getState (← getEnv)))
-    let ownerSource := "/BlueprintRealizationAuthoring/Owner.lean"
-    let localSource := "/BlueprintRealizationAuthoring.lean"
-    let original := "RealizationAdapterFixture.toggle (RealizationAdapterFixture.toggle flag) = flag\n"
-    let edited := "RealizationAdapterFixture.toggle (RealizationAdapterFixture.toggle flag) = .off\n"
-    for (changedSource, missing) in #[(none, false), (some ownerSource, true),
-        (some ownerSource, false), (some localSource, false)] do
-      let unavailable := changedSource.isSome
-      let observations ← obtain (← Capture.observe plan fun path => do
-        if changedSource.any (fun suffix => path.toString.endsWith suffix) then
-          if missing then throw (IO.userError "upstream specification unavailable")
-          let text ← IO.FS.readFile path
-          let mutated := text.replace original edited
-          unless mutated != text && mutated.utf8ByteSize == text.utf8ByteSize do
-            throw (IO.userError "same-width expectation edit did not reach its fixture")
-          return mutated
-        IO.FS.readFile path)
-      let snapshot ← obtain (Capture.evaluate plan observations)
-      let r := snapshot.registry
-      let some req := r.requirement? Owner.expectedProof | throwError "Missing shared expectation"
-      let .proof goal _ := req.expected | throwError "Expected an independent proof requirement"
-      let specs := r.contributions.requirements.filter (·.value.key == Owner.expectedProof)
-      let evidence := r.evidence.filter (·.requirement == Owner.expectedProof)
-      ensure (specs.size == 2 && (canonical (specs.map (·.origin.moduleName))).size == 2 &&
-        goal.documents.size == 2 &&
-        goal.documents.any (·.path.endsWith "/BlueprintRealizationAuthoring.lean") &&
-        goal.documents.any (·.path.endsWith "/BlueprintRealizationAuthoring/Owner.lean") &&
-        evidence.size == 2 && evidence.all (fun item => match item.observation with
-          | .proof obs => obs.outcome == (if unavailable then .unavailable else .passed)
-          | _ => false) &&
-        (r.resultForRequirement Owner.expectedProof).complete == !unavailable &&
-        (r.resultForRequirement Owner.proof).complete &&
-        (r.resultForRequirement unassessedProofKeyRequirement).complete &&
-        (snapshot.assessmentFor Owner.node).requiredComplete)
-        s!"Equivalent specifications must gate only the shared independent contract: {changedSource} missing={missing}"
-      if let some suffix := changedSource then
-        unless missing do
-          ensure (r.documents.any (fun doc =>
-              doc.key.path.endsWith suffix && doc.text.contains edited) &&
-            snapshot.sourceDiagnostics.nodes.any (fun (label, diagnostic) =>
-              label == Owner.node && diagnostic.code == "source-selection-unavailable" &&
-                diagnostic.origins.any (·.source.endsWith suffix)))
-            "An edited specification must retain its observed bytes and an owning-source diagnostic"
+    let observations ← obtain (← Capture.observe plan (fun _ => throw (IO.userError "Unexpected source read")))
+    let snapshot ← obtain (Capture.evaluate plan observations)
+    let r := snapshot.registry
+    let some req := r.requirement? Owner.expectedProof | throwError "Missing shared expectation"
+    let .proof goal _ := req.expected | throwError "Expected an independent proof requirement"
+    let specs := r.contributions.requirements.filter (·.value.key == Owner.expectedProof)
+    let evidence := r.evidence.filter (·.requirement == Owner.expectedProof)
+    ensure (specs.size == 2 && (canonical (specs.map (·.origin.moduleName))).size == 2 &&
+      goal.documents.isEmpty && observations.documents.all (·.request.context.language != `lean) &&
+      evidence.size == 2 && evidence.all (fun item => match item.observation with
+        | .proof obs => obs.outcome == .passed
+        | _ => false) &&
+      (r.resultForRequirement Owner.expectedProof).complete &&
+      (r.resultForRequirement Owner.proof).complete &&
+      (r.resultForRequirement unassessedProofKeyRequirement).complete &&
+      (snapshot.assessmentFor Owner.node).requiredComplete)
+      "Equivalent compiled specifications must retain both producer origins and passed observations"
 
 @[blueprint "authoring.dependsOnlyOnNative" (proofUses := ["authoring.nativeDependent"])]
 theorem dependsOnlyOnNative : True := True.intro
@@ -415,7 +386,7 @@ private def rollbackInput (label : Name) : CoreM (Contributions.Record × Source
   return ({ id, label, nativeAssociations := BlueprintNativeFixture.associations label `statement #[reference] Owner.projectName, priority := none, source := none },
     { count := state.nextCount + 100, tags := #["synthetic candidate"]
       sources := #[BlueprintNativeFixture.source label `verso (some `statement) `verso
-        (.prose { stx := .missing, blocks := #[.para #[.text "Synthetic transaction body"]] }) Owner.projectName] })
+        (.prose { sourceText := some "Synthetic transaction body", blocks := #[.para #[.text "Synthetic transaction body"]] }) Owner.projectName] })
 
 -- Ordinary capture has no default-enrollment phase or theorem/docstring gate.
 -- Supplemental attributes still publish the admitted candidate and catalog once.
@@ -458,7 +429,7 @@ run_cmd liftTermElabM do
     let result ← Environment.withDirective (pure { label := `outerFailure, kind := some .lemma }) .missing do
       insideDirective
       logError "Synthetic enclosing directive failure"
-      pure ((), #[])
+      pure ((), #[], none)
     ensure result.isNone "Logged directive failure committed"
     unchanged before (Environment.informalExt.getState (← getEnv))
 
@@ -470,7 +441,7 @@ run_cmd liftTermElabM do
       discard <| Environment.withDirective (pure { label := `outerException, kind := some .lemma }) .missing do
         insideDirective
         throwError "Synthetic enclosing directive exception"
-        pure ((), #[])
+        pure ((), #[], none)
     catch exception =>
       caught := (← exception.toMessageData.toString) == "Synthetic enclosing directive exception"
     ensure caught "Expected directive exception"
@@ -512,11 +483,7 @@ run_cmd liftTermElabM do
       record.origin.moduleName == env.mainModule &&
         record.nativeGoals.any (fun goal => goal.1 == target) }
     let plan := Capture.plan raw
-    let ownerPath ← liftM <| IO.FS.realPath
-      "tests/VersoBlueprintTests/BlueprintRealizationAuthoring/Owner.lean"
-    let reader (path : System.FilePath) : IO String := do
-      if path == ownerPath then throw <| IO.userError "injected owning-source read failure"
-      IO.FS.readFile path
+    let reader (_ : System.FilePath) : IO String := throw (IO.userError "Unexpected source read")
     let before := Environment.informalExt.getState (← getEnv)
     let sentinel ← mkFreshExprMVar (mkConst ``True)
     let metaBefore ← getMCtx
@@ -537,7 +504,6 @@ run_cmd liftTermElabM do
     let some expectedResult := observations.expected.find? fun entry =>
         entry.request.project == expectedRequest.project && entry.request.expected == expectedRequest.expected
       | throwError "Expected-goal observation disappeared"
-    let specificationDocument := expectedRequest.specification.document
     -- A plain native declaration is prepared from the environment, so its
     -- unreadable owning file does not make it unavailable.
     ensure (observations.native.any fun result => result.request.name.toString == witness.native &&
@@ -545,13 +511,13 @@ run_cmd liftTermElabM do
         | .error _ => false
         | .ok prepared => prepared.declaration == witness)
       "A plain native declaration must not depend on reading its owning source file"
-    ensure (expectedResult.request.documents == #[specificationDocument] &&
+    ensure (expectedResult.request.documents.isEmpty &&
       expectedResult.request.witness == witness)
-      "Expected-goal documents must be the authored spec only, never the witness's owning file"
+      "A compiled expected goal needs no disk document and must retain its witness"
     let .ok checked := expectedResult.result
       | throwError "Independent expected goal did not run with an unreadable owning file"
-    ensure (checked.observation.outcome == .passed && checked.goal.documents == #[specificationDocument])
-      "The independently authored goal must be checked against its exact spec-only documents"
+    ensure (checked.observation.outcome == .passed && checked.goal.documents.isEmpty)
+      "The independently authored goal must be checked against the compiled independent goal"
     let some checkRequest := plan.checks.find? (·.witness == witness)
       | throwError "Missing actual own-native check request"
     let some checkedResult := observations.checks.find? (·.request == checkRequest)
@@ -560,12 +526,10 @@ run_cmd liftTermElabM do
     ensure (nativeCheck.body.outcome == .passed)
       "An unreadable owning file must not suppress the real own-native check"
     let snapshot ← obtain (Capture.evaluate plan observations)
-    -- Doc-comment prose still reads the file and keeps its diagnostic; the
-    -- native declaration's checks and expected goal complete without it.
-    ensure (snapshot.diagnostics.any (·.code == "source-unavailable") &&
+    ensure (observations.documents.isEmpty && !(snapshot.diagnostics.any (·.code == "source-unavailable")) &&
       snapshot.nativeChecks.any (fun result => result.declaration == witness && result.body.outcome == .passed) &&
       (snapshot.registry.resultFor (.realization unassessedProofKey)).complete)
-      "Evaluated snapshot must keep the doc-comment diagnostic and complete the native proof without the owning file"
+      "Evaluated snapshot must complete the native proof without reading an owning file"
 
 -- F1: authored alternatives own their contracts. Conventional names do not
 -- opt a review (or an authored native check) into ordinary dependency wiring.

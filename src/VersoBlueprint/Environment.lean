@@ -384,7 +384,7 @@ def sourceAt (node realization : Name) (role : Option Name) (language : Name)
   let location ← SourceLocation.ofSyntax? ref
   return {
     destination := ⟨⟨node, realization⟩, role⟩
-    document := ⟨context, ← getFileName⟩
+    document := ⟨context, SourceData.modulePath (← getMainModule)⟩
     source := match location with
       | some location => .found location
       | none => .unavailable "Original source range unavailable at registration"
@@ -409,7 +409,7 @@ private def stageAuthoring (id : Name) (authored : AuthoredBatch)
     return .error #[authoringIssue "invalid-authoring" "Missing current-module configuration or site identity"]
   let origin : Realizations.Origin := {
     id := authoringId #[nameIdentity moduleName, toJson "authored", nameIdentity id]
-    moduleName, source := ← getFileName }
+    moduleName, source := SourceData.modulePath moduleName }
   match before.planAuthoring { origin, project, authored, nativeGoals } with
   | .error issues => return .error issues
   | .ok candidate =>
@@ -510,12 +510,13 @@ def checkLabelAndNesting (label : Label) (kind : Data.InProgressKind) : m Bool :
     return false
 
 private def DirectiveDraft.toRegistration (current : DirectiveDraft) (count : Nat) (ref : Syntax)
-    (blocks : Array (Verso.Doc.Block Verso.Genre.Manual)) : CoreM SourceData.Registration := do
+    (blocks : Array (Verso.Doc.Block Verso.Genre.Manual)) (sourceText : Option String) :
+    CoreM SourceData.Registration := do
   let format := current.adoption.map (·.2) |>.getD `verso
   let origin := current.adoption.map (fun (selection, _) => SourceData.ProseOrigin.adopted selection) |>.getD .authored
   let sources ← if blocks.isEmpty && current.adoption.isNone then pure #[] else
     pure #[← sourceAt current.label format (some current.role) format
-      (.prose { stx := ref, blocks } origin) ref]
+      (.prose { sourceText, blocks } origin) ref]
   return {
     toNodeContribution := { current.toNodeContribution with count := if current.kind.isSome then count else 0 }
     sources
@@ -578,7 +579,8 @@ messages are retained. Every exit restores the enclosing directive scope.
 -/
 def withDirective [MonadExceptOf Exception m] [MonadLiftT CoreM m]
     (prepare : m DirectiveDraft) (ref : Syntax)
-    (body : m (α × Array (Verso.Doc.Block Verso.Genre.Manual))) : m (Option (α × Nat)) := do
+    (body : m (α × Array (Verso.Doc.Block Verso.Genre.Manual) × Option String)) :
+    m (Option (α × Nat)) := do
   reportImportedConflicts
   withRegistrationTransaction do
     let messageCount := (← liftM Core.getMessageLog).reportedPlusUnreported.size
@@ -586,12 +588,12 @@ def withDirective [MonadExceptOf Exception m] [MonadLiftT CoreM m]
     let kind := frame.kind.map InProgressKind.statement |>.getD .proof
     if (← hasErrorsSince messageCount) || !(← checkLabelAndNesting frame.label kind) then return none
     modify fun state => { state with activeDirective := some frame }
-    let (value, blocks) ← body
+    let (value, blocks, sourceText) ← body
     if ← hasErrorsSince messageCount then return none
     let state := informalExt.getState (← getEnv)
     let some current := state.activeDirective
       | logError "Internal error: Blueprint directive scope was closed during elaboration"; return none
-    let contribution ← liftM <| current.toRegistration state.nextCount ref blocks
+    let contribution ← liftM <| current.toRegistration state.nextCount ref blocks sourceText
     let fact? ← liftM <| current.selectedFact? ref
     let some node ← commitContribution frame.label contribution fact?.toList | return none
     modify fun state => { state with activeDirective := none }

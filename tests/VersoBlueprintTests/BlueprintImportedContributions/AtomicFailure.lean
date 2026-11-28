@@ -58,7 +58,7 @@ error: AtomicFailure.«test.synthetic»:key_theorem@3/0 label=key_theorem refs=[
     tags := #["rejected"]
     issueUrl := some "https://example.com/issues/1"
     sources := #[BlueprintNativeFixture.source `key_theorem `verso (some `proof) `verso
-      (.prose { stx := .missing, blocks := #[.para #[.text "Rejected proof"]] })]
+      (.prose { sourceText := some "Rejected proof", blocks := #[.para #[.text "Rejected proof"]] })]
   }
   let after := Environment.informalExt.getState (← getEnv)
   unless reprStr before == reprStr after do
@@ -94,11 +94,11 @@ theorem atomicWitness : True := atomicDependency
 /--
 error: Label atomic_directive declares conflicting priorities including 'high'
 ---
-error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@3885/0 label=atomic_directive refs=[] priority=(some high)
+error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@3905/0 label=atomic_directive refs=[] priority=(some high)
 ---
 error: Label atomic_directive declares conflicting priorities including 'low'
 ---
-error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@4588/0 label=atomic_directive refs=[atomicWitness] priority=(some low)
+error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@4608/0 label=atomic_directive refs=[atomicWitness] priority=(some low)
 -/
 #guard_msgs in
 #check_blueprint_atomic

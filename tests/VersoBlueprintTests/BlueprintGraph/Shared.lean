@@ -35,10 +35,10 @@ def mkThmDecl (name : Name) (typeSorry : Bool := false) (proofSorry : Bool := fa
   }
 
 def mkDefCode (decl : Name) (typeSorry : Bool := false) : Code :=
-  { stx := .missing, definedDefs := #[mkDefDecl decl typeSorry], definedTheorems := #[] }
+  { definedDefs := #[mkDefDecl decl typeSorry], definedTheorems := #[] }
 
 def mkTheoremCode (decl : Name) (typeSorry : Bool := false) (proofSorry : Bool := false) : Code :=
-  { stx := .missing, definedDefs := #[], definedTheorems := #[mkThmDecl decl typeSorry proofSorry] }
+  { definedDefs := #[], definedTheorems := #[mkThmDecl decl typeSorry proofSorry] }
 
 def mkState (entries : List (Name × NodeInventory)) : Environment.State :=
   let inventory := entries.foldl (init := ({} : Lean.NameMap NodeInventory)) fun acc (label, node) =>

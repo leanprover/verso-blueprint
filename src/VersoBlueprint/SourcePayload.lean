@@ -114,7 +114,7 @@ def ProvedStatus.indexByName (observations : Array (Name × ProvedStatus)) : Nam
 /-- Information about a code block, including Lean-level analysis -/
 structure LiterateDef where
   name : Name
-  commandStx : Syntax := .missing
+  sourceLocation : SourceLocationResult := .unavailable "Inline Lean declaration source location unavailable"
   commandIndex : Nat := 0
   commandLines : Nat := 1
   provedStatus : ProvedStatus := .incomplete {}
@@ -162,9 +162,8 @@ def ConstantInfo.externalBlueprintNodeKind? (env : Environment) (info : Constant
     | _ => none
 
 structure Code where
-  stx : Syntax
-  /-- Physical file recorded by the Lean fence producer. -/
-  ownerPath? : Option String := none
+  /-- Module that compiled the declarations in this fence. -/
+  moduleName : Name := .anonymous
   definedDefs : Array LiterateDef := #[]
   definedTheorems : Array LiterateThm := #[]
 deriving Repr, Inhabited
@@ -399,7 +398,7 @@ def Code.definedDeclNames (code : Code) : Array Name :=
     pushUniqueNativeName #[]
 
 structure InformalBody where
-  stx : Syntax
+  sourceText : Option String := none
   blocks : Array (Verso.Doc.Block Verso.Genre.Manual) := #[]
 deriving Repr, Inhabited
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Check imported semantic invalidation through ordinary Lake builds.
+"""Check imported semantic invalidation from rebuilt Lean artifacts.
 
-Only Runtime.lean receives reversible body and type byte edits; source/consumer
+Only Runtime.lean receives reversible body, proof, comment and type edits. Owner/consumer
 bytes stay fixed. No mtimes/cache deletion, foreign artifacts or FIR changes
 are involved. Saved MOCK review bindings are temporary test controls, not a
 production API.

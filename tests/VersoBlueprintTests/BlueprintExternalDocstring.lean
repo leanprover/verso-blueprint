@@ -21,7 +21,7 @@ private def two : Name := Name.mkSimple "external.docstring.two"
 private def verso : Name := Name.mkSimple "external.docstring.verso"
 private def versoWithProof : Name := Name.mkSimple "external.docstring.versoWithProof"
 private def project : Name := `externalDocstringFixture
-private def upstreamBody : String := " The **upstream statement marker** retains λ and 😀. "
+private def upstreamBody : String := "The **upstream statement marker** retains λ and 😀."
 private def markdownMarker : String := "<strong>upstream statement marker</strong>"
 private def versoMarker : String := "<strong>upstream Verso marker</strong>"
 private def proofMarker : String := "<strong>consumer proof marker</strong>"
@@ -45,7 +45,7 @@ private def statementDocuments (snapshot : Capture.Snapshot) (label : Name) (lan
 
 private def hasStatement (snapshot : Capture.Snapshot) (label : Name)
     (language : Name := `markdown) (body : String := upstreamBody) : Bool :=
-  (statementDocuments snapshot label language).any (·.text == body)
+  (statementDocuments snapshot label language).any (·.text.trimAscii.toString == body)
 
 private def hasNoMarkdown (snapshot : Capture.Snapshot) (label : Name) : Bool :=
   (statementDocuments snapshot label `markdown).all (·.text.trimAscii.isEmpty)
@@ -116,24 +116,22 @@ run_cmd liftTermElabM do
   let consumerModule := `VersoBlueprintTests.BlueprintExternalDocstring.Consumer
   let some ownerIdx := env.getModuleIdxFor? canonical | throwError "Missing imported native owner"
   let some ownerPackage := env.getModulePackageByIdx? ownerIdx | throwError "Missing loaded package identity"
-  let isOwnerFile (path : System.FilePath) := path.toString.endsWith "/BlueprintExternalDocstring/Owner.lean"
   for label in #[one, two] do
     let some node := state.inventory.get? label | throwError "Missing re-exported consumer node"
     let #[source] := node.sources.filter (·.adoption.isSome) | throwError "Missing exact adoption record"
     let some adoption := source.adoption | throwError "Missing typed adoption"
-    let (path, _) ← obtain adoption.owner
     ensure (adoption.canonical == canonical && adoption.moduleName == ownerModule &&
       adoption.package == some ownerPackage && adoption.consumerModule == consumerModule &&
-      source.context == ⟨`markdown, project⟩ && source.document.path.endsWith "/BlueprintExternalDocstring/Consumer.lean" &&
-      isOwnerFile path)
+      source.context == ⟨`markdown, project⟩ && source.document.path == SourceData.modulePath consumerModule)
       "Re-export lost the independent producer, source owner, package, or project"
     ensure (hasStatement valid label && hasNativeProof valid label canonical)
       "Two labels must be able to adopt the same exact comment independently of native proof coverage"
   ensure (hasNativeProof valid one ``ExternalDocstringFixture.alternative)
     "Adopting one docstring removed another attached native declaration"
-  ensure (hasStatement valid verso `verso " The *upstream Verso marker* names {name}`True`. " &&
+  ensure ((statementDocuments valid verso `verso).any (fun doc =>
+      doc.text.contains "upstream Verso marker" && doc.text.contains (Vir.nameKey ``Lean.Doc.Data.Const)) &&
     hasNativeProof valid verso ``ExternalDocstringFixture.versoSelected)
-    "A direct Verso docstring must keep its format, exact own bytes and native proof"
+    "A direct Verso docstring must keep its format, compiled payload and native proof"
   ensure (valid.registry.realizations.any fun model =>
     model.key.node == one && model.context == ⟨`verso, project⟩ && model.role == `proof &&
       !model.documents.isEmpty)
@@ -150,37 +148,13 @@ run_cmd liftTermElabM do
   ensure (!(valid.sourceDiagnostics.nodes.any (fun (label, _) => label == one || label == two)))
     "A valid sibling selection acquired the missing declaration's source diagnostic"
 
-  -- The source reader only changes the owning file. Native results must still
-  -- come from the ordinary checked environment for every consumer label.
-  for (edit, allowed) in #[
-      ((fun text : String => text.replace "upstream statement" "upstream statemant"),
-        #["source-selection-unavailable"]),
-      ((fun text : String => text.replace "Copyright (c) 2026" "Copyright (c) 2027"),
-        #["source-selection-unavailable"]),
-      ((fun text : String => text.replace "\n" "\r\n"),
-        #["source-association-unavailable", "source-selection-unavailable"])] do
-    let stale ← capture plan fun path => do
-      let bytes ← IO.FS.readFile path
-      if isOwnerFile path then pure (edit bytes) else pure bytes
-    ensureNestedWidgetPreview (.ok stale) (adopted := false) (checked := true)
-    ensureWidgetPreview one (.ok stale) (some (.proof, proofMarker))
-    ensureWidgetPreview verso (.ok stale) none
-    for label in #[one, two] do
-      let scopedIssues := stale.sourceDiagnostics.nodes.filter (·.1 == label)
-      ensure (hasNoMarkdown stale label && hasNativeProof stale label canonical &&
-        scopedIssues.any (fun (_, issue) => allowed.contains issue.code && issue.subject == canonical.toString))
-        s!"Edited owner bytes for {label} must fail with one of {allowed} while keeping native proof coverage; got {repr scopedIssues}"
-  let unreadable ← capture plan fun path =>
-    if isOwnerFile path then throw (IO.userError "Injected unreadable owner") else IO.FS.readFile path
-  ensureNestedWidgetPreview (.ok unreadable) (adopted := false) (checked := true)
-  ensureWidgetPreview two (.ok unreadable) none
-  ensureWidgetPreview versoWithProof (.ok unreadable) (some (.proof, proofMarker))
-  ensure (hasNoMarkdown unreadable one && hasNativeProof unreadable one canonical &&
-    unreadable.sourceDiagnostics.nodes.any (fun (label, _) => label == one))
-    "An unreadable upstream document must retain native availability"
+  let compiled ← capture plan (fun _ => throw (IO.userError "Unexpected source read"))
+  ensure (compiled.registry.documents == valid.registry.documents && compiled.sourceDiagnostics == valid.sourceDiagnostics)
+    "Adoption must use the loaded artifacts independently of the source reader"
+  ensureNestedWidgetPreview (.ok compiled) (adopted := true) (checked := true)
 
   -- Isolate one registration before replanning. The sibling shares the same
-  -- declaration and source bytes but must not authorize a forged owner.
+  -- declaration but must not authorize a forged owner.
   let wrongOwner (alter : SourceData.AdoptedDocstring → SourceData.AdoptedDocstring) : Capture.Plan :=
     Capture.plan { raw with nodes := raw.nodes.map fun (label, node) =>
       (label, if label != one then node else

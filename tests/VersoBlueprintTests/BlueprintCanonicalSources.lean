@@ -61,6 +61,7 @@ private def proofModel : Realization := {
     destination := ⟨key, some `statement⟩, document
     source := Data.SourceLocationResult.unavailable "Structural fixture has no source lookup"
     payload := .text "Structural source fixture" }
+  let model := { model with documents := #[source.selectedDocumentKey] }
   ensure ((source.issues node model).isEmpty) "An explicitly unavailable location is retained, not fabricated"
   ensure (has (({ source with document := { document with context := ⟨`lean, `otherProject⟩ } } : SourceSelection).issues node model)
     "source-context-mismatch") "A same-spelled declaration from another project is not this source"
@@ -83,7 +84,7 @@ private def proofModel : Realization := {
     key := key.forRole `statement
     role := `statement
     context := rocq
-    documents := #[rocqDocument]
+    documents := #[foreign.selectedDocumentKey]
   }
   ensure ((foreign.issues node foreignModel).isEmpty) "Foreign spelling requires no Lean name interpretation"
   let .text raw := foreign.payload | throw <| IO.userError "Foreign payload changed kind"
@@ -153,7 +154,7 @@ private def proofModel : Realization := {
     destination := ⟨⟨node, realization⟩, some facet⟩
     document := doc realization
     source := .unavailable "Raw preservation fixture; no source lookup"
-    payload := .prose { stx := .missing, blocks := #[.para #[.text text]] } }
+    payload := .prose { sourceText := some text, blocks := #[.para #[.text text]] } }
   let first := prose custom `statement "Original authored statement"
   let second := prose alternative `commentary "Independent commentary source slot"
   let customKey : RealizationKey := ⟨node, custom⟩
@@ -209,7 +210,7 @@ private def proofModel : Realization := {
     match ({} : Data.NodeInventory).applyRegistrations node #[{ sources := ordered }] with
     | .error _ => pure ()
     | .ok _ => throw <| IO.userError "A prose body and text source shared one exact raw slot"
-  let placeholder : SourceSelection := { first with payload := .prose { stx := .missing } }
+  let placeholder : SourceSelection := { first with payload := .prose default }
   for ordered in #[#[placeholder, sameFacetText], #[sameFacetText, placeholder]] do
     let mixed ← match ({} : Data.NodeInventory).applyRegistrations node #[{ sources := ordered }] with
       | .ok stored => pure stored
@@ -313,7 +314,6 @@ private def proofModel : Realization := {
     destination := ⟨key, none⟩, document
     source := Data.SourceLocationResult.unavailable "Synthetic inline metadata; no source lookup"
     payload := .leanInline {
-      stx := .missing
       definedDefs := #[{ name := inlineDef }]
       definedTheorems := #[{ name := inlineTheorem }] } }
   let expected := #[a, b, missing, inlineDef, inlineTheorem]

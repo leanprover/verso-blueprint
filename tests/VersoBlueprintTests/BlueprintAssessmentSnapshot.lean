@@ -154,8 +154,8 @@ private def defaultUseSelectionDetails (snapshot : Realizations.Capture.Snapshot
     | none => "missing"
   return s!"uses={reprStr selectedSummary}; alternative={alternativeSummary}; alternativeRequirement={alternativeRequirementSummary}; alternativeDocument={alternativeDocumentSummary}; alternativeLocal={reprStr (registry.localResult unfinishedAlternativeCheck)}; alternativeFinal={reprStr (registry.resultFor (.realization unfinishedAlternativeProof))}; defaultProof={reprStr (registry.resultForRequirement proofCheck)}; dependentStatementPrerequisites={dependentStatementPrerequisites}; dependentProofPrerequisites={dependentProofPrerequisites}; dependentFinal={reprStr (registry.resultForRequirement mainDependentProofCheck)}"
 
-private def originalDocstring := " The attribute statement is true. Ω 🧭 "
-private def editedDocstring := " The attribute statement is true. Ω 🧭  "
+private def originalDocstring := "The attribute statement is true. Ω 🧭"
+private def editedDocstring := "The attribute statement is still true. Ω 🧭"
 
 private def checkOwnDocstring (snapshot : Realizations.Capture.Snapshot) (swapped : Bool)
     (expectedText : String) : TermElabM Unit := do
@@ -164,8 +164,8 @@ private def checkOwnDocstring (snapshot : Realizations.Capture.Snapshot) (swappe
     | throwError "Missing attribute docstring statement"
   let #[document] := statement.documents
     | throwError "Expected a single attribute docstring document"
-  ensure ((registry.document? document).any (·.text == expectedText))
-    "The statement must retain the exact raw own docstring bytes"
+  ensure (document.path.startsWith "module:" && (registry.document? document).any (·.text.trimAscii.toString == expectedText))
+    "The statement must retain the compiled Markdown docstring"
   let target := if swapped then `docDependencyB else `docDependencyA
   let other := if swapped then `docDependencyA else `docDependencyB
   let uses := snapshot.uses.filter (·.source == docstringLabel `documented)
@@ -184,12 +184,44 @@ private def checkOwnDocstring (snapshot : Realizations.Capture.Snapshot) (swappe
     (registry.resultForRequirement proof).complete)
     s!"Expected proof dependency on {target}, with both targets and the dependent proof complete"
 
+private def reviewSelection (registry : Registry) (key : RealizationKey) (requirement : RequirementKey) :
+    TermElabM (ContentBinding × String) := do
+  let some binding := registry.bindingFor requirement | throwError "Missing fixture review binding"
+  let some model := registry.realization? key | throwError "Missing fixture statement realization"
+  let #[documentKey] := model.documents | throwError "Expected one fixture statement document"
+  let some document := registry.documents.find? (·.key == documentKey)
+    | throwError "Missing fixture document"
+  return (binding, document.text)
+
+private def checkHeaderUse (snapshot : Capture.Snapshot) (target : Name) (body : String) :
+    TermElabM Unit := do
+  let uses := snapshot.uses.filter (·.source == docstringLabel `headerUse)
+  let #[use] := uses | throwError "Expected a single theorem header use, got {repr uses}"
+  let witness : ObjectKey := ⟨⟨`lean, project⟩, (`BlueprintAssessmentSnapshot ++ target).toString⟩
+  let targetStatement := (⟨docstringLabel target, `lean⟩ : RealizationKey).forRole `statement
+  let expected : RequirementKey := ⟨.declaration targetStatement witness, `statement⟩
+  ensure (use.role == `statement && use.reference.label == docstringLabel target &&
+    use.selected.toOption == some #[expected])
+    s!"The header must select the expected authored use on {target}, got {repr use}"
+  ensure (body ==
+    "The first paragraph cites {bpref \"assessment.docDependencyA\"}[the same statement].\n\nThe last paragraph completes the authored body.")
+    s!"Expected only the two authored paragraphs with their original inline reference, got {repr body}"
+
 private def mockJudgment (id reviewer : Name) (outcome : Outcome) (binding : ContentBinding)
     (requirement : RequirementKey := aliceReview) : ReviewJudgment := {
   id, requirement, binding
   observation := {
     criterion := `mathematicalCorrespondence, reviewer, outcome,
     explanation := "MOCK test judgment; not a human review" } }
+
+private def captureWithMockProseReview (requirement : RequirementKey) (binding : ContentBinding) :
+    TermElabM Capture.Snapshot := do
+  let judgmentId := `mockStableStatement
+  liftM (m := TermElabM) (α := Unit)
+    (Realizations.Authoring.stage `mockStableStatement {
+      reviews := #[mockJudgment judgmentId `AliceMock .passed binding requirement]
+      reviewSelections := #[{ requirement, judgment := some judgmentId }] })
+  obtain (← Capture.capture)
 
 private def captureWithAuthored (base : Lean.Environment) (id : Name)
     (batch : Environment.AuthoredBatch) : TermElabM Registry := do
@@ -266,6 +298,26 @@ run_cmd liftTermElabM do
       | throwError "VBP_SNAPSHOT_REVIEW_CONTROL is required in baseline mode"
     IO.FS.writeFile path binding
     IO.FS.writeFile (path ++ ".docstring") docstringBinding
+    let localDoc ← reviewSelection initial localDocStatement localDocReview
+    ensure (localDoc.2.contains (Vir.nameKey ``Lean.Doc.Data.Local) &&
+      localDoc.2.contains (Vir.nameKey ``Lean.Doc.Data.LeanTerm) && localDoc.2.contains "\"lctx-binder\"")
+      s!"The compiled Verso control must contain both local roles, got {localDoc.2}"
+    let highlightedDoc ← reviewSelection initial highlightedDocStatement highlightedDocReview
+    ensure (highlightedDoc.2.contains "[\"lctx-binder\",0,")
+      s!"The compiled highlight must select the owner's first binder, got {highlightedDoc.2}"
+    let macroDoc ← reviewSelection initial macroDocStatement macroDocReview
+    ensure (underBinderProbe == 13 && macroDoc.2.contains "underBinder" &&
+      macroDoc.2.contains "[\"lctx-binder\",0,")
+      s!"The original macro must highlight the owner's binder, got {macroDoc.2}"
+    let approved ← captureWithMockProseReview macroDocReview macroDoc.1
+    ensure ((approved.registry.localResult macroDocReview).complete)
+      "The saved approval must complete the original compiled macro docstring"
+    let headerUse ← reviewSelection initial headerUseStatement headerUseReview
+    checkHeaderUse initialSnapshot `docDependencyA headerUse.2
+    IO.FS.writeFile (path ++ ".localdoc") (toJson localDoc).compress
+    IO.FS.writeFile (path ++ ".highlighted") (toJson highlightedDoc).compress
+    IO.FS.writeFile (path ++ ".macro") (toJson macroDoc).compress
+    IO.FS.writeFile (path ++ ".header") (toJson headerUse).compress
     return
   if mode == "docstring-proof-use" || mode == "docstring-text" then
     let some path := (← IO.getEnv "VBP_SNAPSHOT_REVIEW_CONTROL")
@@ -286,10 +338,48 @@ run_cmd liftTermElabM do
     if edited then
       ensure (currentBinding != savedBinding && !review.complete &&
         review.diagnostics.any (·.code == "stale-content"))
-        "Editing raw docstring whitespace must stale the saved statement review"
+        "Editing the compiled docstring text must stale the saved statement review"
     else
       ensure (currentBinding == savedBinding && review.complete)
         "Switching between complete proof dependencies must preserve the saved statement review"
+    return
+  let reviewControl := match mode with
+    | "directive-header-use" => some (headerUseStatement, headerUseReview, ".header")
+    | "local-doc-proof" | "local-doc-target" => some (localDocStatement, localDocReview, ".localdoc")
+    | "highlighted-doc-proof" | "highlighted-doc-position" =>
+      some (highlightedDocStatement, highlightedDocReview, ".highlighted")
+    | "highlighted-doc-macro" => some (macroDocStatement, macroDocReview, ".macro")
+    | _ => none
+  if let some (statement, requirement, suffix) := reviewControl then
+    let some path := (← IO.getEnv "VBP_SNAPSHOT_REVIEW_CONTROL")
+      | throwError "VBP_SNAPSHOT_REVIEW_CONTROL is required for review reuse controls"
+    let saved ← obtain (Json.parse (← IO.FS.readFile (path ++ suffix)))
+    let (savedBinding, savedText) ← obtain (fromJson? (α := ContentBinding × String) saved)
+    let snapshot ← captureWithMockProseReview requirement savedBinding
+    let (binding, text) ← reviewSelection snapshot.registry statement requirement
+    let review := snapshot.registry.localResult requirement
+    if mode == "directive-header-use" then checkHeaderUse snapshot `docDependencyB text
+    if mode == "highlighted-doc-macro" then
+      let label := macroDocStatement.node
+      let unsupported := snapshot.sourceDiagnostics.nodes.any fun (node, diagnostic) =>
+        node == label && diagnostic.code == "unsupported-docstring-extension" &&
+          diagnostic.subject == toString ``modelAMacroReviewed &&
+          diagnostic.message == "Compiled highlighted local variable has no captured local-context binder identity"
+      ensure (underBinderProbe == 7 && unsupported && text.isEmpty && review.status == .blocked &&
+        !review.complete && (snapshot.assessmentFor label).requiredComplete)
+        s!"The inner binder must block the saved prose approval and preserve native checks, got {repr review}"
+      return
+    if mode == "local-doc-target" then
+      ensure (text.contains (Vir.nameKey ``DocTargets.x)) "Expected the new resolved global target"
+    if mode == "highlighted-doc-position" then
+      ensure (text.contains "[\"lctx-binder\",1,") "The highlight must now select the owner's second binder"
+    if mode == "local-doc-target" || mode == "highlighted-doc-position" then
+      ensure (text != savedText && binding != savedBinding && !review.complete &&
+        review.diagnostics.any (·.code == "stale-content"))
+        s!"{mode} must stale the saved statement review, got {repr review.diagnostics}"
+    else
+      ensure (text == savedText && binding == savedBinding && review.complete)
+        s!"{mode} must preserve the selected text, binding and review, got {repr review.diagnostics}"
     return
   if mode != "smoke" then
     unless ["rewrite", "hole", "statement", "mapping", "prose"].contains mode do

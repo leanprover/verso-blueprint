@@ -5,18 +5,12 @@ Author: Emilio J. Gallego Arias
 -/
 
 import Lean.Elab.DocString
+import VersoBlueprint.Docstring.Compiled
 import VersoBlueprint.Informal.Uses
 
 namespace Informal.Docstring
 
 open Lean
-
-/-- A prose link or a dependency, with fallback text for ordinary docstring consumers. -/
-structure Reference where
-  target : Data.Label ⊕ Data.UseRef
-  /-- Empty authored text uses automatic Blueprint numbering when placed in a Manual. -/
-  hasCustomText : Bool
-deriving TypeName
 
 def Reference.label (reference : Reference) : Data.Label :=
   reference.target.elim id (·.label)

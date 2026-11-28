@@ -243,8 +243,8 @@ private def highA : Record := { a with priority := some "high" }
 
 -- Payload reduction retains authored bodies, dependencies, and literate code.
 #guard match ({} : NodeInventory).applyRegistrations `shared #[{
-    sources := #[BlueprintNativeFixture.source `shared `verso (some `statement) `verso (.prose { stx := .missing, blocks := #[.para #[.text "Fixture body"]] }),
-      BlueprintNativeFixture.source `shared `lean none `lean (.leanInline { stx := .missing })]
+    sources := #[BlueprintNativeFixture.source `shared `verso (some `statement) `verso (.prose { sourceText := some "Fixture body", blocks := #[.para #[.text "Fixture body"]] }),
+      BlueprintNativeFixture.source `shared `lean none `lean (.leanInline default)]
     uses := Informal.SourceData.usesFor `shared (some `lean) `statement #[{ label := `dependency }]
   }] with
   | .ok node => (node.proseView `verso `statement).any (·.hasBody) &&
@@ -255,7 +255,7 @@ private def highA : Record := { a with priority := some "high" }
 #guard match Informal.NodeAssembly.assemble `shared #[] [highA, proofA] with
   | .error _ => false
   | .ok assembled => match assembled.node.applyRegistrations `shared #[{
-      sources := #[BlueprintNativeFixture.source `shared `verso (some `statement) `verso (.prose { stx := .missing, blocks := #[.para #[.text "Fixture body"]] })]
+      sources := #[BlueprintNativeFixture.source `shared `verso (some `statement) `verso (.prose { sourceText := some "Fixture body", blocks := #[.para #[.text "Fixture body"]] })]
       uses := Informal.SourceData.usesFor `shared (some `lean) `statement #[{ label := `dependency }]
     }] with
     | .error _ => false

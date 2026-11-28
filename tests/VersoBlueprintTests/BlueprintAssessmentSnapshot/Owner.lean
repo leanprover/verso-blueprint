@@ -76,7 +76,7 @@ def mainDependentProofCheck : RequirementKey :=
 def unfinishedAlternativeBase : RealizationKey := ⟨label, `authoredAlternative⟩
 def unfinishedAlternativeProof : RealizationKey := unfinishedAlternativeBase.forRole `proof
 def unfinishedAlternativeDocument : DocumentKey :=
-  ⟨⟨`lean, project⟩, "tests/VersoBlueprintTests/BlueprintAssessmentSnapshot/Owner.lean"⟩
+  ⟨⟨`rocq, project⟩, "tests/fixtures/realizations/rocq/Flag.v"⟩
 def unfinishedAlternativeCheck : RequirementKey :=
   ⟨.realization unfinishedAlternativeProof, `localCheck⟩
 def unfinishedAlternative : Realization := {
@@ -101,6 +101,18 @@ def docstringLabel (decl : Name) : Name := Name.mkSimple s!"assessment.{decl}"
 def docstringStatement : RealizationKey :=
   (⟨docstringLabel `documented, `markdown⟩ : RealizationKey).forRole `statement
 def docstringReview : RequirementKey := ⟨.realization docstringStatement, `docstringReview⟩
+def localDocStatement : RealizationKey :=
+  (⟨docstringLabel `localDoc, `verso⟩ : RealizationKey).forRole `statement
+def localDocReview : RequirementKey := ⟨.realization localDocStatement, `localDocReview⟩
+def highlightedDocStatement : RealizationKey :=
+  (⟨docstringLabel `highlightedDoc, `verso⟩ : RealizationKey).forRole `statement
+def highlightedDocReview : RequirementKey := ⟨.realization highlightedDocStatement, `highlightedDocReview⟩
+def macroDocStatement : RealizationKey :=
+  (⟨docstringLabel `macroDoc, `verso⟩ : RealizationKey).forRole `statement
+def macroDocReview : RequirementKey := ⟨.realization macroDocStatement, `macroDocReview⟩
+def headerUseStatement : RealizationKey :=
+  (⟨docstringLabel `headerUse, `verso⟩ : RealizationKey).forRole `statement
+def headerUseReview : RequirementKey := ⟨.realization headerUseStatement, `headerUseReview⟩
 def docstringProofCheck (decl : Name) : RequirementKey :=
   let base : RealizationKey := ⟨docstringLabel decl, `lean⟩
   let object : ObjectKey := ⟨⟨`lean, project⟩, (`BlueprintAssessmentSnapshot ++ decl).toString⟩
@@ -140,6 +152,36 @@ theorem docDependencyB : True := True.intro
 @[blueprint "assessment.documented" (proofUses := ["assessment.docDependencyA"])]
 theorem documented : True := True.intro
 
+namespace DocTargets
+
+def x : Nat := 0
+
+end DocTargets
+
+set_option doc.verso true in
+/-- Compare {name}`x` with {Lean.Doc.lean}`x`. The linked binder is {name}`x`. -/
+@[blueprint "assessment.localDoc"]
+theorem localDoc (x : Nat) : x = x := by rfl
+
+set_option doc.verso true in
+/-- The value of {Lean.Doc.lean}`x` is unchanged. Here, {name}`x` names the binder. -/
+@[blueprint "assessment.highlightedDoc"]
+theorem modelAReviewed (x y : Nat) : x ≤ y → x ≤ y := id
+
+syntax "underBinder " ident : term
+macro_rules | `(underBinder $v:ident) => `(fun (_inner : Nat) => $v)
+
+def underBinderProbe : Nat :=
+  let x := 13
+  (underBinder x) 7
+
+set_option doc.verso true in
+/-- Compare {name}`x` with {Lean.Doc.lean}`underBinder x`. -/
+@[blueprint "assessment.macroDoc"]
+theorem modelAMacroReviewed (x : Nat) : x = x := rfl
+
+theorem headerWitness : True := True.intro
+
 #docs (Manual) assessmentSnapshotDoc "Assessment Snapshot Example" :=
 :::::::
 :::theorem "assessment.statementProof"
@@ -147,6 +189,11 @@ The proposition is true. Ω 🧭 The Lean declaration provides its proof.
 :::
 :::proof "assessment.statementProof"
 An alternative argument remains to be written.
+:::
+:::theorem "assessment.headerUse" (lean := "headerWitness") (uses := "assessment.docDependencyA")
+The first paragraph cites {bpref "assessment.docDependencyA"}[the same statement].
+
+The last paragraph completes the authored body.
 :::
 :::::::
 
@@ -175,6 +222,14 @@ run_cmd liftCoreM <| Realizations.Authoring.stage `claims {
     { key := alternativeProofReview,
       expected := .review `mathematicalProof `AliceMock },
     { key := docstringReview,
+      expected := .review `mathematicalCorrespondence `AliceMock },
+    { key := localDocReview,
+      expected := .review `mathematicalCorrespondence `AliceMock },
+    { key := highlightedDocReview,
+      expected := .review `mathematicalCorrespondence `AliceMock },
+    { key := macroDocReview,
+      expected := .review `mathematicalCorrespondence `AliceMock },
+    { key := headerUseReview,
       expected := .review `mathematicalCorrespondence `AliceMock },
     { key := aliceReview, expected := .review `mathematicalCorrespondence `AliceMock,
       prerequisites := #[nativeSupport] }] }

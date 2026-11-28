@@ -34,11 +34,9 @@ private def rejected : Except ε α → Bool
 -- Direct native preparation does not need a Blueprint node or enrollment.
 -- These are actual imported declarations; native checking and model admission
 -- remain separate operations, rather than facts invented by lookup. A plain
--- declaration is prepared from the environment; only doc-comment prose reads
--- the owning source bytes.
+-- declaration and its own documentation are prepared from the environment.
 run_cmd liftTermElabM do
   let before ← Informal.Environment.stagedAuthoring
-  let sourcePath := "tests/VersoBlueprintTests/BlueprintRealizationAdapter/Provider.lean"
   let request : NativeSource.Request := {
     project := `adapterFixture
     canonical := `RealizationAdapterFixture.identityInvolutive
@@ -57,32 +55,12 @@ run_cmd liftTermElabM do
     source.moduleName == request.moduleName && source.ranges.range == ranges.range &&
     source.ranges.selectionRange == ranges.selectionRange && source.semanticContext.isSome)
     "Direct source must preserve typed identity, the environment's native ranges and current semantic inputs"
-  -- Parser-boundary injection only, not successful proof/provider evidence:
-  -- A later unsupported command fails full-file `parseSource`, while compiled
-  -- environment metadata still establishes own vs inherited docstrings for an
-  -- earlier parsed declaration.
-  let text ← IO.FS.readFile sourcePath
-  let tailInput := text ++ "\nsyntax \"sourceTailCommand\" : command\nsourceTailCommand\n"
-  ensure (!(← NativeSource.parseSource request.canonical sourcePath tailInput).isOk)
-    "Control tail must require unsupported parser context"
-  let documentedRequest := { request with canonical := `RealizationAdapterFixture.number }
-  let documentedTail ← obtain (← NativeSource.selectDocumented documentedRequest sourcePath (fun _ => pure tailInput))
-  ensure (documentedTail.format == `markdown && !documentedTail.rawDocstring.isEmpty)
-    "Unrelated trailing unsupported syntax should not block compiled-environment docstring selection"
-  for (result, code) in #[
-      (← NativeSource.selectDocumented documentedRequest sourcePath (fun _ => pure ("\n" ++ text)),
-        "source-association-unavailable"),
-      (← NativeSource.selectDocumented documentedRequest sourcePath
-        (fun _ => pure "import Lean\n#broken_before_declaration\n"), "source-parse-failed")] do
-    match result with
-    | .error diagnostic => ensure (diagnostic.code == code) s!"Wrong docstring source rejection: {diagnostic.code}"
-    | .ok _ => throwError "Docstring association weakened exact owning declaration/name-range guards"
   let disagreeing ← NativeSource.prepare { request with selectionRange? := some {
     source.ranges.selectionRange with charUtf16 := source.ranges.selectionRange.charUtf16 + 1 } }
   ensure (!disagreeing.isOk) "A recorded snapshot range disagreeing with the environment was accepted"
   ensure (source.roles == #[`statement, `proof])
     "Undocumented theorem must retain its intrinsic statement and proof roles"
-  let noDoc ← NativeSource.prepareDocumented request sourcePath
+  let noDoc ← NativeSource.prepareDocumented request
   match noDoc with
   | .error diagnostic => ensure (diagnostic.code == "unsupported-docstring") "Undocumented source is not prose"
   | .ok _ => throwError "Undocumented declaration borrowed a nearby docstring"
@@ -90,36 +68,25 @@ run_cmd liftTermElabM do
   ensure (definition.canonical == `RealizationAdapterFixture.Reflexivity &&
       definition.semanticContext.isSome && definition.roles == #[`statement])
     "A proposition definition supplies statement content without an artificial proof role"
-  let documented ← obtain (← NativeSource.prepareDocumented documentedRequest sourcePath)
-  ensure (documented.format == `markdown && documented.rawDocstring == " An unsupported definition. " &&
-      documented.toPrepared.roles == #[`implementation] && documented.document.text == text &&
-      documented.document.key == ⟨⟨`lean, request.project⟩, sourcePath⟩)
-    "Direct owning documentation supports definitions without a legacy theorem-only node gate, and keeps its exact owning bytes"
-  let neighbor ← obtain (← NativeSource.prepareDocumented
-    { request with canonical := `RealizationAdapterFixture.neighboringComment } sourcePath)
-  ensure (neighbor.format == `verso && neighbor.rawDocstring == " Même *texte* 😀 λ with {name}`Nat`. ")
-    "Own unregistered Verso comment preserves exact supplementary Unicode bytes"
-  let versoRequest := { request with canonical := `RealizationAdapterFixture.versoDocstring }
-  let original ← obtain (← NativeSource.prepareDocumented versoRequest sourcePath)
-  let forged := (text.replace "An own *Verso*" "An odd *Verso*").replace
-    "theorem versoDocstring :" "theorem otherDocstring :"
-  ensure (original.format == `verso && forged != text && forged.utf8ByteSize == text.utf8ByteSize)
-    "Expected an equal-width control for the compiled Verso declaration"
-  IO.FS.withTempDir fun root => do
-    let wrong := root / "Provider.lean"
-    IO.FS.writeFile wrong forged
-    match ← NativeSource.prepareDocumented versoRequest wrong.toString with
-    | .error diagnostic =>
-      ensure (diagnostic.code == "source-association-unavailable") "Wrong source file must fail ownership"
-    | .ok _ => throwError "Standalone preparation used source from another file and declaration"
-  match ← NativeSource.prepareDocumented versoRequest sourcePath (fun _ => pure forged) with
-  | .error diagnostic =>
-    ensure (diagnostic.code == "source-selection-unavailable") "Edited bytes must fail the owning input hash"
-  | .ok _ => throwError "Standalone preparation accepted a same-width edit at the owning path"
-  match ← NativeSource.selectDocumented versoRequest sourcePath (fun _ => pure forged) with
-  | .error diagnostic =>
-    ensure (diagnostic.message.contains "identifier disagrees") "The selected identifier must match the compiled declaration"
-  | .ok _ => throwError "Parser selection accepted a different declaration at the same ranges"
+  let documented ← obtain (← NativeSource.prepareDocumented
+    { request with canonical := `RealizationAdapterFixture.number })
+  ensure (documented.format == `markdown && documented.content == "An unsupported definition. " &&
+      documented.toPrepared.roles == #[`implementation])
+    "Compiled Markdown source must support definitions"
+  let moduleIdx ← match (← getEnv).getModuleIdxFor? request.canonical with
+    | some index => pure index
+    | none => throwError "Missing imported package identity"
+  let some package := (← getEnv).getModulePackageByIdx? moduleIdx
+    | throwError "Missing imported package identity"
+  let documentedRequest := { request with canonical := `RealizationAdapterFixture.versoDocstring }
+  let verso ← obtain (← NativeSource.prepareDocumented { documentedRequest with package? := some package })
+  ensure (verso.format == `verso && verso.content.contains "é 😀" &&
+    verso.content.contains (Vir.nameKey ``Lean.Doc.Data.Const) && verso.content.contains (Vir.nameKey ``Lean.Doc.Data.LeanTerm) &&
+    verso.content.contains (Vir.nameKey ``Lean.Doc.Data.Atom))
+    "Compiled Verso must retain the name, term and keyword payloads"
+  match ← NativeSource.prepareDocumented { documentedRequest with package? := some "wrong-package" } with
+  | .error diagnostic => ensure (diagnostic.code == "source-association-unavailable") "Wrong package diagnostic"
+  | .ok _ => throwError "Docstring preparation accepted an unrelated compiled package"
   for (bad, code) in #[
       ({ request with project := .anonymous }, "invalid-source-request"),
       ({ request with canonical := `RealizationAdapterFixture.notPresent }, "missing-declaration"),
@@ -131,15 +98,6 @@ run_cmd liftTermElabM do
     match ← NativeSource.prepare bad with
     | .error diagnostic => ensure (diagnostic.code == code) "Direct native source rejection changed"
     | .ok _ => throwError "Direct native source accepted inconsistent identity/owner/ranges"
-  -- Only the doc-comment provider reads the file, so only it reports source I/O.
-  let unreadable ← NativeSource.prepareDocumented documentedRequest sourcePath
-    (fun _ => throw <| IO.userError "injected unavailable source")
-  match unreadable with
-  | .error diagnostic => ensure (diagnostic.code == "source-unavailable") "No source-I/O fallback"
-  | .ok _ => throwError "Direct source manufactured readable bytes"
-  match ← NativeSource.prepareDocumented documentedRequest "" with
-  | .error diagnostic => ensure (diagnostic.code == "invalid-source-request") "Blank owning path must be explicit"
-  | .ok _ => throwError "Doc-comment preparation accepted a blank owning path"
   ensure (decide (before = (← Informal.Environment.stagedAuthoring)))
     "Source preparation must not enroll declarations or persist semantic observations"
 
@@ -161,7 +119,7 @@ run_cmd liftTermElabM do
   let q : RequirementKey := ⟨.declaration firstProof first.declaration, `proof⟩
   let siblingCheck : RequirementKey := ⟨.declaration siblingProof sibling.declaration, `proof⟩
   let record {α : Type} (id : Name) (value : α) : Contribution α :=
-    { origin := { id, moduleName := first.moduleName, source := first.document.key.path }, value }
+    { origin := { id, moduleName := first.moduleName, source := s!"module:{first.moduleName}" }, value }
   let input : Input := {
     nodes := #[record `firstNode { label := firstKey.node, title := "First" },
       record `siblingNode { label := siblingKey.node, title := "Sibling" }]
@@ -343,7 +301,8 @@ run_cmd liftTermElabM do
     `adapterFixture `RealizationAdapterFixture.«état😀»)
   ensure (documented.format == `verso)
     "Own native format metadata must select Verso"
-  ensure (documented.rawDocstring == " Même *texte* 😀 λ with {name}`Nat`. ")
+  ensure (documented.content.contains "texte" && documented.content.contains "😀 λ" &&
+    documented.content.contains (Vir.nameKey ``Lean.Doc.Data.Const))
     "Exact own source body includes authored whitespace, markup and Unicode"
   ensure (documented.moduleName == `VersoBlueprintTests.BlueprintRealizationAdapter.Provider &&
     documented.declaration == witness (Name.str `RealizationAdapterFixture "état😀"))
@@ -376,24 +335,6 @@ run_cmd liftTermElabM do
   | .ok _ => throwError "Unavailable native ranges must not be synthesized"
   ensure (ranges.selectionRange.charUtf16 != ranges.selectionRange.pos.column)
     "Supplementary Unicode must distinguish Lean codepoint and UTF-16 columns"
-  let text ← IO.FS.readFile documented.document.key.path
-  let commands ← obtain (← parseSource label documented.document.key.path text)
-  let raw ← obtain (docCommentAtRanges label text ranges.range ranges.selectionRange commands)
-  ensure (raw == documented.rawDocstring) "Exact owning-source association"
-  -- Explicit negative structural injections, not fabricated provider success.
-  for badCommands in #[commands ++ commands, commands.map fun command =>
-      command.rewriteBottomUp fun stx =>
-        stx.setInfo (.synthetic (stx.getPos?.getD 0) (stx.getTailPos?.getD 0) true)] do
-    ensure (rejected (docCommentAtRanges label text ranges.range ranges.selectionRange badCommands))
-      "Duplicate or canonical-synthetic syntax cannot establish a unique original association"
-  ensure (rejected (docCommentAtRanges label text ranges.range
-    { ranges.selectionRange with charUtf16 := ranges.selectionRange.charUtf16 + 1 } commands))
-    "UTF-16 disagreement is not a byte/codepoint conversion fallback"
-  ensure (rejected (docCommentAtRanges label (text ++ "\n") ranges.range ranges.selectionRange commands))
-    "Syntax from a different source string cannot establish original ownership"
-  let other := ranges.range
-  ensure (rejected (docCommentAtRanges label text ranges.range other commands))
-    "Full declaration range cannot replace the selected name range"
   let after ← Informal.Environment.getNodeInventory? label
   ensure (reprStr before == reprStr after) "Verso source selection preserves accepted state"
   -- Current consumer settings do not relabel already authored docstrings.
@@ -401,45 +342,25 @@ run_cmd liftTermElabM do
     RealizationAdapterFixture.prepareOwnDocstring `adapterFixture `RealizationAdapterFixture.reflexivity
   let markdown ← obtain markdown
   ensure (markdown.format == `markdown &&
-    markdown.rawDocstring == " Every natural number equals itself. Raw Markdown, with **emphasis**. ")
+    markdown.content == "Every natural number equals itself. Raw Markdown, with **emphasis**. ")
     "Markdown retains its exact own raw body and native format"
-  let basic ← obtain (← RealizationAdapterFixture.prepareOwnDocstring
-    `adapterFixture `RealizationAdapterFixture.versoDocstring)
-  ensure (basic.format == `verso && basic.rawDocstring == " An own *Verso* docstring with {name}`Nat` and é 😀. ")
-    "Option-wrapped Verso source remains exact"
 
 run_cmd liftTermElabM do
   for (label, canonical, code) in #[("adapter.inherited", `RealizationAdapterFixture.inheritedDocstring, "unsupported-docstring"),
       ("adapter.own.inherited", `RealizationAdapterFixture.ownInheritedDocstring, "inherited-docstring"),
       ("adapter.ambiguous", `RealizationAdapterFixture.ambiguousFormat, "ambiguous-docstring"),
-      ("adapter.no.original.comment", `RealizationAdapterFixture.noOriginalComment, "missing-own-comment"),
       ("adapter.synthetic", `RealizationAdapterFixture.syntheticDoc, "source-association-unavailable")] do
     match ← RealizationAdapterFixture.prepareOwnDocstring `adapterFixture canonical with
     | .error diagnostic =>
       ensure (diagnostic.code == code)
         s!"{label}: expected {code}, got {diagnostic.code}"
     | .ok _ => throwError "Unsupported source association must not fall back to another comment"
-  -- Inspect the actual ordinary declaration with no source comment directly;
-  -- late injected text cannot supply an original modifier association.
+run_cmd liftTermElabM do
   let documented ← obtain (← RealizationAdapterFixture.prepareOwnDocstring
-    `adapterFixture `RealizationAdapterFixture.«état😀»)
-  let path := documented.document.key.path
-  let source := documented.document.text
-  let commands ← obtain (← parseSource `noComment path source)
-  let some ranges ← findDeclarationRanges? `RealizationAdapterFixture.noOriginalComment
-    | throwError "Missing actual uncommented declaration ranges"
-  match docCommentAtRanges `noComment source ranges.range ranges.selectionRange commands with
-  | .error diagnostic => ensure (diagnostic.code == "missing-own-comment") "No adjacent-comment fallback"
-  | .ok _ => throwError "Native text cannot create an original doc comment"
-  -- Explicit source/parser failure injection, not replacement canonical content.
-  let malformed ← NativeSource.selectDocumented {
-      project := `adapterFixture, canonical := `RealizationAdapterFixture.versoDocstring
-      moduleName := `VersoBlueprintTests.BlueprintRealizationAdapter.Provider }
-    path
-    (fun _ => pure "import Lean\n/-- unterminated source")
-  match malformed with
-  | .error diagnostic => ensure (diagnostic.code == "source-parse-failed") "Malformed source is explicit"
-  | .ok _ => throwError "Malformed source must not borrow a native-rendered docstring"
+    `adapterFixture `RealizationAdapterFixture.noOriginalComment)
+  ensure (documented.format == `markdown &&
+    documented.content == "Injected metadata is not an original modifier comment.")
+    "A direct compiled docstring needs no literal source comment"
 
 -- Exercise the pilot's actual involution and package-specific statements, beyond
 -- reflexivity/True. These are native current-build controls, not foreign proof
@@ -451,9 +372,9 @@ run_cmd liftTermElabM do
     RealizationAdapterFixture.toggle (RealizationAdapterFixture.toggle flag) = flag)
   let checked ← obtain (← NativeLean.check `adapterFixture documented.declaration expected)
   ensure (checked.observation.outcome == .passed) "Actual two-case involution must complete"
-  ensure (documented.format == `verso && documented.rawDocstring ==
-    "\nToggling a *two-state* flag twice returns the original flag: é 😀.\nFor {name}`RealizationAdapterFixture.Flag.off`, toggle gives on then off;\nfor on, it gives off then on.\n")
-    "Flag retains the full exact own Verso account"
+  ensure (documented.format == `verso && documented.content.contains "two-state" &&
+    documented.content.contains "é 😀" && documented.content.contains "Flag")
+    "The compiled Flag account retains its structure, Unicode and name link"
   let selectedPackage ← `(term| RealizationAdapterFixture.Involutive RealizationAdapterFixture.togglePackage)
   let selected ← obtain (← NativeLean.check `adapterFixture documented.declaration selectedPackage)
   ensure (selected.observation.outcome == .passed) "Selected package alias must match"
@@ -490,7 +411,7 @@ run_cmd liftTermElabM do
   ensure (documented.format == `markdown && documented.roles == #[`statement, `proof] &&
     documented.declaration == witness `RealizationAdapterFixture.reflexivity &&
     documented.moduleName == `VersoBlueprintTests.BlueprintRealizationAdapter.Provider &&
-    documented.rawDocstring.contains "**emphasis**")
+    documented.content.contains "**emphasis**")
     "Standalone source preserves the exact roles, owner and Markdown"
   let expected ← `(term| ∀ n : Nat, n = n)
   let semanticDiagnostic : Diagnostic := {
@@ -566,16 +487,6 @@ run_cmd liftTermElabM do
       `RealizationAdapterFixture.notPresent, `RealizationAdapterFixture.inheritedDocstring] do
     ensure (rejected (← RealizationAdapterFixture.prepareOwnDocstring `adapterFixture canonical))
       "Missing or inherited own source remains explicit"
-  -- Explicitly labeled source-I/O failure injection; never a successful provider.
-  let missing ← RealizationAdapterFixture.prepareOwnDocstring `adapterFixture `RealizationAdapterFixture.reflexivity
-    (fun _ => throw <| IO.userError "injected unavailable source")
-  match missing with
-  | .error diagnostic => ensure (diagnostic.code == "source-unavailable") "Missing source diagnostic"
-  | .ok _ => throwError "Unreadable source must not project a resolved declaration"
-  -- Explicit empty-source failure injection, not replacement successful bytes.
-  let empty ← RealizationAdapterFixture.prepareOwnDocstring `adapterFixture `RealizationAdapterFixture.reflexivity (fun _ => pure " \n")
-  ensure (rejected empty) "Empty source must not project a resolved declaration"
-
 open Verso Genre Manual Informal in
 #docs (Manual) hiddenDeclarationsDoc "Hidden declarations" :=
 :::::::
@@ -771,129 +682,33 @@ private unsafe def hiddenChecks : CoreM Bool := do
 #guard_msgs in
 #eval hiddenChecks
 
--- Parse-only control for a later import reserving a previously valid field
--- name. The source bytes stay identical; none of these results certify a proof.
-private def fieldSource : String := "def owned : Carrier where\n  map := 0\n"
+private structure UnknownDocstringData where
+  value : Nat
+  deriving TypeName
 
+-- Identical link text can resolve to distinct compiled declarations.
 run_cmd liftTermElabM do
-  ensure ((← parseSource `owned "parser-control.lean" fieldSource).isOk)
-    "Unreserved field-name control did not parse"
-
-section
-local syntax:max "[capture-map " "map" "]" : term
-
-run_cmd liftTermElabM do
-  match ← parseSource `owned "parser-control.lean" fieldSource with
-  | .ok _ => throwError "A newly reserved field name unexpectedly parsed"
-  | .error diagnostic =>
-    ensure (diagnostic.code == "source-parse-failed" && diagnostic.subject == "owned" &&
-      diagnostic.message.contains "2:2" && diagnostic.message.contains "current syntax environment")
-      "Parser-context mismatch must retain its source position and unsupported diagnostic"
-end
-
-run_cmd liftTermElabM do
-  ensure ((← parseSource `owned "parser-control.lean" fieldSource).isOk)
-    "Restoring the parser context did not restore parsing of the same original bytes"
-
--- The imported owning module exercises parser scope independently of the
--- consumer. Every selection uses actual compiled ranges and native metadata.
-run_cmd liftTermElabM do
-  let path := "tests/VersoBlueprintTests/BlueprintRealizationAdapter/ParserSource.lean"
-  let text ← IO.FS.readFile path
-  let parse ← NativeSource.newSourceParser
-  let select (name : Name) (bytes : String) := NativeSource.selectDocumented
-    { project := `adapterFixture, canonical := name
-      moduleName := `VersoBlueprintTests.BlueprintRealizationAdapter.ParserSource }
-    path (fun _ => pure bytes) parse
-  discard <| obtain (← NativeSource.parseSource `RealizationParserFixture path text)
-  for (name, format, body) in #[
-      (``RealizationParserFixture.Nested.Proofs.opened, `markdown,
-        " The parser replays a standalone namespace opening. "),
-      (``RealizationParserFixture.Nested.Proofs.scopedOpen, `markdown,
-        " The parser replays a standalone scoped opening. "),
-      (``RealizationParserFixture.wrappedVariable, `markdown,
-        " An own comment, with Unicode 😀 before the name. "),
-      (``RealizationParserFixture.includedVariable, `markdown,
-        " The inner declaration owns the original range inside `include`. "),
-      (``RealizationParserFixture.omittedVariable, `markdown,
-        " The inner declaration owns the original range inside `omit`. "),
-      (``RealizationParserFixture.sealed, `markdown,
-        " The inner declaration owns the original range inside `seal`. "),
-      (``RealizationParserFixture.unsealed, `markdown,
-        " The inner declaration owns the original range inside `unseal`. "),
-      (``RealizationParserFixture.inLeft, `markdown,
-        " Left declaration comment inside `in`. "),
-      (``RealizationParserFixture.inRight, `markdown,
-        " Right declaration comment inside `in`. "),
-      (``RealizationParserFixture.attributed, `markdown,
-        " The inner declaration owns the original range inside `attribute`. "),
-      (``RealizationParserFixture.verso, `verso, " Verso syntax with *emphasis*. "),
-      (``RealizationParserFixture.afterScope, `markdown,
-        " The previous parser option is restored to Markdown. ")] do
-    let selected ← obtain (← select name text)
-    ensure (selected.format == format && selected.rawDocstring == body)
-      s!"Scoped selection lost original comment bytes or format: {name}"
-  let first := ``RealizationParserFixture.Nested.Proofs.opened
-  let edited := text.replace "namespace opening." "namespace closing."
-  ensure (edited != text && edited.utf8ByteSize == text.utf8ByteSize) "Expected same-length control"
-  match ← select first edited with
-  | .error issue => ensure (issue.code == "compiled-docstring-mismatch") s!"Wrong mutation diagnostic: {issue.code}"
-  | .ok _ => throwError "A cached parse accepted a same-length edit of the compiled Markdown"
-  discard <| obtain (← select first text)
-
-  let malformed := text.replace "True.intro -- parser recovery control" "⦿ -- parser recovery control"
-  ensure (malformed != text && !(← NativeSource.parseSource first path malformed).isOk)
-    "Malformed command did not exercise parser recovery"
-  let damaged := ``RealizationParserFixture.damaged
-  match ← select damaged malformed with
-  | .error issue =>
-    ensure (issue.code == "source-parse-failed" && issue.subject == damaged.toString)
-      "A cached failure must refer to its own selection"
-  | .ok _ => throwError "Recovered partial command was accepted as the selected declaration"
-  discard <| obtain (← select first malformed)
-  discard <| obtain (← select ``RealizationParserFixture.afterRecovery malformed)
-
-  let selected := ``RealizationParserFixture.afterScope
-  let other := ``RealizationParserFixture.Other.afterScope
-  let untouchedExportSibling := ``RealizationParserFixture.ExportShadow.Other.target
-  discard <| obtain (← select selected text)
-  discard <| obtain (← select untouchedExportSibling text)
-  let versoDirect ← obtain (← select ``RealizationParserFixture.versoLinkDirect text)
-  ensure (versoDirect.format == `verso && versoDirect.rawDocstring == " {name (full := Int.add)}`add` ")
-    "Direct uninherited Verso link docstring should select cleanly"
-  let openedScoped ← obtain (← select ``openedThenScoped text)
-  ensure (openedScoped.format == `markdown &&
-      openedScoped.rawDocstring == " A preceding open participates in resolving a subsequent open scoped. ")
-    "Preceding open should participate in resolving a subsequent open scoped"
-  let openedScopedIn ← obtain (← select ``openedThenScopedIn text)
-  ensure (openedScopedIn.format == `markdown &&
-      openedScopedIn.rawDocstring == " A preceding open participates in resolving a subsequent open scoped in. ")
-    "Preceding open should participate in resolving a subsequent open scoped in"
-  for inheritedName in #[
-      ``RealizationParserFixture.standaloneInherited,
+  let select (canonical : Name) := NativeSource.prepareDocumented {
+    project := `adapterFixture, canonical
+    moduleName := `VersoBlueprintTests.BlueprintRealizationAdapter.ParserSource }
+  let nat ← obtain (← select ``RealizationParserFixture.versoLinkNat)
+  let int ← obtain (← select ``RealizationParserFixture.versoLinkDirect)
+  ensure (nat.content != int.content && nat.format == `verso && int.format == `verso)
+    "Compiled docstrings must bind the distinct targets of identical link text"
+  for inherited in #[``RealizationParserFixture.standaloneInherited,
       ``RealizationParserFixture.renamedInherited,
       ``RealizationParserFixture.ExportShadow.Before.target,
       ``RealizationParserFixture.versoLinkInherited] do
-    match ← select inheritedName text with
+    match ← select inherited with
     | .error diagnostic =>
-      ensure (diagnostic.code == "inherited-docstring" && diagnostic.subject == inheritedName.toString)
-        s!"Expected compiled inherited-docstring rejection for {inheritedName}, got {diagnostic.code}"
-    | .ok _ => throwError s!"Compiled standalone inheritance was accepted for {inheritedName}"
-
-  let original ← obtain (← select other text)
-  let crlf := text.replace "\n" "\r\n"
-  let crlfSelection ← obtain (← select other crlf)
-  ensure (crlf != text && crlfSelection.document.text == crlf &&
-    crlfSelection.rawDocstring == original.rawDocstring.replace "\n" "\r\n" &&
-    crlfSelection.rawDocstring.contains "\r\n" &&
-    crlfSelection.ranges.range == original.ranges.range &&
-    crlfSelection.ranges.selectionRange == original.ranges.selectionRange)
-    "CRLF must preserve the original comment bytes while matching compiled Lean ranges"
-  let request : NativeSource.Request := {
-    project := `adapterFixture, canonical := other
-    moduleName := `VersoBlueprintTests.BlueprintRealizationAdapter.ParserSource }
-  let documented ← obtain (← NativeSource.prepareDocumented request path (fun _ => pure crlf) (parse := parse))
-  ensure (documented.document.text == crlf && documented.rawDocstring == crlfSelection.rawDocstring)
-    "The verified compiler input must accept CRLF while retaining its exact owning bytes"
+      ensure (diagnostic.code == "inherited-docstring") s!"Expected inheritance diagnostic for {inherited}"
+    | .ok _ => throwError "Inherited docstring accepted as an own comment"
+  let unknown : Lean.VersoDocString := {
+    text := #[.para #[.other (.custom (Dynamic.mk (⟨37⟩ : UnknownDocstringData))) #[.text "fallback"]]]
+    subsections := #[] }
+  match Informal.Docstring.canonicalVersoDocstring unknown with
+  | .error diagnostic =>
+    ensure (diagnostic.code == "unsupported-docstring-extension") "Unknown extension must fail closed"
+  | .ok _ => throwError "Opaque Dynamic payload silently bound as fallback text"
 
 end VersoBlueprintTests.BlueprintRealizationAdapter

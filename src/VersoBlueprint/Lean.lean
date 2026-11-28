@@ -193,11 +193,14 @@ private def getDefinedDeclsImpl (fileMap : FileMap) (before after : Environment)
     let proofSorryRefs :=
       if hasGap then proofRefs else #[]
     let provedStatus := baseStatus.withDirectRefCounts typeSorryRefs.size proofSorryRefs.size
+    let sourceLocation := match ← Data.SourceLocation.ofSyntax? commandStx with
+      | some location => Data.SourceLocationResult.found location
+      | none => Data.SourceLocationResult.unavailable s!"inline Lean declaration source location unavailable for {name}"
     match info with
     | .thmInfo _ =>
       theorems := theorems.push ({
         name
-        commandStx
+        sourceLocation
         commandIndex
         commandLines
         provedStatus
@@ -205,7 +208,7 @@ private def getDefinedDeclsImpl (fileMap : FileMap) (before after : Environment)
     | _ =>
       defs := defs.push ({
         name
-        commandStx
+        sourceLocation
         commandIndex
         commandLines
         provedStatus

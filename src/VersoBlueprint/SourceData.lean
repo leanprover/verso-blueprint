@@ -32,14 +32,6 @@ def SourceDestination.subject (destination : SourceDestination) : Subject :=
   | some role => .realization (destination.realization.forRole role)
   | none => .realization destination.realization
 
-/-- Original fence bytes with a body range relative to the fence. The fence
-establishes ownership; its body becomes the canonical document. -/
-structure FencedSelection where
-  private mk ::
-  original : String
-  body : Syntax.Range
-  deriving Repr
-
 /-- The direct doc comment of the declaration introducing an attribute node.
 The attribute site locates the registration. The declaration owns the comment. -/
 structure OwnDocstring where
@@ -55,8 +47,6 @@ structure AdoptedDocstring where
   canonical : Name
   moduleName : Name
   package : Option String
-  /-- Physical owning path and exact registration-time source digest. -/
-  owner : Except Diagnostic (String × String)
   deriving Repr, Inhabited
 
 /-- A prose selection has exactly one producer. -/
@@ -66,13 +56,13 @@ inductive ProseOrigin where
   | adopted (selection : AdoptedDocstring)
   deriving Repr, Inhabited
 
-/-- Only prose carries docstring ownership; only text and markup select a fence. -/
+/-- Only prose carries docstring ownership; text and markup can retain original fenced body text. -/
 inductive ProviderPayload where
   | prose (body : Data.InformalBody) (origin : ProseOrigin := .authored)
   | leanInline (code : Data.Code)
-  | text (raw : String) (fence : Option (Except String FencedSelection) := none)
+  | text (raw : String) (sourceText : Option String := none)
   /-- Raw markup and its authored external location. -/
-  | markup (value : Data.ExternalMarkup) (fence : Option (Except String FencedSelection) := none)
+  | markup (value : Data.ExternalMarkup) (sourceText : Option String := none)
   deriving Repr, Inhabited
 
 structure SourceSelection where
@@ -95,123 +85,54 @@ def SourceSelection.adoption (selection : SourceSelection) : Option AdoptedDocst
   | .prose _ (.adopted source) => some source
   | _ => none
 
-def SourceSelection.fence (selection : SourceSelection) : Option (Except String FencedSelection) :=
-  match selection.payload with
-  | .text _ fence | .markup _ fence => fence
-  | _ => none
+/-- Stable identity of an owning Lean module, independent of its display name and checkout. -/
+def modulePath (moduleName : Name) : String :=
+  "module:" ++ Vir.nameKey moduleName
 
-/-- The original buffer and byte range a syntax selection points into. -/
-private def syntaxRange (stx : Syntax) : Except String (String × Syntax.Range) := do
-  let .original leading _ _ _ := stx.getHeadInfo
-    | throw "Selection has no original syntax start"
-  let .original _ _ trailing _ := stx.getTailInfo
-    | throw "Selection has no original syntax end"
-  unless leading.str == trailing.str do
-    throw "Selection start and end belong to different source buffers"
-  let some range := stx.getRange?
-    | throw "Selection has no original byte range"
-  unless range.start.byteIdx <= range.stop.byteIdx &&
-      String.Pos.Raw.isValid leading.str range.start && String.Pos.Raw.isValid leading.str range.stop do
-    throw "Selection range has invalid UTF-8 boundaries in its source buffer"
-  return (leading.str, range)
+/-- Copy the span from the first syntax node through the last in the same original compiler input. -/
+def originalSourceSpan? (first last : Syntax) : Option String := do
+  let .original leading _ _ _ := first.getHeadInfo | none
+  let .original _ _ trailing _ := last.getTailInfo | none
+  guard (leading.str == trailing.str)
+  let start ← first.getPos?
+  let stop ← last.getTailPos?
+  guard (start.byteIdx <= stop.byteIdx &&
+    String.Pos.Raw.isValid leading.str start && String.Pos.Raw.isValid leading.str stop)
+  return String.Pos.Raw.extract leading.str start stop
 
-private def extract (buffer : String) (range : Syntax.Range) : String :=
-  String.Pos.Raw.extract buffer range.start range.stop
+/-- Copy only the selected text from an elaborator syntax buffer. -/
+def originalSourceText? (stx : Syntax) : Option String :=
+  originalSourceSpan? stx stx
 
-def FencedSelection.ofSyntax (buffer : String) (fence contents : Syntax) : Except String FencedSelection := do
-  let (fenceBuffer, outer) ← syntaxRange fence
-  let (bodyBuffer, inner) ← syntaxRange contents
-  unless fenceBuffer == buffer && bodyBuffer == buffer &&
-      outer.start.byteIdx <= inner.start.byteIdx && inner.stop.byteIdx <= outer.stop.byteIdx do
-    throw "Code block body is outside its original fence"
-  return {
-    original := extract buffer outer
-    body := ⟨⟨inner.start.byteIdx - outer.start.byteIdx⟩, ⟨inner.stop.byteIdx - outer.start.byteIdx⟩⟩ }
-
-private def FencedSelection.text (fence : FencedSelection) : String := extract fence.original fence.body
-
-/-- Stable identity for the exact authored source selection: the hash of the
-selected bytes. Coordinates are deliberately absent so moving an unchanged body
-does not change its identity. -/
-private def SourceSelection.selectionIdentity (source : SourceSelection) : Option String := do
-  let text ← match source.payload with
-    | .prose body _ => some ((syntaxRange body.stx).map fun (buffer, range) => extract buffer range)
-    | _ => source.fence.map (·.map FencedSelection.text)
-  return (text.map SHA256.text).toOption.getD "unavailable"
+/-- Text retained by the compiled source registration. Direct docstrings are
+selected separately from the compiled declaration's metadata. -/
+def SourceSelection.selectedText (source : SourceSelection) : Except Diagnostic String :=
+  match source.payload with
+  | .prose body _ => match body.sourceText with
+    | some text => .ok text
+    | none => .error {
+      code := "source-selection-unavailable", subject := (toJson source.destination.subject).compress
+      message := "No original prose text was retained when the module was elaborated" }
+  | .text raw text => .ok (text.getD raw)
+  | .markup markup text => .ok (text.getD markup.raw)
+  | .leanInline _ => .error {
+      code := "source-selection-unavailable", subject := (toJson source.destination.subject).compress
+      message := "Inline Lean content is a compiled declaration" }
 
 def SourceSelection.selectedDocumentKey (source : SourceSelection) : DocumentKey := Id.run do
   if let some selection := source.adoption then
-    let ownerPath := (selection.owner.toOption.map (·.1)).getD ""
     return { source.document with path := source.document.path ++ "#adopted-docstring:" ++
       (toJson (Vir.nameKey selection.consumerModule, Vir.nameKey source.destination.realization.node,
-        selection.package, Vir.nameKey selection.moduleName, Vir.nameKey selection.canonical, ownerPath)).compress }
-  -- The verified raw comment is the document content. Its stable identity
-  -- carries the owner and declaration, independent of the attribute syntax.
+        selection.package, Vir.nameKey selection.moduleName, Vir.nameKey selection.canonical)).compress }
   let identity := match source.ownDocstring with
-    | some owner => some (toJson ("own-docstring", Vir.nameKey owner.moduleName, Vir.nameKey owner.canonical))
-    | none => source.selectionIdentity.map Json.str
-  match identity with
-  | some identity => return { source.document with
-      path := source.document.path ++ "#selection:" ++ (toJson (
-        Vir.nameKey source.destination.realization.node,
-        Vir.nameKey source.destination.realization.name,
-        Vir.nameKey (source.destination.role.getD .anonymous),
-        identity)).compress }
-  | none => return source.document
-
-/-- The whole original source buffer a prose selection's stored syntax points into. -/
-def SourceSelection.proseBuffer? (source : SourceSelection) : Option String :=
-  match source.payload with
-  | .prose body _ => (syntaxRange body.stx).toOption.map (·.1)
-  | _ => none
-
-private def SourceSelection.selectionIssue (source : SourceSelection) (message : String) : Diagnostic := {
-  code := "source-selection-unavailable", subject := (toJson source.destination.subject).compress, message }
-
-private def SourceSelection.locationForSelection (source : SourceSelection) : Except Diagnostic Data.SourceLocation := do
-  let some location := source.source.location
-    | throw (source.selectionIssue (source.source.error.getD "Source selection has no original location"))
-  unless source.source.ok && location.path == source.document.path do
-    throw (source.selectionIssue "Source selection is unavailable at its canonical owning path")
-  return location
-
-/-- Extract an original prose selection from the source buffer its stored syntax
-points into, as compiled. No file is read, so a source edited or removed after
-its module was built does not change the result. Cached preview/AST renderings
-and nearby text are never substituted. -/
-def SourceSelection.selectedText (source : SourceSelection) : Except Diagnostic String := do
-  let .prose body _ := source.payload
-    | throw (source.selectionIssue "Only prose sources select text from their stored syntax")
-  let location ← source.locationForSelection
-  let (buffer, range) ← (syntaxRange body.stx).mapError source.selectionIssue
-  unless (FileMap.ofString buffer).utf8RangeToLspRange range == location.range do
-    throw (source.selectionIssue "Stored UTF-16 source range disagrees with the owning FileMap")
-  return extract buffer range
-
-/-- Check the exact owning fence at its recorded UTF-16 location and return its
-original body bytes from `document.text`. Line endings are normalized only when
-matching against Lean's LF-normalized parser coordinates; the returned body
-preserves the owning file's exact bytes so line-ending edits inside the body
-remain visible to content bindings. -/
-def SourceSelection.selectedFenceText (source : SourceSelection) (document : Document) : Except Diagnostic String := do
-  let some selection := source.fence
-    | throw (source.selectionIssue "Source has no recorded code block selection")
-  let fence ← selection.mapError source.selectionIssue
-  let location ← source.locationForSelection
-  let normalized := document.text.crlfToLf
-  let normMap := FileMap.ofString normalized
-  let range := normMap.lspRangeToUtf8Range location.range
-  unless source.document == document.key && range.start.byteIdx <= range.stop.byteIdx &&
-      normMap.utf8RangeToLspRange range == location.range && extract normalized range == fence.original do
-    throw (source.selectionIssue "Current source disagrees with the original code block at its owning location")
-  let bodyStart : String.Pos.Raw := ⟨range.start.byteIdx + fence.body.start.byteIdx⟩
-  let bodyStop : String.Pos.Raw := ⟨range.start.byteIdx + fence.body.stop.byteIdx⟩
-  if document.text == normalized then
-    return extract normalized ⟨bodyStart, bodyStop⟩
-  let rawMap := FileMap.ofString document.text
-  let rawStart := rawMap.ofPosition (normMap.toPosition bodyStart)
-  let rawStop := rawMap.ofPosition (normMap.toPosition bodyStop)
-  return extract document.text ⟨rawStart, rawStop⟩
+    | some owner => toJson ("own-docstring", Vir.nameKey owner.moduleName, Vir.nameKey owner.canonical)
+    | none => .str ((source.selectedText.map SHA256.text).toOption.getD "unavailable")
+  if source.payload matches .leanInline _ then return source.document
+  return { source.document with path := source.document.path ++ "#selection:" ++ (toJson (
+    Vir.nameKey source.destination.realization.node,
+    Vir.nameKey source.destination.realization.name,
+    Vir.nameKey (source.destination.role.getD .anonymous),
+    identity)).compress }
 
 /-- Absent realization means an authored concept-level constraint. Automatic or
 manual origin is metadata, not a substitute for this explicit scope. -/
@@ -355,8 +276,8 @@ def SourceSelection.rawIssues (source : SourceSelection) (node : Name) : Array D
         "Adoption requires one consumer-owned prose statement and a canonical declaration")
   match source.source.ok, source.source.location, source.source.error with
   | true, some location, none =>
-    if blank location.path || location.path != source.document.path then
-      issues := issues.push (issue "invalid-source-location" subject "Source location must belong to its owning document")
+    if blank location.path then
+      issues := issues.push (issue "invalid-source-location" subject "Presentation source location requires a path")
   | false, none, some reason =>
     if blank reason then
       issues := issues.push (issue "invalid-source-location" subject "Unavailable source needs an explanation")
