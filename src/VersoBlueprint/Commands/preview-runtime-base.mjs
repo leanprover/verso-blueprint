@@ -191,3 +191,21 @@
     readElementOption,
     readRootOption
   };
+
+function blueprintDataApi(options) {
+  const opts = options && typeof options === "object" ? options : {};
+  return opts.dataApi && typeof opts.dataApi === "object" ? opts.dataApi : null;
+}
+
+export function requireBlueprintDataApi(options) {
+  const dataApi = blueprintDataApi(options);
+  if (!dataApi) {
+    throw new Error("Blueprint data API missing; call through createPreview() or createBlueprintDataApi()");
+  }
+  return dataApi;
+}
+
+export function loadManifestEntry(previewKey, options) {
+  const dataApi = requireBlueprintDataApi(options);
+  return dataApi.loadManifestEntry(previewKey, options);
+}

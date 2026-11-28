@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 import VersoBlueprint.Data
+import VersoBlueprint.SourceData
 
 /-! Identified external-declaration and priority contributions. This pure core
 retains complete evidence and is used by registration and import assembly.
@@ -26,17 +27,24 @@ markup contributions remain in the existing assembly policy. -/
 structure Record where
   id : ContributionId
   label : Label
-  /-- Statement-facet associations, including attribute attachments. -/
-  references : Array ExternalRef := #[]
-  /-- Proof-facet associations; the facet survives collection and projection. -/
-  proofReferences : Array ExternalRef := #[]
+  /-- Every native destination and full typed snapshot survives collection and
+  import. Placement/realization selection does not narrow the raw evidence union. -/
+  nativeAssociations : Array Informal.SourceData.NativeAssociation := #[]
   priority : Option String
   source : Option SourceLocation
   deriving DecidableEq, Repr
 
-/-- Both facets establish normal node membership; neither is descriptive-only. -/
+/-- Every placement establishes normal node membership; none is descriptive-only. -/
 def Record.allReferences (r : Record) : Array ExternalRef :=
-  r.references ++ r.proofReferences
+  r.nativeAssociations.map (·.reference)
+
+/-- Exact selected source membership; independent of resolution/completion and
+the node-wide union. Missing native snapshots remain selected inputs. -/
+def Record.referencesAt (r : Record) (key : Informal.Realizations.RealizationKey)
+    (context : Informal.Realizations.Context) (placement : Name) : Array ExternalRef :=
+  (r.nativeAssociations.filter fun association =>
+    association.realization == key && association.context == context &&
+      association.placement == placement).map (·.reference)
 
 def EvidenceEq (xs ys : List Record) : Prop := ∀ r, r ∈ xs ↔ r ∈ ys
 
@@ -52,6 +60,13 @@ def NoCollision (rs : List Record) (label : Label) : Prop :=
 def Association (rs : List Record) (label : Label) (decl : Name) : Prop :=
   ∃ r ∈ rs, r.label = label ∧ ∃ ref ∈ r.allReferences.toList,
     ref.present = true ∧ ref.canonical.eraseMacroScopes = decl
+
+/-- Every selected native observation has a stable one-pass erased declaration
+key, including missing references and arbitrary named facets. This is checked,
+not assumed for arbitrary Lean names or supplied by name resolution. -/
+def StableReferences (rs : List Record) (label : Label) : Prop :=
+  ∀ record ∈ rs, record.label = label → ∀ ref ∈ record.allReferences,
+    ref.canonical.eraseMacroScopes.eraseMacroScopes = ref.canonical.eraseMacroScopes
 
 def Priority (rs : List Record) (label : Label) (value : String) : Prop :=
   ∃ r ∈ rs, r.label = label ∧ r.priority = some value

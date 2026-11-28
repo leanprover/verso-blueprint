@@ -56,13 +56,13 @@ def widgetPreviewDocBlueprint : Informal.BlueprintDocument := .capture widgetPre
     let out ← buildFor (Name.mkSimple "widget_preview")
     let some selection := out.previewSelection?
       | return false
-    let previewHtml := toJson (← Informal.PreviewSource.renderWidgetHtml (some selection.preview))
+    let previewHtml := toJson (← Informal.PreviewSource.renderWidgetHtml (some selection.blocks))
     let encoded := Json.compress previewHtml
     pure (
       selection.facet == .statement &&
+      out.validationMessage? == some "Native Lean requirements: unassessed" &&
       selection.key == PreviewCache.statementKey (Name.mkSimple "widget_preview") &&
-      !selection.preview.blocks.isEmpty &&
-      selection.preview.stxs.isEmpty &&
+      !selection.blocks.isEmpty &&
       hasSubstr encoded "data-bp-tex-prelude-id" &&
       !hasSubstr encoded "data-bp-tex-prelude=\\\"" &&
       !hasSubstr encoded "\"texPrelude\"" &&

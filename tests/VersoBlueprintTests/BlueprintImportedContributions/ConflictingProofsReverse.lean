@@ -9,7 +9,7 @@ import VersoBlueprintTests.BlueprintImportedContributions.Proof
 
 /--
 error: Conflicting imported blueprint contributions for label 'key_theorem'
-Label key_theorem already has a proof
+Label key_theorem: duplicate-source: realization 'verso' already has a proof source
 Contributing modules: VersoBlueprintTests.BlueprintImportedContributions.CompetingProof, VersoBlueprintTests.BlueprintImportedContributions.Proof, VersoBlueprintTests.BlueprintImportedContributions.Statement
 -/
 #guard_msgs in

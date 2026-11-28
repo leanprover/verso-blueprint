@@ -20,6 +20,7 @@ Collects the assembled Blueprint environment into the serializable summary paylo
 
 open Lean
 open Informal Data Environment
+open Realizations
 
 register_option verso.blueprint.summary.debugDiagnostics : Bool := {
   defValue := false
@@ -48,23 +49,21 @@ private def bumpUsageCounts (acc : UsageCounts) (inStatement inProof : Bool) : U
     proofUses := acc.proofUses + (if inProof then 1 else 0)
   }
 
-private def pushUniqueName (xs : Array Name) (x : Name) : Array Name :=
-  if xs.contains x then xs else xs.push x
-
-private def buildUsageMaps (entries : Array (Name × Data.Node)) : NameMap UsageCounts × NameMap (Array Name) :=
-  entries.foldl (init := (({} : NameMap UsageCounts), ({} : NameMap (Array Name)))) fun (usageMap, reverseMap) (sourceLabel, node) =>
-    let statementDeps := Informal.Graph.eraseDups (Informal.Graph.statementDeps node)
-    let proofDeps := Informal.Graph.eraseDups (Informal.Graph.proofDeps node)
+private def buildUsageMaps (snapshot : Realizations.Capture.Snapshot)
+    (entries : Array (Name × Realizations.Node)) : NameMap UsageCounts × NameMap (Array Name) :=
+  entries.foldl (init := (({} : NameMap UsageCounts), ({} : NameMap (Array Name)))) fun (usageMap, reverseMap) (sourceLabel, _) =>
+    let statementDeps := Informal.Graph.capturedUses snapshot sourceLabel `statement |>.map (·.label)
+    let proofDeps := Informal.Graph.capturedUses snapshot sourceLabel `proof |>.map (·.label)
     let usageMap :=
       statementDeps.foldl (init := usageMap) fun acc dep =>
         acc.insert dep (bumpUsageCounts (acc.getD dep {}) true false)
     let usageMap :=
       proofDeps.foldl (init := usageMap) fun acc dep =>
         acc.insert dep (bumpUsageCounts (acc.getD dep {}) false true)
-    let reverseDeps := Informal.Graph.eraseDups (statementDeps ++ proofDeps)
+    let reverseDeps := Informal.uniqueInOrder (statementDeps ++ proofDeps)
     let reverseMap :=
       reverseDeps.foldl (init := reverseMap) fun acc dep =>
-        acc.insert dep (pushUniqueName (acc.getD dep #[]) sourceLabel)
+        acc.insert dep (pushUnique (acc.getD dep #[]) sourceLabel)
     (usageMap, reverseMap)
 
 partial def downstreamUseCount (reverseMap : NameMap (Array Name))
@@ -86,159 +85,106 @@ private def bumpEntryStatus (acc : EntryStatusCounts) (flags : EntryStatusFlags)
     noProof := acc.noProof + (if flags.noProof then 1 else 0)
   }
 
-private def entryStatusFlags (state : Environment.State)
-    (external : Informal.Graph.ExternalCodeStatus) (node : Data.Node) : EntryStatusFlags :=
-  let health := Informal.Graph.nodeCodeHealth external node
-  let localFormalized := health.localFormalized node.kind
-  let ancestorsFormalized := Informal.Graph.nodeAncestorsFormalized external state node
-  let withIncompleteCode := health.hasAssociatedCode && health.hasAnyGaps
-  let noProof := node.kind.isTheoremLike && !health.hasAssociatedCode
+private def entryStatusFlags (assessment : Realizations.NodeAssessment) : EntryStatusFlags :=
+  let localFormalized := assessment.nativeLocallyComplete
+  let withIncompleteCode := assessment.hasNativeDeclarations && !assessment.nativeStatementComplete
   {
-    completed := localFormalized && ancestorsFormalized
-    completedDepsNo := localFormalized && !ancestorsFormalized
+    completed := assessment.requiredComplete
+    completedDepsNo := localFormalized && !assessment.requiredComplete
     withIncompleteCode
-    noProof
-    hasAxiomLike := health.hasAxiomLike
+    noProof := assessment.proofRoleComplete == some false
+    hasAxiomLike := assessment.hasAxiomLike
   }
-
-private def countSorries (decls : Array α) (statusOf : α → Data.ProvedStatus) : Nat :=
-  decls.foldl (init := 0) fun acc decl =>
-    let status := statusOf decl
-    acc + (if status.isIncomplete then 1 else 0)
-
-private def collectSorries (label : Name) (kind : String) (decls : Array α)
-    (nameOf : α → Name) (statusOf : α → Data.ProvedStatus) (isTheorem : α → Bool) :
-    List IncompleteItem :=
-  decls.foldl (init := []) fun acc decl =>
-    let status := statusOf decl
-    if status.isIncomplete then
-      {
-        label
-        kind
-        decl := nameOf decl
-        isTheorem := isTheorem decl
-        status
-      } :: acc
-    else
-      acc
 
 private def mkIndexItem (label : Name) (kind : Data.NodeKind) (leanObjects : List Name := []) : IndexItem :=
   { label, kind := toString kind, leanObjects }
 
-private def nodeLeanObjects (node : Data.Node) : List Name :=
-  let externalNames :=
-    node.associatedExternalRefs.foldl (init := #[]) fun acc decl =>
-      pushUniqueName acc decl.canonical
-  let allNames :=
-    node.literateCodes.foldl (init := externalNames) fun acc code =>
-      code.definedDeclNames.foldl pushUniqueName acc
-  allNames.toList
+private def defaultLeanRealizations (snapshot : Realizations.Capture.Snapshot) (label : Name) :
+    Array Realizations.Realization :=
+  snapshot.nativeRealizationsFor label
 
-private def codeDeclCount (code : Data.Code) : Nat :=
-  code.definedDefs.size + code.definedTheorems.size
+private def realizationHasAvailableSource (snapshot : Realizations.Capture.Snapshot)
+    (realization : Realizations.Realization) : Bool :=
+  realization.documents.any fun key =>
+    snapshot.registry.documents.any fun document =>
+      document.key == key && !document.text.trimAscii.toString.isEmpty
 
-private def codeSorryCount (code : Data.Code) : Nat :=
-  countSorries code.definedDefs (fun (d : Data.LiterateDef) => d.provedStatus) +
-  countSorries code.definedTheorems (fun (d : Data.LiterateThm) => d.provedStatus)
-
-private def codeSorryDetails (label : Name) (kind : String) (code : Data.Code) : List IncompleteItem :=
-  collectSorries label kind code.definedDefs
-    (fun (d : Data.LiterateDef) => d.name)
-    (fun (d : Data.LiterateDef) => d.provedStatus)
-    (fun _ => false) ++
-  collectSorries label kind code.definedTheorems
-    (fun (d : Data.LiterateThm) => d.name)
-    (fun (d : Data.LiterateThm) => d.provedStatus)
-    (fun _ => true)
-
+/- Summary detail rows preserve fresh native provider inventory for inspection.
+They are not closure/completion authority; semantic completion is projected from
+the admitted Registry into NodeAssessment above. -/
 private structure NodeLeanSummary where
   leanDecls : Nat := 0
   incompleteDecls : Nat := 0
   leanObjects : List Name := []
   incompleteDetails : List IncompleteItem := []
   missingLeanDecls : List MissingLeanDeclItem := []
-  renderFailures : List RenderFailureItem := []
 deriving Inhabited
 
-private def nodeLeanSummary (label : Name) (node : Data.Node) : NodeLeanSummary :=
-  if !node.hasAssociatedCode then
-    {}
-  else
-    let kind := toString node.kind
-    let externalDecls := node.summaryExternalRefs
-    let missingLeanDecls :=
-      externalDecls.foldl (init := []) fun acc decl =>
-        if !decl.present then
-          {
+private def nodeLeanSummary (snapshot : Realizations.Capture.Snapshot) (label : Name)
+    (node : Realizations.Node) : NodeLeanSummary := Id.run do
+  let realizations := defaultLeanRealizations snapshot label
+  let declarations := (realizations.flatMap (·.declarations)).foldl
+    (init := #[]) fun acc declaration =>
+      if acc.any (·.object == declaration.object) then acc else acc.push declaration
+  let checks := snapshot.nativeCheckContracts realizations
+  let incompleteDecls := declarations.filter fun declaration =>
+    checks.any fun check => check.object == declaration.object &&
+      check.required.any fun (key, _) => !(snapshot.registry.localResult key).complete
+  let missing (declaration : Realizations.Declaration) :=
+    declaration.sourceIssues.any (·.code == "missing-declaration")
+  let incompleteDetails := snapshot.nativeChecks.foldl (init := #[]) fun items checked =>
+    if !checked.status.isIncomplete || !checks.any (snapshot.acceptsNativeCheck · checked) ||
+        !declarations.any (fun d => d.object == checked.declaration && !missing d) ||
+        items.any (·.decl == checked.declaration.native.toName) then
+      items
+    else
+      items.push {
+        label
+        kind := toString node.kind
+        decl := checked.declaration.native.toName
+        isTheorem := checked.kind.any (·.isTheoremLike)
+        status := checked.status
+      }
+  let missingLeanDecls : List MissingLeanDeclItem := ((declarations.filter missing).map fun declaration =>
+    { label, kind := toString node.kind
+      written := declaration.object.native.toName, canonical := declaration.object.native.toName }).toList
+  return {
+    leanDecls := declarations.size
+    incompleteDecls := incompleteDecls.size
+    leanObjects := declarations.foldl (init := #[]) (fun names declaration =>
+      pushUnique names declaration.object.native.toName) |>.toList
+    incompleteDetails := incompleteDetails.toList
+    missingLeanDecls
+  }
+
+/- Render failures are retained registration-time presentation facts, not fresh
+proof evidence. Restrict them to associations selected by this exact current
+default Lean realization and its captured context. -/
+private def nodeRenderFailures (state : Environment.State) (snapshot : Realizations.Capture.Snapshot)
+    (label : Name) (node : Realizations.Node) : List RenderFailureItem := Id.run do
+  let realizations := defaultLeanRealizations snapshot label
+  let mut failures : Array RenderFailureItem := #[]
+  for record in state.factRecords do
+    if record.label != label then continue
+    for association in record.nativeAssociations do
+      let selected := realizations.any fun realization =>
+        association.context == realization.context &&
+          association.realization.forRole realization.role == realization.key &&
+          realization.declarations.any (fun declaration =>
+            declaration.object.native == association.reference.canonical.toString)
+      if !selected then continue
+      if let some failure := Informal.externalRenderFailure? association.reference then
+        if !failures.any (·.canonical == failure.decl.canonical) then
+          failures := failures.push {
             label
-            kind
-            written := decl.written
-            canonical := decl.canonical
-          } :: acc
-        else
-          acc
-    let incompleteExternalDecls :=
-      externalDecls.foldl (init := #[]) fun acc decl =>
-        if !decl.present then
-          acc
-        else
-          let status := decl.provedStatus
-          if status.isIncomplete then
-            acc.push (decl.canonical, status)
-          else
-            acc
-    let externalSorryDetails :=
-      incompleteExternalDecls.toList.map fun (decl, status) =>
-        {
-          label
-          kind
-          decl
-          isTheorem :=
-            (externalDecls.find? (fun d => d.canonical == decl)).map (·.kind.isTheoremLike) |>.getD false
-          status
-        }
-    let renderFailures :=
-      (externalRenderFailures externalDecls).toList.map fun failure =>
-        {
-          label
-          kind
-          written := failure.decl.written
-          canonical := failure.decl.canonical
-          message := failure.message
-        }
-    let (inlineDecls, inlineSorries, inlineSorryDetails) :=
-      node.summaryLiterateCodes.foldl
-        (init := (0, 0, ([] : List IncompleteItem)))
-        fun (decls, sorryCount, details) code =>
-          (
-            decls + codeDeclCount code,
-            sorryCount + codeSorryCount code,
-            codeSorryDetails label kind code ++ details
-          )
-    {
-      leanDecls := externalDecls.size + inlineDecls
-      incompleteDecls := incompleteExternalDecls.size + inlineSorries
-      leanObjects := nodeLeanObjects node
-      incompleteDetails := externalSorryDetails ++ inlineSorryDetails
-      missingLeanDecls
-      renderFailures
-    }
+            kind := toString node.kind
+            written := failure.decl.written
+            canonical := failure.decl.canonical
+            message := failure.message
+          }
+  return failures.toList
 
-private def nodeMissingLeanDeclCount (external : Informal.Graph.ExternalCodeStatus) (node : Data.Node) : Nat :=
-  (Informal.Graph.nodeExternalDecls node).foldl (init := 0) fun acc decl =>
-    acc + (if Informal.Graph.externalDeclMissing external decl then 1 else 0)
-
-private def nodeIncompleteLeanDeclCount (external : Informal.Graph.ExternalCodeStatus) (node : Data.Node) : Nat :=
-  let externalCount :=
-    node.summaryExternalRefs.foldl (init := 0) fun acc decl =>
-      if Informal.Graph.externalDeclMissing external decl then
-        acc
-      else
-        acc + (if decl.provedStatus.isIncomplete then 1 else 0)
-  externalCount + node.summaryLiterateCodes.foldl (init := 0) fun acc code =>
-    acc + codeSorryCount code
-
-private def ownerDisplayName (state : Environment.State) (node : Data.Node) : Option String :=
+private def ownerDisplayName (state : Environment.State) (node : Realizations.Node) : Option String :=
   match node.owner with
   | some owner =>
     match state.authors.get? owner with
@@ -246,7 +192,8 @@ private def ownerDisplayName (state : Environment.State) (node : Data.Node) : Op
     | none => some owner.toString
   | none => none
 
-private def metadataEntryItem (state : Environment.State) (label : Name) (node : Data.Node) : MetadataEntryItem :=
+private def metadataEntryItem (state : Environment.State) (label : Name)
+    (node : Realizations.Node) (leanObjects : List Name) : MetadataEntryItem :=
   {
     label
     kind := toString node.kind
@@ -256,39 +203,35 @@ private def metadataEntryItem (state : Environment.State) (label : Name) (node :
     prUrl := node.prUrl
     issueUrl := node.issueUrl
     tags := node.tags.toList
-    leanObjects := nodeLeanObjects node
+    leanObjects
   }
 
-private def mkActionableItem? (state : Environment.State) (external : Informal.Graph.ExternalCodeStatus)
+private def mkActionableItem? (state : Environment.State)
+    (assessment : Realizations.NodeAssessment)
     (usageMap : NameMap UsageCounts) (reverseMap : NameMap (Array Name))
-    (label : Name) (node : Data.Node) : Option PriorityItem :=
-  let statementStatus := Informal.Graph.statementStatus external state label node
-  let proofStatus := Informal.Graph.proofStatus external state label node
-  let localFormalized := Informal.Graph.nodeLocalFormalized external node
-  match Informal.Graph.actionableStageForStatuses? node.kind statementStatus proofStatus with
+    (label : Name) (node : Realizations.Node) (leanObjects : List Name) : Option PriorityItem :=
+  let (statementStatus, proofStatus) := Informal.Graph.statusesForAssessment assessment
+  match Informal.Graph.actionableStageForAssessment? assessment with
   | Option.none => Option.none
   | Option.some stage =>
-    if localFormalized then
-      Option.none
-    else
-      let usage := usageMap.getD label {}
-      let downstreamUses := downstreamUseCount reverseMap (reverseMap.getD label #[]).toList
-      Option.some {
-        label
-        kind := toString node.kind
-        stage
-        priority := node.priority
-        ownerDisplayName := ownerDisplayName state node
-        effort := node.effort
-        prUrl := node.prUrl
-        issueUrl := node.issueUrl
-        tags := node.tags.toList
-        statementStatus := Informal.Graph.StatementStatus.toText statementStatus
-        proofStatus := if node.kind.isTheoremLike then Informal.Graph.ProofStatus.toText proofStatus else ""
-        directUses := usage.directUses
-        downstreamUses
-        leanObjects := nodeLeanObjects node
-      }
+    let usage := usageMap.getD label {}
+    let downstreamUses := downstreamUseCount reverseMap (reverseMap.getD label #[]).toList
+    Option.some {
+      label
+      kind := toString node.kind
+      stage
+      priority := node.priority
+      ownerDisplayName := ownerDisplayName state node
+      effort := node.effort
+      prUrl := node.prUrl
+      issueUrl := node.issueUrl
+      tags := node.tags.toList
+      statementStatus := Informal.Graph.StatementStatus.toText statementStatus
+      proofStatus := if assessment.proofRoleComplete.isSome then Informal.Graph.ProofStatus.toText proofStatus else ""
+      directUses := usage.directUses
+      downstreamUses
+      leanObjects
+    }
 
 private def metadataIsQuickWin (priority effort : Option String) : Bool :=
   priority == some "high" && effort == some "small"
@@ -300,29 +243,40 @@ private def addParentTheoremLikeItem (groups : NameMap (List IndexItem)) (parent
     NameMap (List IndexItem) :=
   groups.insert parent (item :: groups.getD parent [])
 
+private structure SummaryNodeDetails where
+  assessment : Realizations.NodeAssessment
+  leanSummary : NodeLeanSummary
+deriving Inhabited
+
 private structure SummaryBuildContext where
   state : Environment.State
-  entries : Array (Name × Data.Node)
+  snapshot : Realizations.Capture.Snapshot
+  entries : Array (Name × Realizations.Node)
+  nodeDetails : Std.HashMap Name SummaryNodeDetails
   parentChildren : NameMap (Array Name)
   groupHeaders : NameMap String
-  external : Informal.Graph.ExternalCodeStatus
   usageMap : NameMap UsageCounts
   reverseMap : NameMap (Array Name)
 
-private def mkSummaryBuildContext (state : Environment.State) : SummaryBuildContext :=
-  let entries := state.data.toArray.map fun (label, node) => (label, node.toNode)
-  let parentChildren := state.data.foldl (init := ({} : NameMap (Array Name))) fun acc child node =>
+private def mkSummaryBuildContext (state : Environment.State) (snapshot : Realizations.Capture.Snapshot)
+    (assessmentFor : Name → Realizations.NodeAssessment) : SummaryBuildContext :=
+  let entries := snapshot.registry.nodes.map fun node => (node.label, node)
+  let nodeDetails := entries.foldl (init := ({} : Std.HashMap Name SummaryNodeDetails)) fun acc (label, node) =>
+    acc.insert label {
+      assessment := assessmentFor label
+      leanSummary := nodeLeanSummary snapshot label node }
+  let parentChildren := entries.foldl (init := ({} : NameMap (Array Name))) fun acc (child, node) =>
     match node.parent with
     | none => acc
     | some parent => acc.insert parent ((acc.getD parent #[]).push child)
-  let external : Informal.Graph.ExternalCodeStatus := {}
-  let (usageMap, reverseMap) := buildUsageMaps entries
+  let (usageMap, reverseMap) := buildUsageMaps snapshot entries
   {
     state
+    snapshot
     entries
+    nodeDetails
     parentChildren
     groupHeaders := state.groups
-    external
     usageMap
     reverseMap
   }
@@ -330,15 +284,25 @@ private def mkSummaryBuildContext (state : Environment.State) : SummaryBuildCont
 private def SummaryBuildContext.downstreamUses (ctx : SummaryBuildContext) (label : Name) : Nat :=
   downstreamUseCount ctx.reverseMap (ctx.reverseMap.getD label #[]).toList
 
+/-- Every entry and group child comes from the admitted entries used to fill the map. -/
+private def SummaryBuildContext.assessmentFor (ctx : SummaryBuildContext) (label : Name) :
+    Realizations.NodeAssessment :=
+  (ctx.nodeDetails[label]!).assessment
+
+private def SummaryBuildContext.leanSummaryFor (ctx : SummaryBuildContext) (label : Name) :
+    NodeLeanSummary :=
+  (ctx.nodeDetails[label]!).leanSummary
+
 private def SummaryBuildContext.actionableItem? (ctx : SummaryBuildContext)
-    (label : Name) (node : Data.Node) : Option PriorityItem :=
-  mkActionableItem? ctx.state ctx.external ctx.usageMap ctx.reverseMap label node
+    (label : Name) (node : Realizations.Node) : Option PriorityItem :=
+  mkActionableItem? ctx.state (ctx.assessmentFor label)
+    ctx.usageMap ctx.reverseMap label node (ctx.leanSummaryFor label).leanObjects
 
 private def SummaryBuildContext.childEntries (ctx : SummaryBuildContext) (children : Array Name) :
-    Array (Name × Data.Node) :=
+    Array (Name × Realizations.Node) :=
   children.foldl (init := #[]) fun acc child =>
-    match ctx.state.data.get? child with
-    | some node => acc.push (child, node)
+    match ctx.entries.find? (·.1 == child) with
+    | some entry => acc.push entry
     | none => acc
 
 private structure MetadataAudit where
@@ -348,8 +312,9 @@ private structure MetadataAudit where
   untaggedEntries : Array MetadataEntryItem := #[]
 
 private def MetadataAudit.addEntry (audit : MetadataAudit)
-    (state : Environment.State) (label : Name) (node : Data.Node) : MetadataAudit :=
-  let item := metadataEntryItem state label node
+    (state : Environment.State) (label : Name) (node : Realizations.Node)
+    (leanObjects : List Name) : MetadataAudit :=
+  let item := metadataEntryItem state label node leanObjects
   let audit :=
     if node.prUrl.isSome then
       { audit with linkedPrs := audit.linkedPrs.push item }
@@ -372,7 +337,7 @@ private def MetadataAudit.addEntry (audit : MetadataAudit)
 
 private def collectMetadataAudit (ctx : SummaryBuildContext) : MetadataAudit :=
   ctx.entries.foldl (init := ({} : MetadataAudit)) fun audit (label, node) =>
-    audit.addEntry ctx.state label node
+    audit.addEntry ctx.state label node (ctx.leanSummaryFor label).leanObjects
 
 private def MetadataAudit.sortedLinkedPrs (audit : MetadataAudit) : List MetadataEntryItem :=
   (sortMetadataEntryItems audit.linkedPrs).toList
@@ -426,16 +391,25 @@ private def Summary.bumpAxiomStatus (summary : Summary) (flags : EntryStatusFlag
 
 private def collectSummaryOverview (ctx : SummaryBuildContext) : Summary :=
   ctx.entries.foldl (init := ({} : Summary)) fun acc (label, node) =>
-    let hasStatement := node.hasStatementBody
-    let hasProof := node.hasProofBody
-    let hasCode := Informal.Graph.nodeHasAssociatedCode node
-    let statusFlags := entryStatusFlags ctx.state ctx.external node
-    let leanSummary := nodeLeanSummary label node
-    let pendingInformalEntries : List PendingInformalItem :=
-      if hasCode && ((node.kind.isTheoremLike && !hasProof) || !hasStatement) then
-        mkIndexItem label node.kind leanSummary.leanObjects :: acc.pendingInformalEntries
-      else
-        acc.pendingInformalEntries
+    let assessment := ctx.assessmentFor label
+    let proseRealizations := ctx.snapshot.registry.realizations.filter fun realization =>
+      realization.key.node == label &&
+        (realization.context.language == `verso || realization.context.language == `markdown)
+    let hasStatement := proseRealizations.any fun realization =>
+      realization.role == `statement && realizationHasAvailableSource ctx.snapshot realization
+    let hasProof := proseRealizations.any fun realization =>
+      realization.role == `proof && realizationHasAvailableSource ctx.snapshot realization
+    let hasCode := assessment.hasNativeDeclarations
+    let statusFlags := entryStatusFlags assessment
+    let leanSummary := ctx.leanSummaryFor label
+    let renderFailures := nodeRenderFailures ctx.state ctx.snapshot label node
+    -- This is authored prose coverage inventory, not a validation requirement:
+    -- prose can remain unassessed without erasing the fact that it is absent.
+    let missingProseCoverage := hasCode &&
+      ((node.kind.isTheoremLike && !hasProof) || !hasStatement)
+    let pendingInformalEntries :=
+      if missingProseCoverage then mkIndexItem label node.kind leanSummary.leanObjects :: acc.pendingInformalEntries
+      else acc.pendingInformalEntries
     let definitionIndex : List IndexItem :=
       if node.kind == Data.NodeKind.definition then
         mkIndexItem label node.kind leanSummary.leanObjects :: acc.definitionIndex
@@ -461,7 +435,7 @@ private def collectSummaryOverview (ctx : SummaryBuildContext) : Summary :=
       incompleteDecls := acc.incompleteDecls + leanSummary.incompleteDecls
       incompleteDetails := leanSummary.incompleteDetails ++ acc.incompleteDetails
       missingLeanDecls := leanSummary.missingLeanDecls ++ acc.missingLeanDecls
-      renderFailures := leanSummary.renderFailures ++ acc.renderFailures
+      renderFailures := renderFailures ++ acc.renderFailures
       definitionIndex
       theoremLikeIndex
       axiomIndex
@@ -472,7 +446,7 @@ private def collectSummaryOverview (ctx : SummaryBuildContext) : Summary :=
 private def collectTheoremLikeByParent (ctx : SummaryBuildContext) : List ParentTheoremGroup :=
   let grouped := ctx.entries.foldl (init := ({} : NameMap (List IndexItem))) fun acc (label, node) =>
     if node.kind.isTheoremLike then
-      let leanObjects := nodeLeanObjects node
+      let leanObjects := (ctx.leanSummaryFor label).leanObjects
       match node.parent with
       | some parent =>
         let item : IndexItem := mkIndexItem label node.kind leanObjects
@@ -494,7 +468,7 @@ private def collectActionableItems (ctx : SummaryBuildContext) : List PriorityIt
     | some item => acc.push item
   (sortPriorityItems items).toList
 
-private def usageItem? (ctx : SummaryBuildContext) (label : Name) (node : Data.Node) : Option UsageItem :=
+private def usageItem? (ctx : SummaryBuildContext) (label : Name) (node : Realizations.Node) : Option UsageItem :=
   let usage := ctx.usageMap.getD label {}
   if usage.directUses == 0 then
     none
@@ -506,7 +480,7 @@ private def usageItem? (ctx : SummaryBuildContext) (label : Name) (node : Data.N
       proofUses := usage.proofUses
       directUses := usage.directUses
       downstreamUses := ctx.downstreamUses label
-      leanObjects := nodeLeanObjects node
+      leanObjects := (ctx.leanSummaryFor label).leanObjects
     }
 
 private def collectUsageItems (ctx : SummaryBuildContext) : List UsageItem :=
@@ -526,18 +500,14 @@ private structure GroupHealthCounts where
   unlockScore : Nat := 0
 
 private def GroupHealthCounts.addEntry (counts : GroupHealthCounts)
-    (ctx : SummaryBuildContext) (child : Name) (node : Data.Node) : GroupHealthCounts :=
-  let statusFlags := entryStatusFlags ctx.state ctx.external node
-  let statementStatus := Informal.Graph.statementStatus ctx.external ctx.state child node
-  let proofStatus := Informal.Graph.proofStatus ctx.external ctx.state child node
-  let readyNow :=
-    !Informal.Graph.nodeLocalFormalized ctx.external node &&
-      (Informal.Graph.actionableStageForStatuses? node.kind statementStatus proofStatus).isSome
-  let blockedNow := !statusFlags.completed && !statusFlags.completedDepsNo && !readyNow
-  let incompleteLeanNow :=
-    Informal.Graph.nodeHasAssociatedCode node &&
-      (Informal.Graph.nodeHasIncompleteCode ctx.external node ||
-        Informal.Graph.nodeHasMissingExternalDecls ctx.external node)
+    (ctx : SummaryBuildContext) (child : Name) : GroupHealthCounts :=
+  let assessment := ctx.assessmentFor child
+  let statusFlags := entryStatusFlags assessment
+  let readyNow := (Informal.Graph.actionableStageForAssessment? assessment).isSome
+  let blockedNow := assessment.hasNativeDeclarations && !statusFlags.completed &&
+    !statusFlags.completedDepsNo && !readyNow
+  let incompleteLeanNow := assessment.hasNativeDeclarations &&
+    !assessment.nativeLocallyComplete
   {
     totalEntries := counts.totalEntries + 1
     closedEntries := counts.closedEntries + (if statusFlags.completed then 1 else 0)
@@ -554,8 +524,8 @@ private def collectGroupHealth (ctx : SummaryBuildContext) : List GroupHealthIte
       acc
     else
       let childEntries := ctx.childEntries children
-      let counts := childEntries.foldl (init := ({} : GroupHealthCounts)) fun counts (child, node) =>
-        counts.addEntry ctx child node
+      let counts := childEntries.foldl (init := ({} : GroupHealthCounts)) fun counts (child, _) =>
+        counts.addEntry ctx child
       let nextPriority? :=
         let candidates := childEntries.foldl (init := #[]) fun acc (child, node) =>
           match ctx.actionableItem? child node with
@@ -581,24 +551,24 @@ private def collectGroupHealth (ctx : SummaryBuildContext) : List GroupHealthIte
   (sortGroupHealthItems items).toList
 
 private def collectCoverageSplit (ctx : SummaryBuildContext) : CoverageSplit :=
-  ctx.entries.foldl (init := ({} : CoverageSplit)) fun acc (label, node) =>
-    let statusFlags := entryStatusFlags ctx.state ctx.external node
-    let statementStatus := Informal.Graph.statementStatus ctx.external ctx.state label node
-    let proofStatus := Informal.Graph.proofStatus ctx.external ctx.state label node
-    if statusFlags.completed then
-      { acc with fullyClosed := acc.fullyClosed + 1 }
-    else if statusFlags.completedDepsNo then
-      { acc with formalizedWithoutAncestors := acc.formalizedWithoutAncestors + 1 }
-    else if (Informal.Graph.actionableStageForStatuses? node.kind statementStatus proofStatus).isSome then
+  ctx.entries.foldl (init := ({} : CoverageSplit)) fun acc (label, _) =>
+    let assessment := ctx.assessmentFor label
+    if !assessment.hasNativeDeclarations then
+      acc
+    else if assessment.requiredComplete then
+      { acc with requirementsComplete := acc.requirementsComplete + 1 }
+    else if assessment.nativeLocallyComplete then
+      { acc with nativeCompleteRequirementsPending := acc.nativeCompleteRequirementsPending + 1 }
+    else if (Informal.Graph.actionableStageForAssessment? assessment).isSome then
       { acc with readyToFormalize := acc.readyToFormalize + 1 }
     else
       { acc with blockedOrIncomplete := acc.blockedOrIncomplete + 1 }
 
 private def collectDependencyLoadItems (ctx : SummaryBuildContext) : List DependencyLoadItem :=
   let items := ctx.entries.foldl (init := #[]) fun acc (label, node) =>
-    let statementDeps := Informal.Graph.eraseDups (Informal.Graph.statementDeps node)
-    let proofDeps := Informal.Graph.eraseDups (Informal.Graph.proofDeps node)
-    let totalDeps := (Informal.Graph.eraseDups (statementDeps ++ proofDeps)).size
+    let statementDeps := (Informal.Graph.capturedUses ctx.snapshot label `statement).map (·.label)
+    let proofDeps := (Informal.Graph.capturedUses ctx.snapshot label `proof).map (·.label)
+    let totalDeps := (Informal.uniqueInOrder (statementDeps ++ proofDeps)).size
     if totalDeps == 0 then
       acc
     else
@@ -611,15 +581,15 @@ private def collectDependencyLoadItems (ctx : SummaryBuildContext) : List Depend
         totalDeps
         directUses := usage.directUses
         downstreamUses := ctx.downstreamUses label
-        leanObjects := nodeLeanObjects node
+        leanObjects := (ctx.leanSummaryFor label).leanObjects
       }
   (sortDependencyLoadItems items).toList
 
-private def collectIndexItems (ctx : SummaryBuildContext) (keep : Name → Data.Node → Bool) :
+private def collectIndexItems (ctx : SummaryBuildContext) (keep : Name → Realizations.Node → Bool) :
     List IndexItem :=
   ctx.entries.foldl (init := []) fun acc (label, node) =>
     if keep label node then
-      mkIndexItem label node.kind (nodeLeanObjects node) :: acc
+      mkIndexItem label node.kind (ctx.leanSummaryFor label).leanObjects :: acc
     else
       acc
   |>.reverse
@@ -630,9 +600,9 @@ private structure ProofDebtCounts where
   missingDecls : Nat := 0
 
 private def ProofDebtCounts.addNode (counts : ProofDebtCounts)
-    (external : Informal.Graph.ExternalCodeStatus) (node : Data.Node) : ProofDebtCounts :=
-  let incompleteDeclCount := nodeIncompleteLeanDeclCount external node
-  let missingDeclCount := nodeMissingLeanDeclCount external node
+    (summary : NodeLeanSummary) : ProofDebtCounts :=
+  let incompleteDeclCount := summary.incompleteDecls
+  let missingDeclCount := summary.missingLeanDecls.length
   let hasDebt := incompleteDeclCount > 0 || missingDeclCount > 0
   {
     affectedEntries := counts.affectedEntries + (if hasDebt then 1 else 0)
@@ -647,9 +617,7 @@ private def collectProofDebtHotspots (ctx : SummaryBuildContext) : List DebtHots
   let items := ctx.parentChildren.toArray.foldl (init := #[]) fun acc (parent, children) =>
     let counts :=
       children.foldl (init := ({} : ProofDebtCounts)) fun counts child =>
-        match ctx.state.data.get? child with
-        | none => counts
-        | some node => counts.addNode ctx.external node
+        counts.addNode (ctx.leanSummaryFor child)
     let totalDebt := counts.totalDebt
     if totalDebt == 0 then
       acc
@@ -701,7 +669,8 @@ private def collectTagRollups (ctx : SummaryBuildContext) : List TagRollupItem :
       }
   (sortTagRollupItems (rollups.toArray.map fun pair => pair.2)).toList
 
-def buildSummary : CoreM Summary := do
+def buildSummary (snapshot : Realizations.Capture.Snapshot)
+    (assessmentFor : Name → Realizations.NodeAssessment := snapshot.assessmentFor) : CoreM Summary := do
   reportImportedConflicts
   let showDebugDiagnostics :=
     (← getOptions).get
@@ -709,7 +678,7 @@ def buildSummary : CoreM Summary := do
       verso.blueprint.summary.debugDiagnostics.defValue
   let env ← getEnv
   let state := informalExt.getState env
-  let ctx := mkSummaryBuildContext state
+  let ctx := mkSummaryBuildContext state snapshot assessmentFor
   let summary := collectSummaryOverview ctx
   let actionableItems := collectActionableItems ctx
   let actionablePriorities := actionableItems.filter (·.downstreamUses > 0)
@@ -723,8 +692,9 @@ def buildSummary : CoreM Summary := do
       groupHealth := collectGroupHealth ctx
       coverageSplit := collectCoverageSplit ctx
       heaviestPrerequisites := collectDependencyLoadItems ctx
-      noPrerequisites := collectIndexItems ctx fun _ node =>
-        (Informal.Graph.eraseDups (Informal.Graph.allDeps node)).size == 0
+      noPrerequisites := collectIndexItems ctx fun label _ =>
+        (Informal.Graph.capturedUses snapshot label `statement ++
+          Informal.Graph.capturedUses snapshot label `proof).isEmpty
       noDependents := collectIndexItems ctx fun label _ =>
         (ctx.usageMap.getD label {}).directUses == 0
       proofDebtHotspots := collectProofDebtHotspots ctx

@@ -889,6 +889,7 @@ class TestPreviewRuntimeRegressions:
                                         sourceLocation: unavailableSourceLocation
                                     }
                                 ],
+                                nodes: [],
                                 groups: []
                             });
                         }
@@ -1165,7 +1166,7 @@ class TestPreviewRuntimeRegressions:
         expect(external_markdown_card).to_have_attribute("data-bp-render-mode", "external-markup")
         expect(external_markdown_card).to_have_attribute("data-bp-canonical-preview", "true")
         expect(external_markdown_card).to_have_attribute(
-            "data-bp-preview-key", "externalMarkup:custom_client_external_markdown_metadata"
+            "data-bp-preview-key", "custom_client_external_markdown_metadata--statement"
         )
         expect(external_markdown_card).to_have_attribute(
             "data-bp-manifest-label", "custom_client_external_markdown_metadata"
@@ -1237,7 +1238,7 @@ class TestPreviewRuntimeRegressions:
             "custom_client_external_markdown_metadata"
         )
         expect(code_panel.locator(".bp_code_summary_preview_body")).to_contain_text(
-            "No associated Lean code or declarations."
+            "No associated Lean code or declaration display snapshots."
         )
 
         page.mouse.move(0, 0)
@@ -1265,7 +1266,7 @@ class TestPreviewRuntimeRegressions:
         expect(standalone).to_have_attribute("data-bp-render-mode", "external-markup")
         expect(standalone).to_have_attribute("data-bp-canonical-preview", "true")
         expect(standalone).to_have_attribute(
-            "data-bp-preview-key", "externalMarkup:custom_client_external_markdown_metadata"
+            "data-bp-preview-key", "custom_client_external_markdown_metadata--statement"
         )
         expect(standalone).to_have_attribute(
             "data-bp-manifest-label", "custom_client_external_markdown_metadata"
@@ -1357,6 +1358,7 @@ class TestPreviewRuntimeRegressions:
                                         title: "Missing source location"
                                     }
                                 ],
+                                nodes: [],
                                 groups: [],
                                 graphs: []
                             });
@@ -1438,9 +1440,31 @@ class TestPreviewRuntimeRegressions:
                     declared: true,
                     entries: []
                 };
-                function manifest(previews, groups) {
-                    return { previews, groups, graphs: [] };
+                function manifest(previews, groups, nodes) {
+                    const resolvedNodes = Array.isArray(nodes)
+                        ? nodes
+                        : previews
+                            .filter((item) => item && (item.targetKind === "block" || item.targetKind === "externalMarkup"))
+                            .map((item) => ({
+                                label: item.label,
+                                primaryKey: item.key,
+                                bodyless: null,
+                                assessment: null
+                            }));
+                    return { nodes: resolvedNodes, previews, groups, graphs: [] };
                 }
+                const bodylessNodeRow = {
+                    label: "group_member",
+                    primaryKey: null,
+                    bodyless: {
+                        label: "group_member",
+                        authoredLabel: "group_member",
+                        title: "Group member",
+                        parent: "sample_group",
+                        parentTitle: "Sample group"
+                    },
+                    assessment: null
+                };
                 const valid = manifest([entry], [group]);
                 const duplicateMemberGroup = {
                     ...group,
@@ -1464,7 +1488,16 @@ class TestPreviewRuntimeRegressions:
                     duplicateMember: manifest([], [duplicateMemberGroup]),
                     crossGroupMember: manifest([], [group, crossGroup]),
                     missingMember: manifest([entry], [{ ...group, entries: [] }]),
-                    bodylessMember: manifest([], [group]),
+                    bodylessMember: manifest([], [group], [bodylessNodeRow]),
+                    unbackedBodylessMember: manifest([], [group], []),
+                    missingNodeRow: manifest([entry], [group], []),
+                    omittedNodes: { previews: [entry], groups: [group], graphs: [] },
+                    nullNodes: { nodes: null, previews: [entry], groups: [group], graphs: [] },
+                    objectNodes: { nodes: {}, previews: [entry], groups: [group], graphs: [] },
+                    mismatchedBodylessTitle: manifest([], [group], [{
+                        ...bodylessNodeRow,
+                        bodyless: { ...bodylessNodeRow.bodyless, parentTitle: "Stale group title" }
+                    }]),
                     orphanMember: manifest([], [{ ...group,
                         entries: [{ ...member, previewKey: entry.key }]
                     }]),
@@ -1504,6 +1537,24 @@ class TestPreviewRuntimeRegressions:
         assert result["validExternal"]["groupCount"] == 1
         assert result["bodylessMember"]["state"] == "ready"
         assert result["bodylessMember"]["groupCount"] == 1
+        assert result["unbackedBodylessMember"]["state"] == "error"
+        assert (
+            "group sample_group member group_member has no matching manifest entry"
+            in result["unbackedBodylessMember"]["message"]
+        )
+        assert result["missingNodeRow"]["state"] == "error"
+        assert (
+            "group sample_group member group_member has no matching manifest entry"
+            in result["missingNodeRow"]["message"]
+        )
+        for bad_nodes_key in ("omittedNodes", "nullNodes", "objectNodes"):
+            assert result[bad_nodes_key]["state"] == "error"
+            assert "missing nodes array" in result[bad_nodes_key]["message"]
+        assert result["mismatchedBodylessTitle"]["state"] == "error"
+        assert (
+            "bodyless node group_member has inconsistent parentTitle"
+            in result["mismatchedBodylessTitle"]["message"]
+        )
         assert result["duplicate"]["state"] == "error"
         assert result["duplicate"]["groupCount"] == 0
         assert "duplicate group sample_group" in result["duplicate"]["message"]
@@ -1826,7 +1877,7 @@ class TestPreviewRuntimeRegressions:
         entry = next(
             entry
             for entry in manifest["previews"]
-            if entry["key"] == "externalMarkup:custom_client_external_markdown_metadata"
+            if entry["key"] == "custom_client_external_markdown_metadata--statement"
         )
         source_ref = entry["sources"][0]
         span = source_ref["spans"][0]
@@ -1840,7 +1891,8 @@ class TestPreviewRuntimeRegressions:
             "pdf": "source/paper.pdf",
             "title": "Representation Theory",
         }
-        assert entry["targetKind"] == "externalMarkup"
+        assert entry["targetKind"] == "block"
+        assert entry["sourceBackedPreview"] is True
         assert entry["label"] == "custom_client_external_markdown_metadata"
         assert entry["title"] == "Theorem 3.1"
         assert source_ref["document"] == "custom-client-paper"
@@ -1941,6 +1993,7 @@ class TestPreviewRuntimeRegressions:
                             ]
                         }
                     ],
+                    nodes: [],
                     groups: [],
                     graphs: []
                 };
@@ -2192,6 +2245,7 @@ class TestPreviewRuntimeRegressions:
                             ]
                         }
                     ],
+                    nodes: [],
                     groups: [],
                     graphs: []
                 };
@@ -2225,6 +2279,14 @@ class TestPreviewRuntimeRegressions:
                 const nativeFromFailedRenderResult = await preview.resolveSourceMetadata(
                     failedRenderResult
                 );
+                const missingFromFailedFacetRenderResult = await preview.resolveSourceMetadata({
+                    ok: false,
+                    key: "missing--statement",
+                    facet: "statement",
+                    reason: "manifest-entry-missing",
+                    manifestEntry: null,
+                    diagnosticHtml: "<p>Missing entry</p>"
+                });
                 const missing = await preview.resolveSourceMetadata("missing--statement");
                 const unsourced = await preview.resolveSourceMetadata("unsourced--statement");
                 const unknownDocument = await preview.resolveSourceMetadata(
@@ -2272,6 +2334,10 @@ class TestPreviewRuntimeRegressions:
                         key: nativeFromFailedRenderResult.key,
                         sourceCount: nativeFromFailedRenderResult.sources.length,
                         documentId: nativeFromFailedRenderResult.sources[0].documentId
+                    },
+                    missingFromFailedFacetRenderResult: {
+                        ok: missingFromFailedFacetRenderResult.ok,
+                        reason: missingFromFailedFacetRenderResult.reason
                     },
                     missing: {
                         ok: missing.ok,
@@ -2337,6 +2403,8 @@ class TestPreviewRuntimeRegressions:
         assert result["nativeFromFailedRenderResult"]["key"] == "sample_node--statement"
         assert result["nativeFromFailedRenderResult"]["sourceCount"] == 1
         assert result["nativeFromFailedRenderResult"]["documentId"] == "paper"
+        assert result["missingFromFailedFacetRenderResult"]["ok"] is False
+        assert result["missingFromFailedFacetRenderResult"]["reason"] == "manifest-entry-missing"
 
         assert result["missing"]["ok"] is False
         assert result["missing"]["reason"] == "manifest-entry-missing"
@@ -2445,12 +2513,44 @@ class TestPreviewRuntimeRegressions:
                             sourceLocation: unavailableSourceLocation,
                             externalMarkup: [],
                             sources: []
+                        },
+                        {
+                            key: "«E8-Lattice»--statement",
+                            targetKind: "block",
+                            label: "«E8-Lattice»",
+                            authoredLabel: "E8-Lattice",
+                            facet: "statement",
+                            title: "E8 lattice",
+                            defaultPreview: true,
+                            codeOnlyPreview: true,
+                            leanCodePreviewKeys: [],
+                            sourceLocation: unavailableSourceLocation,
+                            externalMarkup: [],
+                            sources: []
+                        },
+                        {
+                            key: "proof_missing_cache--proof",
+                            targetKind: "block",
+                            label: "proof_missing_cache",
+                            authoredLabel: "proof_missing_cache",
+                            facet: "proof",
+                            title: "Proof missing cache",
+                            sourceLocation: unavailableSourceLocation,
+                            externalMarkup: [
+                                { language: "markdown", slot: "statement", raw: "Statement only" }
+                            ],
+                            sources: []
                         }
                     ],
+                    nodes: [],
                     groups: [],
                     graphs: []
                 };
-                const htmlCachePayload = { entries: [] };
+                const htmlCachePayload = {
+                    entries: [
+                        { key: "«E8-Lattice»--statement", html: '<span class="bp_code_only_preview"></span>' }
+                    ]
+                };
                 const preview = createPreview({
                     fetchJson(url) {
                         return String(url).includes("blueprint-html-cache.json")
@@ -2463,11 +2563,40 @@ class TestPreviewRuntimeRegressions:
                 const key = "externalMarkup:semantic_only_external";
                 const resolved = await preview.resolvePreview(key);
                 const rendered = await preview.renderPreviewInto(host, key);
+                const inertCodeOnly = await preview.resolvePreview("«E8-Lattice»--statement");
+                const byAuthoredDefault = await preview.resolveLabel("E8-Lattice");
+                const byAuthoredStatement = await preview.resolveLabel("E8-Lattice", { facet: "statement" });
+                const externalStatement = await preview.resolveLabel("semantic_only_external", { facet: "statement" });
+                const externalProof = await preview.resolveLabel("semantic_only_external", { facet: "proof" });
+                const proofRenderHost = document.createElement("div");
+                document.body.appendChild(proofRenderHost);
+                const proofExternalFallback = await preview.renderNode(proofRenderHost, {
+                    label: "semantic_only_external",
+                    facet: "proof",
+                    externalMarkup: { prefer: [{ display: "source" }] }
+                });
+                const proofStatementSlotLeak = await preview.renderNode(proofRenderHost, {
+                    label: "proof_missing_cache",
+                    facet: "proof",
+                    externalMarkup: {
+                        prefer: [{ language: "markdown", display: "source" }]
+                    }
+                });
                 return {
                     resolvedOk: resolved.ok,
                     resolvedReason: resolved.reason,
                     renderedOk: rendered.ok,
                     renderedReason: rendered.reason,
+                    inertCodeOnlyOk: inertCodeOnly.ok,
+                    inertCodeOnlyReason: inertCodeOnly.reason,
+                    byAuthoredDefaultKey: byAuthoredDefault.ok ? byAuthoredDefault.key : null,
+                    byAuthoredStatementKey: byAuthoredStatement.ok ? byAuthoredStatement.key : null,
+                    externalStatementKey: externalStatement.ok ? externalStatement.key : null,
+                    externalProofOk: externalProof.ok,
+                    proofExternalFallbackOk: proofExternalFallback.ok,
+                    proofExternalFallbackReason: proofExternalFallback.reason,
+                    proofStatementSlotLeakOk: proofStatementSlotLeak.ok,
+                    proofStatementSlotLeakReason: proofStatementSlotLeak.reason,
                     manifestStatus: preview.readManifestStatus(),
                     htmlCacheStatus: preview.readHtmlCacheStatus(),
                     html: host.innerHTML
@@ -2480,6 +2609,16 @@ class TestPreviewRuntimeRegressions:
         assert result["resolvedReason"] == "semantic-preview-body-missing"
         assert result["renderedOk"] is False
         assert result["renderedReason"] == "semantic-preview-body-missing"
+        assert result["inertCodeOnlyOk"] is False
+        assert result["inertCodeOnlyReason"] == "semantic-preview-body-missing"
+        assert result["byAuthoredDefaultKey"] == "«E8-Lattice»--statement"
+        assert result["byAuthoredStatementKey"] == "«E8-Lattice»--statement"
+        assert result["externalStatementKey"] == "externalMarkup:semantic_only_external"
+        assert result["externalProofOk"] is False
+        assert result["proofExternalFallbackOk"] is False
+        assert result["proofExternalFallbackReason"] == "external-markup-entry-missing"
+        assert result["proofStatementSlotLeakOk"] is False
+        assert result["proofStatementSlotLeakReason"] == "external-markup-missing"
         assert result["manifestStatus"]["state"] == "ready"
         assert result["htmlCacheStatus"]["state"] == "ready"
         assert "Preview body unavailable" in result["html"]

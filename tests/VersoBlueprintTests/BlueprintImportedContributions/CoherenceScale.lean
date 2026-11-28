@@ -9,7 +9,7 @@ run_cmd do
   for i in [:200] do
     let label := Name.num `coherence_scale i
     let declaration := Name.num `coherence_decl i
-    let some node ← Environment.getNode? label
+    let some node ← Environment.getNodeInventory? label
       | throwError "Scale import omitted an accepted label"
     unless node.leanDecls == #[declaration] &&
         (← Environment.labelsForLeanDecl declaration) == #[label] do

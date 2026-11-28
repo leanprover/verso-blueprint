@@ -30,8 +30,8 @@ def blockFromJsonString! (name : Name) (serialized : String) : Verso.Genre.Manua
 Serialize extension data into a compact string literal and reconstruct its Manual block when the
 generated document term is evaluated.
 -/
-def serializedBlockTerm [ToJson α] (name : Name) (data : α) :
-    Verso.Doc.Elab.PartElabM (TSyntax `term) := do
+def serializedBlockTerm {m} [Monad m] [MonadQuotation m] [ToJson α] (name : Name) (data : α) :
+    m (TSyntax `term) := do
   let serialized := (toJson data).compress
   ``(Verso.Doc.Block.other
     (Informal.Commands.blockFromJsonString! $(quote name) $(quote serialized)) #[])

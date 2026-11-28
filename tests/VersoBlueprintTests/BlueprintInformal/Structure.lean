@@ -81,9 +81,9 @@ Second statement.
 #eval
   show CoreM Bool from do
     let state ← currentState
-    let some node := state.data.get? (Name.mkSimple "dup.statement")
+    let some node := state.inventory.get? (Name.mkSimple "dup.statement")
       | return false
-    pure (node.statement.isSome && node.proof.isNone)
+    pure ((node.proseView `verso `statement).isSome && (node.proseView `verso `proof).isNone)
 
 #docs (Manual) propositionKindDoc "Proposition Kind" :=
 :::::::
@@ -97,9 +97,9 @@ Proposition body.
 #eval
   show CoreM Bool from do
     let state ← currentState
-    let some node := state.data.get? (Name.mkSimple "prop.kind")
+    let some node := state.inventory.get? (Name.mkSimple "prop.kind")
       | return false
-    pure (node.kind == .proposition && node.statement.isSome)
+    pure (node.kind == .proposition && (node.proseView `verso `statement).isSome)
 
 /--
 error: Cannot find proof for label «ghost.proof»
@@ -117,6 +117,6 @@ Ghost proof body.
 #eval
   show CoreM Bool from do
     let state ← currentState
-    pure <| !(state.data.contains (Name.mkSimple "ghost.proof"))
+    pure <| !(state.inventory.contains (Name.mkSimple "ghost.proof"))
 
 end Verso.VersoBlueprintTests.BlueprintInformal.Structure

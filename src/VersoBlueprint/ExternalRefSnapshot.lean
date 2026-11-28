@@ -8,6 +8,7 @@ import Lean
 import VersoBlueprint.Data
 import VersoBlueprint.ProvedStatus
 import VersoBlueprint.ExternalDeclRender
+import VersoBlueprint.ExternalModuleSource
 import VersoBlueprint.Git
 import VersoBlueprint.RuntimeCache
 
@@ -17,14 +18,14 @@ open Lean
 
 /--
 Template used to build source links for external declarations.
-Supported placeholders are: path, relpath, module, line, column, endLine, endColumn.
+Supported placeholders are: path, relpath, repoRelpath, module, line, column, endLine, endColumn.
 
 Empty template uses automatic GitHub source link generation when the source file
 belongs to a Git checkout with a GitHub `origin` remote.
 -/
 register_option verso.blueprint.externalCode.sourceLinkTemplate : String := {
   defValue := ""
-  descr := "Template for external declaration source links ({path},{relpath},{module},{line},{column},{endLine},{endColumn}); empty uses automatic GitHub links when available"
+  descr := "Template for external declaration source links ({path},{relpath},{repoRelpath},{module},{line},{column},{endLine},{endColumn}); empty uses automatic GitHub links when available"
 }
 
 private def externalSourceLinkTemplate (opts : Lean.Options) : String :=
@@ -71,11 +72,14 @@ private def normalizeSourcePath? (workspaceRoot sourcePath : System.FilePath) :
   catch _ =>
     pure (some sourcePath)
 
+private def gitRootForSource? (sourcePath : System.FilePath) : IO (Option System.FilePath) := do
+  let sourceDir := sourcePath.parent.getD sourcePath
+  RuntimeCache.cachedGitRoot? sourceDir (Git.toplevelAt? sourceDir)
+
 private def gitHubSourceHref? (workspaceRoot sourcePath : System.FilePath)
     (range? : Option Lean.DeclarationRange) : IO (Option String) := do
   let sourcePath := absoluteSourcePath workspaceRoot sourcePath
-  let sourceDir := sourcePath.parent.getD sourcePath
-  let some gitRoot ← RuntimeCache.cachedGitRoot? sourceDir (Git.toplevelAt? sourceDir)
+  let some gitRoot ← gitRootForSource? sourcePath
     | return none
   let some repoInfo ← RuntimeCache.cachedGitRepoInfo? gitRoot (Git.repositoryInfoAtRoot? gitRoot)
     | return none
@@ -96,6 +100,10 @@ private def sourceLinkHref? (opts : Lean.Options) (workspaceRoot : System.FilePa
     | none => pure none
     | some sourcePath =>
       let relPath := (workspaceRelativeSourcePath? workspaceRoot sourcePath).getD sourcePath.toString
+      let repoRelPath ← if template.contains "{repoRelpath}" then do
+        let gitRoot? ← gitRootForSource? sourcePath
+        pure <| (gitRoot?.bind (workspaceRelativeSourcePath? · sourcePath)).getD relPath
+      else pure relPath
       let line := (range?.map (fun r => toString r.pos.line)).getD ""
       let column := (range?.map (fun r => toString r.pos.column)).getD ""
       let endLine := (range?.map (fun r => toString r.endPos.line)).getD ""
@@ -104,6 +112,7 @@ private def sourceLinkHref? (opts : Lean.Options) (workspaceRoot : System.FilePa
         instantiateSourceLinkTemplate template #[
           ("path", sourcePath.toString),
           ("relpath", relPath),
+          ("repoRelpath", repoRelPath),
           ("module", (moduleName?.map toString).getD ""),
           ("line", line),
           ("column", column),
@@ -158,15 +167,6 @@ private def externalDeclHeaderSource?
       href? := sourceHref?
     }
 
-private def moduleNameForDecl? (env : Lean.Environment) (decl : Lean.Name) : Option Lean.Name := do
-  match env.getModuleIdxFor? decl with
-  | some moduleIdx => env.header.moduleNames[moduleIdx.toNat]?
-  | none =>
-    if env.mainModule.isAnonymous then
-      none
-    else
-      some env.mainModule
-
 private def currentSourcePath? (workspaceRoot : System.FilePath) : Lean.CoreM (Option System.FilePath) := do
   let fileName ← Lean.getFileName
   if fileName.isEmpty || fileName.startsWith "<" then
@@ -197,17 +197,17 @@ private def workspaceModuleSourcePath? (workspaceRoot : System.FilePath)
     pure none
 
 private def sourcePathForModule? (workspaceRoot : System.FilePath)
-    (moduleName : Lean.Name) : Lean.CoreM (Option System.FilePath) := do
+    (moduleName : Lean.Name) (moduleIdx? : Option Lean.ModuleIdx) : Lean.CoreM (Option System.FilePath) := do
+  let env ← getEnv
+  if moduleIdx?.isNone && moduleName == env.mainModule then
+    return ← currentSourcePath? workspaceRoot
   RuntimeCache.cachedModuleSourcePath? workspaceRoot moduleName do
     let srcSearchPath ← Lean.getSrcSearchPath
     match ← srcSearchPath.findModuleWithExt "lean" moduleName with
     | some path =>
       liftM <| normalizeSourcePath? workspaceRoot path
     | none =>
-      if moduleName == (← getEnv).mainModule then
-        currentSourcePath? workspaceRoot
-      else
-        liftM <| workspaceModuleSourcePath? workspaceRoot moduleName
+      liftM <| workspaceModuleSourcePath? workspaceRoot moduleName
 
 private def workspacePathPrefix (workspaceRoot : System.FilePath) : String :=
   let root := workspaceRoot.toString
@@ -234,16 +234,10 @@ private def mkProvenance (workspaceRoot : System.FilePath)
     | none =>
       .outWorkspace moduleName none
 
-private def externalDeclStatusBadge (status : Data.ProvedStatus) : ExternalDeclHeaderBadge :=
-  let view := status.presentation
-  { className := view.externalDeclClass, text := view.externalHeaderText }
-
-/--
-Build a full snapshot for one external declaration reference using the environment
-available at elaboration/registration time.
--/
-private def externalRefSnapshotWithStatus (opts : Lean.Options) (workspaceRoot : System.FilePath)
-    (ref : Data.ExternalRef) (provedStatus : Data.ProvedStatus) : Lean.CoreM Data.ExternalRef := do
+/-- Register source and presentation information for a native attachment.
+Current proof inspection belongs to capture. -/
+def registerExternalRef (opts : Lean.Options) (workspaceRoot : System.FilePath)
+    (ref : Data.ExternalRef) : Lean.CoreM Data.ExternalRef := do
   let env ← getEnv
   let canonical := ref.canonical.eraseMacroScopes
   match env.find? canonical with
@@ -252,31 +246,27 @@ private def externalRefSnapshotWithStatus (opts : Lean.Options) (workspaceRoot :
       ref with
       canonical
       present := false
-      provedStatus := .missing
+      provedStatus := some .missing
       render := .error (.moduleUnavailable canonical)
     }
   | some cinfo =>
     let nodeKind ←
-      match Informal.Data.ConstantInfo.blueprintNodeKind? cinfo with
+      match Informal.Data.ConstantInfo.externalBlueprintNodeKind? env cinfo ref.kind with
       | some nodeKind => pure nodeKind
       | none =>
-        match cinfo with
-        | .axiomInfo _ | .opaqueInfo _ =>
-          pure ref.kind
-        | _ =>
-          throwError m!"Unsupported external Lean reference '{ref.written}' (canonical '{canonical}') with kind '{Informal.Data.ConstantInfo.blueprintKindText cinfo}'. Only definition-like declarations, theorems, and axiom-like placeholders are currently supported."
+        throwError m!"Unsupported external Lean reference '{ref.written}' (canonical '{canonical}') with kind '{Informal.Data.ConstantInfo.blueprintKindText cinfo}'. Only definition-like declarations, theorems, and axiom-like placeholders are currently supported."
     let ref : Data.ExternalRef := {
       ref with
       canonical
       present := true
-      provedStatus
+      provedStatus := none
       kind := nodeKind
     }
     let ranges? ← findDeclarationRanges? canonical
-    let moduleName? := moduleNameForDecl? env canonical
+    let moduleName? := ExternalModuleSource.moduleNameForDecl? env canonical
     let sourcePath? ←
       match moduleName? with
-      | some moduleName => sourcePathForModule? workspaceRoot moduleName
+      | some moduleName => sourcePathForModule? workspaceRoot moduleName (env.getModuleIdxFor? canonical)
       | none => pure none
     let provenance := mkProvenance workspaceRoot moduleName? sourcePath?
     let selectionRange? := ranges?.map (fun r => r.selectionRange)
@@ -285,7 +275,7 @@ private def externalRefSnapshotWithStatus (opts : Lean.Options) (workspaceRoot :
     let headerSource? := externalDeclHeaderSource? workspaceRoot moduleName? sourcePath? sourceHref?
     let renderResult ←
       (renderDeclHtmlDirectFromInfoE canonical cinfo
-        (headerBadge? := some (externalDeclStatusBadge ref.provedStatus))
+        (hasHeaderBadge := true)
         (headerSource? := headerSource?)).run'
     let render : Data.ExternalDeclRender :=
       match renderResult with
@@ -300,26 +290,19 @@ private def externalRefSnapshotWithStatus (opts : Lean.Options) (workspaceRoot :
       render
     }
 
-/-- Capture a checked external declaration and its current semantic status. -/
-def externalRefSnapshot (opts : Lean.Options) (workspaceRoot : System.FilePath)
-    (ref : Data.ExternalRef) : Lean.CoreM Data.ExternalRef := do
-  let status ← Data.analyzeDeclaration ref.canonical.eraseMacroScopes
-  externalRefSnapshotWithStatus opts workspaceRoot ref status
-
 def workspaceRoot : Lean.CoreM System.FilePath := do
   let cwd ← liftM <| IO.currentDir
   liftM <| IO.FS.realPath cwd
 
-def externalRefSnapshotAtCurrentDir (opts : Lean.Options)
+def registerExternalRefAtCurrentDir (opts : Lean.Options)
     (ref : Data.ExternalRef) : Lean.CoreM Data.ExternalRef := do
-  externalRefSnapshot opts (← workspaceRoot) ref
+  registerExternalRef opts (← workspaceRoot) ref
 
-/-- Related associations share one checked union certificate when clean.
-Rendering and provenance remain per declaration; status is never caller-supplied. -/
-def externalRefSnapshotsAtCurrentDir (opts : Lean.Options)
+/-- Record chapter references in their authoring environment, deferring proof
+inspection to the project capture that can see the selected import view. -/
+def registerExternalRefsAtCurrentDir (opts : Lean.Options)
     (refs : Array Data.ExternalRef) : Lean.CoreM (Array Data.ExternalRef) := do
   let root ← workspaceRoot
-  let statuses ← Data.analyzeDeclarations (refs.map (·.canonical.eraseMacroScopes))
-  (refs.zip statuses).mapM fun (ref, status) => externalRefSnapshotWithStatus opts root ref status
+  refs.mapM fun ref => registerExternalRef opts root ref
 
 end Informal

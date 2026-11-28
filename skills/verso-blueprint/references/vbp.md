@@ -73,21 +73,20 @@ generated data also prints an error to stderr and exits nonzero.
 All query commands print compact JSON for agent consumption. The JSON shape is fully unstable today; do not treat it as a compatibility contract. Top-level query objects include `"apiStability":"unstable"`. Query arguments are validated before generated data is read, so unknown or malformed selectors do not require a built site. Query reads the semantic manifest only for valid selectors; use `check` when you need to validate the rendered HTML cache as well.
 
 - `selectors`: query selector forms supported by this `vbp` binary. This selector does not require generated Blueprint data.
-- `labels`: statement-level Blueprint block summaries.
-- `node <label>`: one complete block entry with title, kind, href, parent/group, owner/tags/priority/effort, statement/proof uses, reverse uses, group data, and Lean preview keys.
-- `status <label>`: declaration completeness over both statement/proof facets, retaining association and facet provenance. Returns `asOf: "generated-snapshot"`, `verdict`, `complete`, `statementComplete`, `proofComplete`, and `declarations` with structured status evidence.
+- `labels`: summaries for all included Blueprint nodes in `manifest.nodes` (including statement blocks, external-markup statements, proof-only nodes, and bodyless nodes).
+- `node <label>`: one complete node entry with title, kind, href, parent/group, owner/tags/priority/effort, statement/proof uses, reverse uses, group data, and Lean preview keys (or bodyless occurrence metadata when no preview resource exists).
+- `status <label>`: the generated capture's native checks and full labeled assessments. Returns `asOf: "captured-build"` or `"uncaptured"`, `validation` (including `captured`, native statement/proof results, selected-dependency results and `details`), and display-only `sourceDeclarationSnapshots`.
 - `uses <label>`: statement/proof dependencies and resolved related entries for one label.
 - `used-by <label>`: reverse dependencies for one label.
 - `group <label>`: group metadata and sibling entries for one label, when present.
-- `owners` and `tags`: distinct values from statement-level block entries.
-- `work-queue`: statement-level entries with a graph-status-backed actionable
-  next step; each row includes `nextStep` (`"statement"` or `"proof"`),
-  `statementStatus`, and `proofStatus`. Graph data is the generated planning
-  source of truth, so no graph status means no work-queue row.
-- `metadata`: statement-level entries with owner, tags, priority, or effort metadata.
-- `search <text>`: statement-level entries whose label, title, owner, tag, or parent title contains the text, case-insensitively.
-- `code <decl>`: statement-level entries with Lean preview keys containing the declaration text.
-- `stats`: counts of statement-level entries by kind, owner, and tag.
+- `owners` and `tags`: distinct values across included Blueprint nodes.
+- `work-queue` lists included node labels whose captured native assessment has an
+  actionable `nextStep` (`statement` or `proof`), with `statementStatus` and
+  `proofStatus`. The queue is available in documents with or without a graph block.
+- `metadata`: included nodes with owner, tags, priority, or effort metadata.
+- `search <text>`: included nodes whose label, title, owner, tag, or parent title contains the text, case-insensitively.
+- `code <decl>`: statement-level entries with Lean preview keys or code data containing the declaration text.
+- `stats`: counts of distinct included node labels by kind, owner, and tag.
 
 If generated data is missing, run `lake exe vbp build` first. If a label is unknown, `query` returns JSON with `"error":"unknown-label"`.
 
@@ -99,14 +98,26 @@ inspection; say that its evidence describes the last generation. Query is
 read-only and does not recheck changed sources. `check` audits artifact
 consistency and cannot establish freshness.
 
-Every declaration row's `status` contains `verdict`, `complete`, `knownSorry`,
-and `unverified`. Only `complete: true` certifies a closed inspected checked
-Lean dependency graph without reachable `sorryAx`. `incomplete` records known
-holes, `unverified` means coverage failed without an observed hole, and `missing`
-and `axiom-like` also block completion. Known holes and verification gaps may
-coexist. `unassociated` means no declarations, with completion false.
-`statementComplete` can be true for a theorem with a verified clean statement
-and unverified proof; whole-declaration and proof completion remain false.
+`validation.nativeStatementComplete` and `nativeBodyComplete` describe local
+native checks. Use `proofRoleComplete` for mathematical proofs, including
+proof-valued definitions. It is null when no proof applies.
+`hasNativeBodyRequirement` includes computational implementations. A proposition definition can have only a statement
+check. `requiredComplete` summarizes generated native requirements with
+their selected prerequisites; it is not universal node completion. Read
+`validation.details.assessment` for each realization/relation's own contract,
+requirement local/final results, current-review selection and evidence suitability.
+A passing observation can be stale or unsuitable, and local approval can remain
+current while a proof prerequisite is unfinished. No meaningful contract means
+unassessed, not success. `sourceDeclarationSnapshots` remains display inventory;
+never promote it to current validation when `captured` is false.
+
+Native check explanations expose `verdict`, `complete`, `knownSorry`, and
+`unverified`. A positive native completeness result requires inspected checked
+coverage without reachable `sorryAx`. Missing/hidden bodies remain unavailable;
+known holes and verification gaps may coexist. A clean theorem statement can
+remain valid while its body is unfinished. Used non-sorry axioms are reported
+separately; passing native checks do not establish correspondence or eliminate
+those assumptions.
 
 Known-sorry entries record `location` (`statement`, `proof`, `unknown`),
 `origin` (`direct`, `dependency`, `unknown`), and optional `refs` source counts.
@@ -122,8 +133,8 @@ arrays alone never certify absence; use `complete`. Clean results still require
 full closed coverage, even when a blocked result was cheap to obtain.
 
 Completion concerns admitted `sorryAx`, not other legitimate axioms or the
-intended mathematical meaning. Follow whole-declaration `complete` for truth
-claims and inspect both facets. Use work queues for planning: an inherited hole
+intended mathematical meaning. Use the exact labeled contract and its assumptions when reporting what has
+been established. Use work queues for planning: an inherited hole
 or verification failure does not identify a local proof-writing task. Do not
 infer completeness from absent warnings, preview text, or zero sorry counts.
 

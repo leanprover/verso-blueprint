@@ -10,8 +10,8 @@ open Lean Informal
 #guard_msgs in
 #eval show CoreM Bool from do
   let state := Environment.informalExt.getState (← getEnv)
-  let some node ← Environment.getNode? `coherent_equal | return false
+  let some node ← Environment.getNodeInventory? `coherent_equal | return false
   return (← Environment.importedConflicts).isEmpty &&
-    node.priority == some "high" && node.externalRefs.size == 2 &&
+    node.priority == some "high" && (node.nativeRefsOn `statement).size == 2 &&
     (state.factRecords.filter fun record => record.label == `coherent_equal).length == 2 &&
-    (state.pendingNodes.getD `coherent_equal {}).contributors.size == 2
+    (state.nodeRegistrations.getD `coherent_equal {}).contributors.size == 2

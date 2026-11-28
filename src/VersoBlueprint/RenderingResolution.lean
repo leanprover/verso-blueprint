@@ -34,15 +34,22 @@ structure Facet where
   preview : PreviewCache.Entry
   data : BlockData
 
-/-- Resolve node semantics for an already decoded facet. Keep `preview` intact:
-its source, target and folding defaults belong to the selected occurrence. -/
-def facet (state : TraverseState) (key : String) (preview : PreviewCache.Entry) : Except String Facet := do
+/-- Project the selected facet of one resolved node. The code facts belong to
+the chosen occurrence, even when the canonical occurrence has the other facet. -/
+def Facet.ofNode (node : RenderNode) (canonicalData : BlockData) (preview : PreviewCache.Entry) : Facet :=
+  { preview, data := node.resolve { canonicalData.toOccurrence with isProof := preview.facet == .proof } }
+
+/-- Reject a stored facet whose payload names a different key. -/
+def checkFacetKey (key : String) (preview : PreviewCache.Entry) : Except String Unit :=
   unless PreviewCache.key preview.label preview.facet == key do
     throw s!"Mismatched Blueprint preview identity for '{key}'"
+
+/-- Resolve node semantics for an already decoded facet, preserving its occurrence. -/
+def facet (state : TraverseState) (key : String) (preview : PreviewCache.Entry) : Except String Facet := do
+  checkFacetKey key preview
   let node ← TraversalIndex.Nodes.required state preview.label
-  let canonicalData ← canonical state preview.label
-  let data := node.resolve { canonicalData.toOccurrence with isProof := preview.facet == .proof }
-  return { preview, data }
+  let data := (TraversalIndex.Nodes.resolveCanonical state node).withResolvedNumbering state
+  return .ofNode node data preview
 
 /-- Resolve an explicit stored facet. Absence is optional; malformed content,
 mismatched identity, and missing node semantics are errors. No other facet is borrowed. -/
@@ -112,11 +119,14 @@ finalization establishes that its manifest entry and rendered body both exist. -
 structure Reference where
   title : String
   href : Option String
-  previewKey : Option PreviewKey
+  previewKeys : Array PreviewKey := #[]
+
+def Reference.previewKey (reference : Reference) : Option PreviewKey :=
+  reference.previewKeys[0]?
 
 /-- Deliberate unresolved presentation for an optional relation target. -/
 def Reference.labelOnly (label : Data.Label) : Reference := {
-  title := label.toString (escape := false), href := none, previewKey := none
+  title := label.toString (escape := false), href := none
 }
 
 private def referenceWithTitle (state : TraverseState) (label : Data.Label)
@@ -125,7 +135,7 @@ private def referenceWithTitle (state : TraverseState) (label : Data.Label)
   href := match facet? with
     | some facet => TraversalIndex.TraversalPreviews.hrefFor? state label facet
     | none => TraversalIndex.Nodes.href? state label
-  previewKey := PreviewSource.traversalPreviewCandidateKey? state label facet?
+  previewKeys := PreviewSource.traversalPreviewCandidateKeys state label facet?
 }
 
 /-- Present semantic metadata resolved from the same rendering state, without decoding

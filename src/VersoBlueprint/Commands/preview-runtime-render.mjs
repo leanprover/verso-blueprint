@@ -1,4 +1,4 @@
-import { escapeHtml, readHtml } from "./preview-runtime-base.mjs";
+import { escapeHtml, readHtml, requireBlueprintDataApi, loadManifestEntry } from "./preview-runtime-base.mjs";
 import { missingPreviewKeyDiagnosticHtml, previewKey } from "./preview-runtime-data.mjs";
 import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
 
@@ -13,24 +13,6 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
     return err instanceof Error && typeof err.message === "string" && err.message.length > 0
       ? err.message
       : String(err);
-  }
-
-  function blueprintDataApi(options) {
-    const opts = options && typeof options === "object" ? options : {};
-    return opts.dataApi && typeof opts.dataApi === "object" ? opts.dataApi : null;
-  }
-
-  function requireBlueprintDataApi(options) {
-    const dataApi = blueprintDataApi(options);
-    if (!dataApi) {
-      throw new Error("Blueprint data API missing; call through createPreview() or createBlueprintDataApi()");
-    }
-    return dataApi;
-  }
-
-  function loadManifestEntry(previewKey, options) {
-    const dataApi = requireBlueprintDataApi(options);
-    return dataApi.loadManifestEntry(previewKey, options);
   }
 
   function loadHtmlCacheEntry(previewKey, options) {
@@ -54,11 +36,11 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
   }
 
   function semanticOnlyPreviewBodyMissing(entry, options) {
-    return !!(
-      entry &&
-      typeof entry === "object" &&
-      entry.targetKind === "externalMarkup" &&
-      htmlCacheReady(options)
+    if (!entry || typeof entry !== "object" || !htmlCacheReady(options)) return false;
+    if (entry.targetKind === "externalMarkup") return true;
+    return (
+      entry.codeOnlyPreview === true &&
+      (!Array.isArray(entry.leanCodePreviewKeys) || entry.leanCodePreviewKeys.length === 0)
     );
   }
 
@@ -112,10 +94,17 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
     if (html && manifestEntry.codeOnlyPreview === true) {
       const keys = Array.isArray(manifestEntry.leanCodePreviewKeys)
         ? manifestEntry.leanCodePreviewKeys : [];
-      const fragments = await Promise.all(keys.map(key => loadHtmlCacheEntry(key, options)));
-      const bodies = fragments.map(readHtml);
-      html = bodies.length > 0 && bodies.every(body => body.length > 0)
-        ? bodies.join("\n") : "";
+      const fragments = await Promise.all(keys.map(async (codeKey) => {
+        if (codeKey === key) return "";
+        const codeEntry = await loadManifestEntry(codeKey, options);
+        if (!codeEntry ||
+            (codeEntry.targetKind !== "leanDecl" && codeEntry.targetKind !== "inlineLeanCode")) {
+          return "";
+        }
+        return readHtml(await loadHtmlCacheEntry(codeKey, options));
+      }));
+      html = fragments.length > 0 && fragments.every(body => body.length > 0)
+        ? fragments.join("\n") : "";
     }
     if (!html) {
       if (semanticOnlyPreviewBodyMissing(manifestEntry, options)) {
@@ -213,15 +202,14 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
       return {
         label: request.trim(),
         facet: "statement",
+        explicitFacet: false,
         externalMarkup: null
       };
     }
     const opts = request && typeof request === "object" ? request : {};
     const label = typeof opts.label === "string" ? opts.label.trim() : "";
-    const facet =
-      typeof opts.facet === "string" && opts.facet.trim()
-        ? opts.facet.trim()
-        : "statement";
+    const explicitFacet = typeof opts.facet === "string" && opts.facet.trim().length > 0;
+    const facet = explicitFacet ? opts.facet.trim() : "statement";
     const externalMarkup =
       opts.externalMarkup && typeof opts.externalMarkup === "object"
         ? opts.externalMarkup
@@ -231,6 +219,7 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
     return {
       label,
       facet,
+      explicitFacet,
       externalMarkup
     };
   }
@@ -291,31 +280,33 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
     );
   }
 
-  export function externalMarkupMatchesPreference(markup, preference) {
+  export function externalMarkupMatchesPreference(markup, preference, facet) {
     if (!markup || typeof markup !== "object") return false;
     const language = normalizeExternalMarkupToken(preference && preference.language);
     const slot =
       preference && typeof preference.slot === "string" ? preference.slot.trim() : "";
+    const markupSlot = String(markup.slot || "").trim();
+    if (facet === "proof" && markupSlot !== "proof") return false;
     if (language && normalizeExternalMarkupToken(markup.language) !== language) return false;
-    if (slot && String(markup.slot || "").trim() !== slot) return false;
+    if (slot && markupSlot !== slot) return false;
     return typeof markup.raw === "string" && markup.raw.length > 0;
   }
 
-  export function firstExternalMarkupForPreference(entry, preference) {
+  export function firstExternalMarkupForPreference(entry, preference, facet) {
     const markups =
       entry && Array.isArray(entry.externalMarkup) ? entry.externalMarkup : [];
     return markups.find(function (markup) {
-      return externalMarkupMatchesPreference(markup, preference);
+      return externalMarkupMatchesPreference(markup, preference, facet);
     }) || null;
   }
 
-  export function selectExternalMarkup(entry, preferences) {
+  export function selectExternalMarkup(entry, preferences, facet) {
     let missingRenderer = null;
     let missingMarkupPreference = null;
     for (const preference of preferences) {
       if (!preference || typeof preference !== "object") continue;
       if (isNativeMarkupPreference(preference)) continue;
-      const markup = firstExternalMarkupForPreference(entry, preference);
+      const markup = firstExternalMarkupForPreference(entry, preference, facet);
       if (!markup) {
         if (!missingMarkupPreference) missingMarkupPreference = preference;
         continue;
@@ -536,14 +527,43 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
       return result;
     }
 
-    const nativeKey = previewKey(normalized.label, normalized.facet);
+    const preferences = normalizeExternalMarkupPreferences(normalized.externalMarkup);
+    const labelResult = await requireBlueprintDataApi(opts).resolveLabel(
+      normalized.label,
+      normalized.explicitFacet ? Object.assign({}, opts, { facet: normalized.facet }) : opts
+    );
+    const resolvedEntry = labelResult && labelResult.ok ? labelResult.manifestEntry : null;
+    const selectedDefault = !normalized.explicitFacet &&
+      resolvedEntry?.defaultPreview === true &&
+      ((resolvedEntry.targetKind === "block" &&
+        resolvedEntry.sourceBackedPreview !== true) || preferences.length === 0)
+      ? labelResult : null;
+    const nativeKey = selectedDefault?.key ||
+      (normalized.explicitFacet && resolvedEntry ? labelResult.key : null) ||
+      previewKey(normalized.label, normalized.facet);
     const nativeResult = await resolveBlueprintPreview(nativeKey, opts);
-    if (nativeResult.ok) {
+    const isExternalFallback = !!(
+      nativeResult.manifestEntry &&
+      (nativeResult.manifestEntry.targetKind === "externalMarkup" ||
+        nativeResult.manifestEntry.sourceBackedPreview === true)
+    );
+    if (nativeResult.ok && !(isExternalFallback && preferences.length > 0)) {
+      if (nativeResult.manifestEntry?.targetKind === "externalMarkup") {
+        const result = renderNodePreviewResult(nativeResult, {
+          renderMode: "external-markup",
+          label: normalized.label,
+          facet: selectedDefault?.facet || normalized.facet,
+          nativePreview: nativeResult,
+          canonicalHtml: nativeResult.html
+        });
+        renderHtmlInto(target, result.html, opts);
+        return result;
+      }
       const canonicalResult = await resolveCanonicalBlueprintPreview(nativeKey, opts);
       const result = renderNodePreviewResult(canonicalResult, {
         renderMode: canonicalResult.ok ? "native" : "diagnostic",
         label: normalized.label,
-        facet: normalized.facet,
+        facet: selectedDefault?.facet || normalized.facet,
         nativePreview: nativeResult
       });
       const html = result.ok
@@ -553,7 +573,6 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
       return result;
     }
 
-    const preferences = normalizeExternalMarkupPreferences(normalized.externalMarkup);
     if (preferences.length === 0) {
       const result = renderNodePreviewResult(nativeResult, {
         renderMode: "diagnostic",
@@ -567,7 +586,12 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
     }
 
     const manifestEntry =
-      nativeResult.manifestEntry || (await loadExternalMarkupNodeEntry(normalized.label, opts));
+      nativeResult.manifestEntry ||
+      (normalized.facet === "statement"
+        ? (resolvedEntry?.targetKind === "externalMarkup"
+            ? resolvedEntry
+            : await loadExternalMarkupNodeEntry(normalized.label, opts))
+        : null);
     if (!manifestEntry) {
       const result = renderNodePreviewResult({
         ok: false,
@@ -592,7 +616,7 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
       return result;
     }
 
-    const selection = selectExternalMarkup(manifestEntry, preferences);
+    const selection = selectExternalMarkup(manifestEntry, preferences, normalized.facet);
     if (!selection.ok) {
       const preference = selection.preference || {};
       const result = renderNodePreviewResult({

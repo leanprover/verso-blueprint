@@ -10,9 +10,9 @@ open Lean Informal
 #guard_msgs in
 #eval show CoreM Bool from do
   let state := Environment.informalExt.getState (← getEnv)
-  let some registered := state.data.get? `coherent_origin | return false
-  let node := registered.toNode
-  return (state.pendingNodes.getD `coherent_origin {}).authoredOrigin? ==
+  let some registered := state.inventory.get? `coherent_origin | return false
+  let node := registered
+  pure ((state.nodeRegistrations.getD `coherent_origin {}).authoredOrigin? ==
       some `VersoBlueprintTests.BlueprintImportedContributions.CoherenceOriginAuthor &&
     registered.origin == `VersoBlueprintTests.BlueprintImportedContributions.CoherenceOriginAuthor &&
-    node.externalRefs.map (·.canonical) == #[`CoherenceOriginFact.declaration]
+      (node.nativeRefsOn `statement).map (·.canonical) == #[`CoherenceOriginFact.declaration])

@@ -30,7 +30,7 @@ coordination records.
 | V2a | Snapshot merge canonical union, normalization, uniqueness, and presence laws | V1 | Law module for `ExternalRef.mergeSnapshots` |
 | V2b | Raw/present membership on each facet; `Node.leanDecls` union; payload frame | V2a | Assembly/data law modules |
 | V3 | Semantic environment coherence and accepted index exactness | V2b; merged #469 admission boundary | Pure state transitions and their law modules; boundary regressions |
-| V4 | Conservative completion through snapshot merge and `nodeCodeHealth` | V2a; agreed status/coverage contract | Status/health law modules; coordinate with axiom-analysis owner |
+| V4 | Conservative completion through snapshot merge and captured native assessment | V2a; agreed status/coverage contract | Status/health law modules; coordinate with axiom-analysis owner |
 | V5 | Evidence persistence and rendering projection correspondence | Relevant V2/V3 results | One serializer/import or rendering boundary per ticket |
 | V6 | Further indexed implementations refining the reference semantics | Measurements identifying a real bottleneck | One measured production query and its refinement theorem |
 
@@ -129,7 +129,7 @@ admission boundary, including the direct accepted-node return from
 ## V4: completion and evidence coverage
 
 Lift `ProvedStatus.mergeConservative_isProved` through snapshots and actual
-`nodeCodeHealth`, initially proving that an accepted non-proved observation
+the captured native assessment, initially proving that an accepted non-proved observation
 cannot become certified complete. Include both facets, literate overlap,
 external-status overrides, and the nonempty-code requirement.
 

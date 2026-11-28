@@ -34,7 +34,7 @@
  * intersections consistently.
  *
  * @typedef {Object} BlueprintLabelResolveOptions
- * @property {string} [facet] Preview facet to resolve. Defaults to `statement`.
+ * @property {string} [facet] Exact block facet. Omit it to prefer the prepared default preview.
  * @property {string} [dataBaseUrl] Base URL used to resolve files under `-verso-data/`.
  * @property {BlueprintFetchJson} [fetchJson] Per-API JSON loader override.
  * @property {RequestInit} [fetchOptions] Options forwarded to `fetch` when no custom loader is supplied.
@@ -298,10 +298,13 @@
  */
 
 /**
- * Semantic declaration facts retained even without a visible code panel.
+ * Declaration display snapshots retained even without a visible code panel.
+ * These provider facts support inventory and rendering; the current admitted
+ * node assessment and its requirements remain the validation authority.
  * @typedef {Object} BlueprintCodeData
  * @property {{definedDefs: Array<{name: string, provedStatus: BlueprintProvedStatus}>, definedTheorems: Array<{name: string, provedStatus: BlueprintProvedStatus}>}} literateDeclarations
- * @property {Array<{canonical: string, present: boolean, provedStatus: BlueprintProvedStatus}>} externalDecls
+ * @property {Array<{canonical: string, present: boolean, provedStatus: BlueprintProvedStatus | null}>} externalDecls Registration-time source inventory.
+ * @property {Array<{0: string, 1: (BlueprintProvedStatus | null), length: number}>} externalChecks Per-declaration results from the current capture.
  */
 
 /**
@@ -326,6 +329,8 @@
  * @property {boolean} foldProofBlock Whether the canonical proof shell is collapsed for proof entries.
  * @property {boolean} foldCodeBlock Whether the associated code panel is collapsed for this canonical traversal entry.
  * @property {boolean} codeOnlyPreview Whether preview readers compose associated Lean fragments instead of the inert block body.
+ * @property {boolean} sourceBackedPreview Whether the preview body was rendered from external source markup rather than native Verso prose.
+ * @property {boolean} defaultPreview Whether the generated output selected this entry for default label previews.
  * @property {string[]} leanCodePreviewKeys Associated Lean-code manifest/cache keys, in display order.
  * @property {BlueprintRelatedEntry[]} uses Related nodes used by this entry.
  * @property {BlueprintRelatedEntry[]} usedBy Related nodes that use this entry.
@@ -344,8 +349,75 @@
  *
  * @typedef {Object} BlueprintGraphWarningFlags
  * @property {boolean} unknownRef The node refers to a label missing from traversal.
- * @property {boolean} leanOnlyNoStatement The node has Lean data but no statement entry.
- * @property {boolean} missingExternalDecl The node refers to a missing external declaration.
+ */
+
+/**
+ * Safe assessment captured from the admitted realization registry that built
+ * this graph. `null` means this endpoint was unresolved and has no admitted
+ * Blueprint node. `details` contains report/selection diagnostics but no raw
+ * source or content bindings.
+ *
+ * @typedef {Object} BlueprintNodeAssessment
+ * @property {boolean} hasNativeDeclarations Whether the node has selected native declarations in its Lean realizations.
+ * @property {boolean} hasAxiomLike Whether a selected native declaration has a freshly checked axiom-like status.
+ * @property {boolean} nativeStatementComplete Local native statement checks, before Blueprint prerequisites.
+ * @property {boolean} hasNativeBodyRequirement Whether the selected declarations require a native proof or implementation check.
+ * @property {boolean} nativeBodyComplete Whether native contracts cover every selected declaration and all applicable proof and implementation bodies pass locally. False when no body check applies.
+ * @property {boolean | null} proofRoleComplete Whether native contracts cover every selected declaration and all selected proof roles pass locally, or null when no proof role is selected.
+ * @property {boolean} requiredComplete Whether the generated native requirements and selected prerequisites complete; not universal node completion.
+ * @property {number} selectedLeanUseCount Nonnegative integer count of ordinary native uses assessed in their exact contexts, including failed selections.
+ * @property {boolean} statementDependenciesComplete Whether the selected statement-axis prerequisites complete.
+ * @property {boolean} proofDependenciesComplete Whether the selected proof-axis prerequisites complete.
+ * @property {Record<string, unknown> | null} details Safe current requirements, captured selected-use scopes/results, and diagnostics.
+ */
+
+/**
+ * Display data retained for an occurrence without a rendered preview resource.
+ *
+ * @typedef {Object} BlueprintNodeOccurrenceMetadata
+ * @property {string} label Canonical Blueprint node label.
+ * @property {string} authoredLabel Authored display label.
+ * @property {string} title Display title.
+ * @property {string | null} kind Blueprint declaration kind.
+ * @property {string | null} href Link to the canonical occurrence.
+ * @property {string | null} parent Parent group label.
+ * @property {string | null} parentTitle Parent group title.
+ * @property {string | null} owner Assigned owner identifier.
+ * @property {string | null} ownerDisplayName Assigned owner's display name.
+ * @property {string | null} ownerUrl Assigned owner's link.
+ * @property {string | null} ownerImageUrl Assigned owner's image URL.
+ * @property {string[]} tags Authored topic tags.
+ * @property {string | null} effort Authored effort estimate.
+ * @property {string | null} priority Authored triage priority.
+ * @property {string | null} prUrl Associated pull request.
+ * @property {string | null} issueUrl Associated tracking issue.
+ * @property {boolean | null} adoptedStatementAvailable Current verification of a requested external statement.
+ * @property {BlueprintUseRef[]} statementUses Direct statement dependencies.
+ * @property {BlueprintUseRef[]} proofUses Direct proof dependencies.
+ * @property {BlueprintRelatedEntry[]} uses Related dependencies.
+ * @property {BlueprintRelatedEntry[]} usedBy Related dependents.
+ */
+
+/**
+ * Semantic node row in the manifest's top-level `nodes` array. Each row
+ * has either a primary resource or bodyless occurrence metadata.
+ *
+ * @typedef {Object} BlueprintManifestNode
+ * @property {string} label Canonical label, listed once per included node.
+ * @property {string | null} primaryKey Manifest resource supplying the node's display metadata.
+ * @property {BlueprintNodeOccurrenceMetadata | null} bodyless Display metadata when no primary resource exists.
+ * @property {BlueprintNodeAssessment | null} assessment Captured assessment, independent of graph and preview occurrences.
+ */
+
+/**
+ * Top-level generated `blueprint-manifest.json` payload.
+ *
+ * @typedef {Object} BlueprintManifestFile
+ * @property {BlueprintManifestNode[]} nodes Included Blueprint node rows, one per label.
+ * @property {BlueprintManifestEntry[]} previews Keyed semantic preview entries.
+ * @property {BlueprintGroupRelation[]} groups Normalized group catalog referenced by node `parent` fields.
+ * @property {BlueprintGraphData[]} graphs Finalized dependency graph payloads.
+ * @property {BlueprintSourceDocument[]} sourceDocuments Declared original source documents.
  */
 
 /**
@@ -359,8 +431,8 @@
  * @property {string} penwidth Border width.
  * @property {string} fontcolor Font color.
  * @property {number} peripheries Number of node outlines.
- * @property {string | null} gradientangle Graphviz gradient angle, when present.
- * @property {string | null} tooltip Tooltip text, when present.
+ * @property {string | null} [gradientangle] Graphviz gradient angle, when present.
+ * @property {string | null} [tooltip] Tooltip text, when present.
  */
 
 /**
@@ -406,31 +478,70 @@
  * @property {string} label Canonical Blueprint node label.
  * @property {string} title Resolved display title.
  * @property {string} displayLabel Short display label.
- * @property {string | null} kind Node kind, when available.
+ * @property {"definition" | "proposition" | "lemma" | "theorem" | "corollary" | null} kind Node kind, when available.
  * @property {string | null} parent Parent/group label, when available.
  * @property {string | null} href Link to the canonical generated node, when available.
  * @property {string | null} previewKey Preview key advertised by this graph record, when available.
- * @property {BlueprintUseRef[]} statementUses Structured statement dependency refs.
- * @property {BlueprintUseRef[]} proofUses Structured proof dependency refs.
- * @property {string} statementStatus Statement-track status.
- * @property {string} proofStatus Proof-track status.
+ * @property {BlueprintUseRef[]} statementUses Deduplicated statement-axis graph topology.
+ * @property {BlueprintUseRef[]} proofUses Deduplicated proof-axis graph topology.
+ * @property {BlueprintNodeAssessment | null} assessment Assessment from the same admitted capture; null for unresolved endpoints.
+ * @property {"statement" | "proof" | null} actionableStage Canonical next step, absent when its selected prerequisites block work.
+ * @property {"unassessed" | "blocked" | "ready" | "formalized" | "mathlib"} statementStatus Statement-track projection.
+ * @property {"unassessed" | "none" | "incomplete" | "formalized" | "formalizedWithAncestors"} proofStatus Proof-track projection.
  * @property {BlueprintGraphWarningFlags} warnings Graph warning flags.
  * @property {BlueprintGraphNodeVisual} visual Current Blueprint graph styling metadata.
  */
 
 /**
+ * The style of one sample in a graph legend.
+ *
+ * @typedef {Object} BlueprintGraphLegendSwatch
+ * @property {string} background Swatch fill color.
+ * @property {string} borderColor Swatch border color.
+ * @property {number} borderWidth Swatch border width in pixels.
+ * @property {string} borderStyle Swatch CSS border style.
+ * @property {string} borderRadius Swatch CSS border radius.
+ */
+
+/**
+ * @typedef {Object} BlueprintGraphLegendItem
+ * @property {string} label Visible legend explanation.
+ * @property {BlueprintGraphLegendSwatch | null} [swatch] Example of the described appearance.
+ */
+
+/**
+ * @typedef {Object} BlueprintGraphLegendGroup
+ * @property {string} key Stable key within a legend.
+ * @property {string} title Legend group heading.
+ * @property {string | null} [summary] Short description of the group.
+ * @property {BlueprintGraphLegendItem[]} items Legend explanations in display order.
+ */
+
+/**
+ * Legend section selected by Lean for a graph view.
+ *
+ * @typedef {Object} BlueprintGraphLegend
+ * @property {"full" | "group"} kind Graph view whose appearance this legend explains.
+ * @property {string} note Explanation of the selected graph view.
+ * @property {BlueprintGraphLegendGroup[]} groups Legend groups in display order.
+ */
+
+/**
  * Graph data exported by the Blueprint manifest or embedded in a graph page.
  *
- * Node `statementUses`, `proofUses`, and `parent` fields are authoritative.
+ * Node `statementUses`, `proofUses`, and `parent` fields are topology projections.
+ * Exact selected-use scope and diagnostics are in `assessment.details`; clients
+ * should use `actionableStage` instead of recomputing readiness from statuses.
  * Lean materializes `edges`, group `children`, and render `variants` together
  * from that topology at the graph finalization boundary.
  *
  * @typedef {Object} BlueprintGraphData
- * @property {3} schemaVersion Current finalized graph payload schema version.
+ * @property {8} schemaVersion Current finalized graph payload schema version.
  * @property {string} key Stable graph/block key.
  * @property {BlueprintGraphNode[]} nodes Graph node payloads.
  * @property {BlueprintGraphEdge[]} edges Derived, deduplicated graph edge payloads with dangling sources omitted.
  * @property {BlueprintGraphGroup[]} groups Group metadata with membership derived from node parents.
+ * @property {BlueprintGraphLegend[]} legends The full legend and, when the group variant exists, the group legend.
  * @property {BlueprintGraphVariant[]} variants Precomputed DOT variants for the bundled graph renderer. The first variant is `full`; keys are unique, and select/hover mappings target keys in this array.
  */
 
@@ -594,7 +705,7 @@
  *
  * @typedef {Object} BlueprintRenderNodeRequest
  * @property {string} label Blueprint label to render.
- * @property {string} [facet="statement"] Rendered facet to prefer for native previews.
+ * @property {string} [facet] Exact rendered facet. Omit it to use the generated default preview.
  * @property {BlueprintExternalMarkupPreference | BlueprintExternalMarkupPreference[] | BlueprintExternalMarkupPreferences} [externalMarkup] External-markup fallback preferences.
  * @property {BlueprintExternalMarkupPreference} [preferredExternalMarkup] Shorthand for a single external-markup preference.
  */

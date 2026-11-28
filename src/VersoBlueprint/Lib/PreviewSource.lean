@@ -33,30 +33,16 @@ all stored facets, retaining their storage keys for checked resolution.
 
 abbrev ManualBlock := Verso.Doc.Block Verso.Genre.Manual
 
-structure Preview where
-  blocks : Array ManualBlock := #[]
-  stxs : Array Syntax := #[]
-deriving Inhabited, Repr
-
-/-- An environment-time preview for one Blueprint label.
-
-The `facet` and `key` fields identify the preview that should be used by
-callers, while `preview` contains the phase-local renderable payload. -/
+/-- A renderable facet from the elaborated source inventory. -/
 structure Selection where
-  label : Name
   facet : PreviewCache.Facet
   key : String
-  preview : Preview
+  blocks : Array ManualBlock
 deriving Inhabited, Repr
 
-def Selection.ofPreview (label : Name) (facet : PreviewCache.Facet) (preview : Preview) :
+def Selection.ofBlocks (label : Name) (facet : PreviewCache.Facet) (blocks : Array ManualBlock) :
     Selection :=
-  {
-    label
-    facet
-    key := PreviewCache.key label facet
-    preview
-  }
+  { facet, key := PreviewCache.key label facet, blocks }
 
 def traversalEntry?
     (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option PreviewCache.Entry :=
@@ -79,7 +65,7 @@ def traversalExternalMarkupLookupKey?
     some (externalMarkupKey label)
 
 /--
-Best preview candidate key for a Blueprint label in finished traversal state.
+Preview candidates for a Blueprint label in finished traversal state.
 
 Prefer statement/proof prose, then a code-backed facet, then a source-backed
 external-markup preview. Prose-only lookup helpers retain their body semantics. Final
@@ -90,51 +76,54 @@ An explicit facet never borrows another facet's prose or code. Only statements
 may fall back to source-backed external markup.
 
 -/
+def traversalPreviewCandidateKeys
+    (s : Verso.Genre.Manual.TraverseState) (label : Name)
+    (facet? : Option PreviewCache.Facet := none) : Array PreviewKey :=
+  let facets := match facet? with
+    | none => TraversalIndex.TraversalPreviews.previewFacets s label
+    | some facet => #[facet].filter (TraversalIndex.TraversalPreviews.hasRenderablePreview s label)
+  let markup := if facet? == some .proof then #[] else (traversalExternalMarkupLookupKey? s label).toArray
+  -- Inline panels and external witnesses can be attached after the statement
+  -- occurrence. Keep its standard key among the candidates for final resolution.
+  let facets := if facet? != some .proof && !facets.contains .statement &&
+      (TraversalIndex.TraversalPreviews.object? s (PreviewCache.statementKey label)).isSome &&
+      (!markup.isEmpty || (TraversalIndex.InlineCode.blockIds s label).any fun id =>
+        (TraversalIndex.LeanCodePreviews.object? s (TraversalIndex.LeanCodePreviews.lookupInlineKey id)).isSome)
+    then facets.push .statement else facets
+  (facets.map (PreviewCache.key label) ++ markup).filterMap PreviewKey.ofString?
+
 def traversalPreviewCandidateKey?
     (s : Verso.Genre.Manual.TraverseState) (label : Name)
-    (facet? : Option PreviewCache.Facet := none) : Option PreviewKey := do
-  let key ← match facet? with
-    | none => (PreviewCache.key label <$>
-        Informal.TraversalIndex.TraversalPreviews.selectedPreviewFacet? s label) <|>
-        traversalExternalMarkupLookupKey? s label
-    | some facet =>
-      if Informal.TraversalIndex.TraversalPreviews.hasRenderablePreview s label facet then
-        some (PreviewCache.key label facet)
-      else if facet == .statement then traversalExternalMarkupLookupKey? s label
-      else none
-  PreviewKey.ofString? key
+    (facet? : Option PreviewCache.Facet := none) : Option PreviewKey :=
+  (traversalPreviewCandidateKeys s label facet?)[0]?
 
 private def nonEmptyOrNone {α} (xs : Array α) : Option (Array α) :=
   if xs.isEmpty then none else some xs
 
-private def nodeFacetPreview? (node : Data.Node) (facet : PreviewCache.Facet) : Option Preview := do
-  let informalData ←
-    match facet with
-    | .statement => node.statement
-    | .proof => node.proof
-  match nonEmptyOrNone informalData.previewBlocks with
-  | some blocks => some { blocks }
-  | none =>
-    match nonEmptyOrNone informalData.elabStx with
-    | some stxs => some { stxs }
-    | none => none
+private def nodeFacetPreview? (node : Data.NodeInventory) (facet : PreviewCache.Facet) :
+    Option (Array ManualBlock) := do
+  let facetName := match facet with
+    | .statement => `statement
+    | .proof => `proof
+  let body ← node.defaultProseView facetName
+  nonEmptyOrNone body.blocks
 
 def environmentSelection? (env : Environment) (label : Name) : Option Selection := do
   let state := informalExt.getState env
-  let node ← state.data.get? label
+  let node ← state.inventory.get? label
   let (facet, preview) ←
-    PreviewCache.Facet.select? (nodeFacetPreview? node)
-  pure <| Selection.ofPreview label facet preview
+    PreviewCache.Facet.select? fun facet =>
+      if facet == .statement && node.sources.any (·.adoption.isSome) then none
+      else nodeFacetPreview? node facet
+  pure <| Selection.ofBlocks label facet preview
 
-def renderWidgetHtml (preview? : Option Preview) : Lean.Elab.Term.TermElabM Verso.Output.Html := do
-  match preview? with
-  | none => pure .empty
-  | some preview =>
-    if !preview.blocks.isEmpty then
-      Informal.renderPreviewBlocksHtml preview.blocks
-    else if !preview.stxs.isEmpty then
-      Informal.renderStatementElabHtml preview.stxs
-    else
-      pure .empty
+def renderWidgetHtml (blocks? : Option (Array ManualBlock))
+    (snapshot? : Option Realizations.Capture.Snapshot := none) :
+    Lean.Elab.Term.TermElabM Verso.Output.Html := do
+  let some blocks := blocks? | return .empty
+  if blocks.isEmpty then return .empty
+  match snapshot? with
+  | none => Informal.renderPreviewBlocksHtml blocks
+  | some snapshot => Informal.renderPreviewBlocksHtmlWithSnapshot blocks snapshot
 
 end Informal.PreviewSource

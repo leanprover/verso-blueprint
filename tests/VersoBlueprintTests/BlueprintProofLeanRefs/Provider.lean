@@ -37,7 +37,7 @@ This compiled statement will gain a proof association in its consumer.
 /-- info: true -/
 #guard_msgs in
 #eval show CoreM Bool from do
-  let some node ← Environment.getNode? (Name.mkSimple "proof.imported.associations")
+  let some node ← Environment.getNodeInventory? (Name.mkSimple "proof.imported.associations")
     | return false
   return node.leanDecls == #[``firstProof] &&
     (← Environment.labelsForLeanDecl ``firstProof) == #[Name.mkSimple "proof.imported.associations"]

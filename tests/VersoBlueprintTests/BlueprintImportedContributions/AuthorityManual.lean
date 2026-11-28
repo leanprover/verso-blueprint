@@ -6,5 +6,5 @@ Author: Emilio J. Gallego Arias
 import VersoBlueprintTests.BlueprintImportedContributions.Statement
 
 run_cmd discard <| Informal.Environment.contribute `key_theorem {
-  proofUses := #[{ label := `proof_dep, origin := .manual, intent := .auxiliary }]
+  uses := Informal.SourceData.usesFor `key_theorem (some `lean) `proof #[{ label := `proof_dep, origin := .manual, intent := .auxiliary }]
 }

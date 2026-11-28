@@ -80,6 +80,7 @@ consumers can first render stored Manual blocks through the regular Manual/VBP
 path and then pass the result through this same assembly path.
 -/
 structure RenderedContent where
+  assessment : Option Realizations.NodeAssessment := none
   body : Html
   codeBodies : Array Html := #[]
   /-- Facts about the included code bodies; heading facts come from the project entry. -/
@@ -170,7 +171,7 @@ def renderWithRenderedContent
     (group? : Option GroupRelation := none)
     (opts : RenderOptions := {}) :
     Html :=
-    let blockData := entry.blockData
+    let blockData := entry.blockData content.assessment
     let title := entry.heading opts.displayLabelOverride?
     let codePanel :=
       if opts.compact || (entry.facet == .proof &&

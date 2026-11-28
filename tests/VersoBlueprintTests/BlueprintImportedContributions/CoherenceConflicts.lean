@@ -23,9 +23,9 @@ open Lean Informal
       conflict.reasons.size == 3) &&
     conflicts.any (fun conflict => conflict.label == `coherent_cross_b &&
       conflict.reasons.size == 3) &&
-    (← Environment.getNode? `coherent_three).isNone &&
-    (← Environment.getNode? `coherent_cross_a).isNone &&
-    (← Environment.getNode? `coherent_cross_b).isNone
+    (← Environment.getNodeInventory? `coherent_three).isNone &&
+    (← Environment.getNodeInventory? `coherent_cross_a).isNone &&
+    (← Environment.getNodeInventory? `coherent_cross_b).isNone
 
 /--
 error: Conflicting imported blueprint contributions for label 'coherent_cross_a'

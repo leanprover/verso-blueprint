@@ -134,29 +134,24 @@ inline_extension Inline.bpMath (data : BpMathData) where
           #[("class", mathClasses mode), ("data-bp-tex-prelude-id", "default")]
       pure <| .tag "code" attrs (.text true source)
 
-/-- Build the serialized inline node shared by both the plain and linted elaboration paths. -/
-private def mkBpMathInlineTermCore [Monad m] [MonadQuotation m]
-    (mode : MathMode) (source texPrelude : String) : m (TSyntax `term) := do
-  let data : BpMathData := { mode, source, texPrelude }
-  ``(
-    Verso.Doc.Inline.other
-      (Informal.Math.Inline.bpMath $(quote data))
-      #[]
-  )
+/-- Manual extension node shared by authored math and converted docstrings. -/
+def bpMathInline (data : BpMathData) : Verso.Doc.Inline Verso.Genre.Manual :=
+  .other (Inline.bpMath data) #[]
 
-def mkBpMathInlineTerm [Monad m] [MonadEnv m] [MonadQuotation m]
-    (mode : MathMode) (source : String) : m (TSyntax `term) := do
+def mkBpMathInline [Monad m] [MonadEnv m] (mode : MathMode) (source : String) :
+    m (Verso.Doc.Inline Verso.Genre.Manual) := do
   let texPrelude ← Informal.Macros.getTexPrelude
-  mkBpMathInlineTermCore mode source texPrelude
+  pure (bpMathInline { mode, source, texPrelude })
 
-/-- Same as `mkBpMathInlineTerm`, but emits an immediate warning before packaging the node. -/
+/-- Emit an immediate warning before packaging a Manual math node. -/
 def mkBpMathInlineTermLinted [Monad m] [MonadEnv m] [MonadQuotation m]
     [MonadLiftT IO m] [MonadOptions m] [MonadRef m] [MonadLog m] [AddMessageContext m]
     [MonadFileMap m]
     (ref : TSyntax `str) (mode : MathMode) (source : String) : m (TSyntax `term) := do
   let texPrelude ← Informal.Macros.getTexPrelude
   lintBpMathTerm ref mode source texPrelude
-  mkBpMathInlineTermCore mode source texPrelude
+  let data : BpMathData := { mode, source, texPrelude }
+  ``(bpMathInline $(quote data))
 
 @[inline_expander Lean.Doc.Syntax.inline_math]
 public meta def _root_.Informal.Math.inlineMathExpand : InlineExpander

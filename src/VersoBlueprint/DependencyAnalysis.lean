@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import Lean
 import VersoBlueprint.Environment
+import VersoBlueprint.Validation.Lean
 
 /-!
 Automatic dependency inference for Verso Blueprint.
@@ -33,21 +34,11 @@ register_option verso.blueprint.autoDeps.expandUntagged : Bool := {
   descr := "Infer dependencies through Lean declarations without Blueprint associations, stopping at associated declarations; false inspects direct references only. Requires autoDeps to be enabled."
 }
 
-/--
-Dependency labels inferred from a compiled Lean declaration.
-
-Each axis reaches the first Blueprint-associated declarations, expanding helper
-types and bodies when enabled. Label-level axis suppression and manual precedence are applied
-separately by `toUseRefs` and contribution validation.
--/
-structure InferredDeps where
-  statement : Array Data.Label := #[]
-  proof : Array Data.Label := #[]
-deriving Inhabited, Repr
-
-structure InferredUseRefs where
-  statement : Array Data.UseRef := #[]
-  proof : Array Data.UseRef := #[]
+/-- Blueprint labels reached from the type and value of one compiled declaration,
+before assigning a source realization or a target requirement. -/
+structure DeclarationReferences where
+  type : Array Data.Label := #[]
+  body : Array Data.Label := #[]
 deriving Inhabited, Repr
 
 def enabled (opts : Options) (local? : Option Bool) : Bool :=
@@ -58,37 +49,6 @@ def automaticUseRef (label : Data.Label) : Data.UseRef :=
 
 def sortLabels (labels : Array Data.Label) : Array Data.Label :=
   labels.qsort fun a b => a.toString < b.toString
-
-def InferredDeps.merge (current incoming : InferredDeps) : InferredDeps :=
-  {
-    statement := incoming.statement.foldl Data.Label.pushUnique current.statement
-    proof := incoming.proof.foldl Data.Label.pushUnique current.proof
-  }
-
-private def automaticUseRefs (labels : Array Data.Label) : Array Data.UseRef :=
-  (sortLabels labels).foldl (init := #[]) fun acc label =>
-    Data.UseRef.pushMergeByLabel acc (automaticUseRef label)
-
-private def removeSelfLabel (currentLabel? : Option Data.Label) (labels : Array Data.Label) :
-    Array Data.Label :=
-  match currentLabel? with
-  | none => labels
-  | some currentLabel => labels.filter (· != currentLabel)
-
-def InferredDeps.toUseRefs (deps : InferredDeps)
-    (statementManual : Array Data.UseRef := #[]) (currentLabel? : Option Data.Label := none) :
-    InferredUseRefs :=
-  let statementLabels := removeSelfLabel currentLabel? deps.statement
-  let proofLabels := removeSelfLabel currentLabel? deps.proof
-  -- Keep both authorities until contribution validation. Effective-edge
-  -- precedence must not hide automatic conflicts from later contributions.
-  let statement := automaticUseRefs statementLabels ++ statementManual
-  let statementLabels := Data.UseRef.labels statement
-  let proofLabels := proofLabels.filter fun label => !statementLabels.contains label
-  {
-    statement
-    proof := automaticUseRefs proofLabels
-  }
 
 private def bodyConstants (info : ConstantInfo) : Array Name :=
   match info with
@@ -147,25 +107,48 @@ private def frontierLabels (root : Name) (seeds : Array Name)
       pending := pending ++ info.type.getUsedConstants ++ bodyConstants info
   return sortLabels labels.toArray
 
-def infer (decl : Name) (info : ConstantInfo) : CoreM InferredDeps := do
+def infer (decl : Name) (info : ConstantInfo) : CoreM DeclarationReferences := do
   let decl := decl.eraseMacroScopes
   let expandHelpers := verso.blueprint.autoDeps.expandUntagged.get (← getOptions)
-  let statement ← frontierLabels decl info.type.getUsedConstants expandHelpers
-  let proof ← frontierLabels decl (← rootBodyConstants info) expandHelpers
-  return { statement, proof }
+  let type ← frontierLabels decl info.type.getUsedConstants expandHelpers
+  let body ← frontierLabels decl (← rootBodyConstants info) expandHelpers
+  return { type, body }
 
-def inferDecl? (decl : Name) : CoreM InferredDeps := do
+def inferDecl? (decl : Name) : CoreM DeclarationReferences := do
   let decl := decl.eraseMacroScopes
   match (← getEnv).find? decl with
   | some info => infer decl info
   | none => pure {}
 
-def inferDecls (decls : Array Name) : CoreM InferredDeps :=
-  decls.foldlM (init := {}) fun acc decl => do
-    return acc.merge (← inferDecl? decl)
+/-- Attach each use to the checked role that supplies its content. A data
+implementation owns both axes. A proposition definition's value supplies its
+statement. A proof-valued declaration has distinct type and proof obligations. -/
+private def inferUses (label decl : Name) (info : ConstantInfo) : CoreM (Array SourceData.UseDeclaration) := do
+  let refs ← infer decl info
+  if refs.type.isEmpty && refs.body.isEmpty then return #[]
+  let roles ← Validation.NativeLean.declarationRoles info
+  let typeOwner := if roles.contains `implementation then `implementation else `statement
+  let bodyOwner := if roles.contains `proof then `proof else typeOwner
+  let uses (owner axis : Name) (targets : Array Data.Label) :=
+    let source := (Realizations.RealizationKey.forRole ⟨label, `lean⟩ owner).name
+    SourceData.usesFor label (some source) axis ((targets.filter (· != label)).map automaticUseRef)
+  let typeUses := uses typeOwner `statement refs.type
+  let bodyUses := uses bodyOwner (if bodyOwner == `statement then `statement else `proof) refs.body
+  return typeUses ++ bodyUses
 
-def inferExternalRefs (refs : Array Data.ExternalRef) : CoreM InferredDeps :=
-  inferDecls (refs.filter (·.present) |>.map (·.canonical))
+def inferDeclUses (label : Name) (decls : Array Name) : CoreM (Array SourceData.UseDeclaration) := do
+  let env ← getEnv
+  let mut uses := #[]
+  let mut seen : Std.HashSet (Option Name × Name × Name) := {}
+  for decl in decls do
+    let name := decl.eraseMacroScopes
+    if let some info := env.find? name then
+      for use in ← inferUses label name info do
+        let key := (use.realization, use.role, (use.reference.label : Name))
+        unless seen.contains key do
+          seen := seen.insert key
+          uses := uses.push use
+  return uses.qsort fun a b => a.reference.label.toString < b.reference.label.toString
 
 end DependencyAnalysis
 

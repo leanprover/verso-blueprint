@@ -10,6 +10,8 @@ import VersoManual
 open Verso.Genre Manual
 open Informal
 
+set_option verso.blueprint.project "externalMarkupFixture"
+
 #docs (Manual) externalMarkdownLeanRunDoc "External Markdown Lean Run" :=
 :::::::
 ```md "external.markdown.witness" (slot := statement)

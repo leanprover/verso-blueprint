@@ -178,7 +178,7 @@ pub fn unrendered_attachment() {}
     ("hover:unrendered", none, false),
     ("hover:placeholder", none, true),
     ("hover:proof", some (PreviewCache.proofKey (Name.mkSimple "hover:proof")), true),
-    ("hover:markup", some (PreviewSource.externalMarkupKey (Name.mkSimple "hover:markup")), true),
+    ("hover:markup", some (PreviewCache.statementKey (Name.mkSimple "hover:markup")), true),
     ("hover:source-only", some (PreviewSource.externalMarkupKey (Name.mkSimple "hover:source-only")), false)
   ]
   unless references.size == cases.size do
@@ -295,11 +295,10 @@ Mention {uses "lem:hover.reject.inline.intent.target" (intent := "aux")}[].
     let state := Informal.Environment.informalExt.getState (← getEnv)
     let hiddenLabel := Name.mkSimple "lem:hover.intent.hidden"
     let inlineLabel := Name.mkSimple "lem:hover.intent.inline"
-    match state.data.get? (Name.mkSimple "lem:hover.intent.node") with
+    match state.inventory.get? (Name.mkSimple "lem:hover.intent.node") with
     | some node =>
-      match node.statement with
-      | some statement =>
-        let uses := statement.deps
+      let uses := node.usesOn `statement
+      if !uses.isEmpty then
         let hidden? := uses.find? (·.label == hiddenLabel)
         let inline? := uses.find? (·.label == inlineLabel)
         pure <|
@@ -312,7 +311,7 @@ Mention {uses "lem:hover.reject.inline.intent.target" (intent := "aux")}[].
             inline.origin == .manual &&
             inline.intent == Informal.Data.UseIntent.auxiliary
           | _, _ => false
-      | none => pure false
+      else pure false
     | none => pure false
 
 /-- info: true -/
@@ -343,9 +342,9 @@ Mention {uses "lem:hover.reject.inline.intent.target" (intent := "aux")}[].
 #eval
   show CoreM Bool from do
     let state := Informal.Environment.informalExt.getState (← getEnv)
-    match state.data.get? (Name.mkSimple "lem:hover.bpref.ref") with
+    match state.inventory.get? (Name.mkSimple "lem:hover.bpref.ref") with
     | some node =>
-      pure <| node.statement.map (·.deps.isEmpty) |>.getD false
+      pure <| (node.usesOn `statement).isEmpty
     | none => pure false
 
 /-- info: true -/

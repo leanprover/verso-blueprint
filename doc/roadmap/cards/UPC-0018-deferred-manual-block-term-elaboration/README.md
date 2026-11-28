@@ -19,6 +19,11 @@ preview evaluation instead of embedding the same body syntax in a deferred block
 term that Lean elaborates again when the document closes. The Blueprint-local
 representation requires no Verso queue contract.
 
+For an adopted or attribute-owned docstring, `Docstring.statementBlocks`
+converts the compiled documentation directly to typed Manual blocks. The
+registration retains that body for previews and placement. Document assembly
+uses a closed term that reconstructs the same blocks.
+
 ## Impact
 
 Carleson's 15,763-line owner module queues 1,001 document blocks. In a stable

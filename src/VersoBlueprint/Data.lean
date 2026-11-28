@@ -4,734 +4,89 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Lean
-import Lean.Data.Json
-import Lean.Data.Lsp
-import VersoManual
-import VersoBlueprint.ExternalDeclRender
+import VersoBlueprint.SourceData
+import VersoBlueprint.Realizations
 
 namespace Informal.Data
 
 open Lean
-
-deriving instance Lean.ToJson for Lean.DeclarationRange
-deriving instance Lean.FromJson for Lean.DeclarationRange
-
-open Syntax in
-instance : Lean.Quote Lean.Position where
-  quote p := mkCApp ``Lean.Position.mk #[quote p.line, quote p.column]
-
-deriving instance DecidableEq for Lean.Lsp.Position
-deriving instance DecidableEq for Lean.Lsp.Range
-
-open Syntax in
-instance : Lean.Quote Lean.Lsp.Position where
-  quote p := mkCApp ``Lean.Lsp.Position.mk #[quote p.line, quote p.character]
-
-open Syntax in
-instance : Lean.Quote Lean.Lsp.Range where
-  quote r := mkCApp ``Lean.Lsp.Range.mk #[quote r.start, quote r.«end»]
-
-open Syntax in
-instance : Lean.Quote Lean.DeclarationRange where
-  quote r := mkCApp ``Lean.DeclarationRange.mk
-    #[quote r.pos, quote r.charUtf16, quote r.endPos, quote r.endCharUtf16]
-
 set_option doc.verso true
--- set_option pp.rawOnError true
 
--- informal object labels are names for now, but that could change
-def Label := Name
-deriving Repr, Inhabited, DecidableEq, ToString, ToMessageData, ToJson, FromJson, Quote
-
-/-- Append a Blueprint label only when it is not already present. -/
-def Label.pushUnique (labels : Array Label) (label : Label) : Array Label :=
-  if labels.contains label then labels else labels.push label
-
-def LabelMap A := NameMap A
-
-instance [Repr A] : Repr (LabelMap A) := inferInstanceAs <| Repr (NameMap A)
-
-abbrev Parent := Label
-
-abbrev AuthorId := Label
-
-/-- Source location attached to a semantic manifest entry. -/
-structure SourceLocation where
-  /-- Source path for this entry. -/
-  path : String
-  /-- Source range, using LSP zero-based UTF-16 coordinates. -/
-  range : Lean.Lsp.Range
-  /-- Optional browser-openable source URL, such as a repository link. -/
-  href : Option String := none
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
-
-namespace SourceLocation
-
-def ofSyntax? {m}
-    [Monad m] [MonadFileMap m] [MonadLog m]
-    (stx : Syntax) : m (Option SourceLocation) := do
-  let some range := stx.getRange?
-    | return none
-  let fileName ← getFileName
-  if fileName.isEmpty || fileName.startsWith "<" then
-    return none
-  let fileMap ← getFileMap
-  return some {
-    path := fileName
-    range := fileMap.utf8RangeToLspRange range
-  }
-
-end SourceLocation
-
-/--
-Explicit source-location lookup result.
-
-Manifest entries always carry a result so missing source information is visible
-to clients instead of being silently absent.
--/
-structure SourceLocationResult where
-  /-- Whether source location lookup succeeded. -/
-  ok : Bool
-  /-- Concrete source location when {lit}`ok` is true. -/
-  location : Option SourceLocation := none
-  /-- Human-readable reason when {lit}`ok` is false. -/
-  error : Option String := none
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
-
-namespace SourceLocationResult
-
-def found (location : SourceLocation) : SourceLocationResult :=
-  { ok := true, location := some location, error := none }
-
-def unavailable (message : String) : SourceLocationResult :=
-  { ok := false, location := none, error := some message }
-
-end SourceLocationResult
-
-/-- Where a declared dependency edge came from. -/
-inductive UseOrigin where
-  /-- The edge was written explicitly by a Blueprint author. -/
-  | manual
-  /-- The edge was inserted by tooling or another automatic process. -/
-  | automatic
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
-
-/-- Parse the documented dependency-origin strings accepted by Blueprint syntax. -/
-def UseOrigin.parse? (raw : String) : Option UseOrigin :=
-  match raw.trimAscii.toString.toLower with
-  | "manual" => some .manual
-  | "automatic" => some .automatic
-  | _ => none
-
-instance : ToString UseOrigin where
-  toString
-    | .manual => "manual"
-    | .automatic => "automatic"
-
-/-- The semantic role of a declared dependency edge. -/
-inductive UseIntent where
-  /-- An ordinary dependency edge. This is the default intent. -/
-  | regular
-  /-- A supporting edge that is useful but not part of the main logical path. -/
-  | auxiliary
-  /-- A dependency on a technical lemma or implementation detail. -/
-  | technical
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
-
-/-- Parse the documented dependency-intent strings accepted by Blueprint syntax. -/
-def UseIntent.parse? (raw : String) : Option UseIntent :=
-  match raw.trimAscii.toString.toLower with
-  | "regular" => some .regular
-  | "auxiliary" => some .auxiliary
-  | "technical" => some .technical
-  | _ => none
-
-instance : ToString UseIntent where
-  toString
-    | .regular => "regular"
-    | .auxiliary => "auxiliary"
-    | .technical => "technical"
-
-/--
-Structured metadata for one declared dependency edge between informal nodes.
-
-{lit}`origin` records whether the edge was user-authored or introduced by automation.
-{lit}`intent` classifies regular, auxiliary, and technical dependency edges.
--/
-structure UseRef where
-  /-- Target informal node label. -/
-  label : Label
-  /-- Whether the edge was user-authored or introduced by automation. -/
-  origin : UseOrigin := .manual
-  /-- Semantic classification for this dependency edge. -/
-  intent : UseIntent := .regular
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
-
-def UseRef.labels (uses : Array UseRef) : Array Label :=
-  uses.map (·.label)
-
-/--
-Merge duplicate dependency refs for the same label.
-
-An explicit manual edge is preferred over an inferred automatic duplicate.
-Otherwise, the existing ref is kept so order and earlier metadata remain stable.
--/
-def UseRef.mergeSameLabel (current incoming : UseRef) : UseRef :=
-  match current.origin, incoming.origin with
-  | .automatic, .manual => incoming
-  | _, _ => current
-
-def UseRef.pushMergeByLabel (uses : Array UseRef) (useRef : UseRef) : Array UseRef :=
-  if uses.any (·.label == useRef.label) then
-    uses.map fun current =>
-      if current.label == useRef.label then
-        current.mergeSameLabel useRef
-      else
-        current
-  else
-    uses.push useRef
-
-def UseRef.mergeByLabel (current incoming : Array UseRef) : Array UseRef :=
-  incoming.foldl UseRef.pushMergeByLabel current
-
-structure AuthorInfo where
-  displayName : String
-  url : Option String := none
-  imageUrl : Option String := none
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
-
-inductive NodeKind where
-  | definition
-  | proposition
-  | lemma
-  | theorem
-  | corollary
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
-
-instance : ToString NodeKind where
-  toString
-    | .definition => "Definition"
-    | .proposition => "Proposition"
-    | .lemma => "Lemma"
-    | .theorem => "Theorem"
-    | .corollary => "Corollary"
-
-def NodeKind.isTheoremLike : NodeKind → Bool
-  | .proposition | .lemma | .theorem | .corollary => true
-  | .definition => false
-
-inductive InProgressKind where
-  | statement (kind : NodeKind)
-  | proof
-deriving Inhabited, Repr, ToJson, FromJson, Quote
-
-/-- Where an incompleteness marker appears in a declaration. -/
-inductive SorryWhere where
-  | statement
-  | proof
-  /-- A combined footprint proves a gap but cannot attribute it to an axis. -/
-  | unknown
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
-
-inductive SorryOrigin where
-  | direct
-  | dependency
-  /-- The available evidence does not distinguish a local hole from a dependency. -/
-  | unknown
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
-
-/--
-One observed axis/origin of incompleteness. Unknowns are evidence limits,
-not assertions that either axis contains a direct hole.
-{lit}`refs?` stores the number of local source references when known.
--/
-structure SorryInfo where
-  location : SorryWhere
-  refs? : Option Nat := none
-  origin : SorryOrigin := .direct
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
-
-/-- Why absence of holes could not be verified from the checked environment. -/
-inductive VerificationReason where
-  | bodyUnavailable
-  | declarationUnavailable
-  | uncheckedExpression
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
-
-/-- Missing verification information, distinct from an observed sorry term. -/
-structure VerificationGap where
-  location : SorryWhere := .unknown
-  declaration : Name := .anonymous
-  reason : VerificationReason := .declarationUnavailable
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
-
-/-- Known holes and missing verification can coexist on independent axes. -/
-structure IncompletenessInfo where
-  knownSorry : Array SorryInfo := #[]
-  unverified : Array VerificationGap := #[]
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
-
-/--
-Formalization/proof status for a declaration.
--/
-inductive ProvedStatus where
-  | proved
-  /-- Declaration reference could not be resolved/present at snapshot time. -/
-  | missing
-  | axiomLike
-  /-- A known gap or insufficient coverage to certify absence of gaps. -/
-  | incomplete : IncompletenessInfo → ProvedStatus
-deriving Repr, DecidableEq, ToJson, FromJson, Quote
-
-instance : Inhabited ProvedStatus := ⟨.incomplete {}⟩
-
-/-- Merge duplicate observations by axis *and* origin. Counts are lower bounds
-from overlapping snapshots, so take their maximum instead of adding them. -/
-def SorryInfo.mergeEvidence (items : Array SorryInfo) : Array SorryInfo :=
-  items.foldl (init := #[]) fun acc item =>
-    match acc.findIdx? (fun old => old.location == item.location && old.origin == item.origin) with
-    | none => acc.push item
-    | some index => acc.modify index fun old =>
-      { old with refs? := max old.refs? item.refs? }
-
-/-- Preserve unknown coverage before combining incomplete snapshots. -/
-def IncompletenessInfo.withCoverageFallback (info : IncompletenessInfo) : IncompletenessInfo :=
-  if info.knownSorry.isEmpty && info.unverified.isEmpty then { info with unverified := #[{}] }
-  else info
-
-/-- Conservative union. Verified snapshots are neutral; known evidence and
-verification gaps survive merging, including an empty incomplete payload. -/
-def ProvedStatus.mergeConservative : ProvedStatus → ProvedStatus → ProvedStatus
-  | .missing, _ | _, .missing => .missing
-  | .axiomLike, _ | _, .axiomLike => .axiomLike
-  | .proved, b => b
-  | a, .proved => a
-  | .incomplete a, .incomplete b =>
-    let a := a.withCoverageFallback
-    let b := b.withCoverageFallback
-    .incomplete {
-      knownSorry := SorryInfo.mergeEvidence (a.knownSorry ++ b.knownSorry),
-      unverified := (a.unverified ++ b.unverified).foldl (fun acc gap =>
-        if acc.contains gap then acc else acc.push gap) #[] }
-
-/-- Canonical declaration status union, independent of the selected display source. -/
-def ProvedStatus.indexByName (observations : Array (Name × ProvedStatus)) : NameMap ProvedStatus :=
-  observations.foldl (init := {}) fun statuses (name, status) =>
-    let name := name.eraseMacroScopes
-    statuses.insert name ((statuses.getD name .proved).mergeConservative status)
-
-/-- Information about a code block, including Lean-level analysis -/
-structure LiterateDef where
-  name : Name
-  commandStx : Syntax := .missing
-  commandIndex : Nat := 0
-  commandLines : Nat := 1
-  provedStatus : ProvedStatus := .incomplete {}
-  typeSorryRefs : Array Syntax := #[]
+/-- The compiled node information of one label: the checked assembly of all its
+registrations, together with their module provenance. It is derived state,
+rebuilt from the persisted registrations on import, and never exported itself.
+This is not an admitted validation registry: source facts and rendered snapshots
+cannot establish proof completion. Destinations and scopes remain explicit. -/
+structure NodeInventory extends NodeMetadata where
+  sources : Array SourceData.SourceSelection := #[]
+  uses : Array SourceData.UseDeclaration := #[]
+  nativeAssociations : Array SourceData.NativeAssociation := #[]
+  /-- The module that introduced the label; an authored origin takes precedence. -/
+  origin : Name := .anonymous
+  /-- Every module that contributed an accepted registration. -/
+  modules : Array Name := #[]
 deriving Repr, Inhabited
 
-structure LiterateThm extends LiterateDef where
-  proofSorryRefs : Array Syntax := #[]
-deriving Repr, Inhabited
+/-- Shared metadata for the validation model; source inventory is collected separately. -/
+def NodeInventory.toConcept (node : NodeInventory) (label : Name) (title : String) : Realizations.Node :=
+  { toNodeMetadata := node.toNodeMetadata, label, title }
 
-def ConstantInfo.blueprintNodeKind? : ConstantInfo → Option NodeKind
-  | .defnInfo _ => some .definition
-  | .thmInfo _ => some .theorem
-  | .axiomInfo _ => none
-  | .opaqueInfo _ => none
-  | .quotInfo _ => none
-  | .inductInfo _ => some .definition
-  | .ctorInfo _ => none
-  | .recInfo _ => none
+/-- Effective edge metadata for presentation. Validation consumes the original
+scoped {name}`NodeInventory.uses` declarations. -/
+def NodeInventory.usesOn (node : NodeInventory) (role : Name) : Array UseRef :=
+  UseRef.mergeByLabel #[] ((node.uses.filter (·.role == role)).map (·.reference))
 
-def ConstantInfo.blueprintKindText : ConstantInfo → String
-  | .defnInfo _ => "definition"
-  | .thmInfo _ => "theorem"
-  | .axiomInfo _ => "axiom"
-  | .opaqueInfo _ => "opaque"
-  | .quotInfo _ => "quotient"
-  | .inductInfo _ => "inductive"
-  | .ctorInfo _ => "constructor"
-  | .recInfo _ => "recursor"
+/-- A named prose view for rendering. Admission permits one nonempty prose body
+per realization and role. Dependency-only views retain the ordinary placeholder behavior;
+this presentation value is never stored or used to infer validation scope. -/
+def NodeInventory.proseView (node : NodeInventory) (realization role : Name) : Option InformalBody := Id.run do
+  let bodies := node.sources.filterMap fun source =>
+    if source.destination.realization.name != realization || source.destination.role != some role then none
+    else match source.payload with | .prose body _ => some body | _ => none
+  return bodies.find? (·.hasBody) <|> bodies[0]? <|>
+    (if node.uses.any (·.role == role) then some default else none)
 
-structure Code where
-  stx : Syntax
-  definedDefs : Array LiterateDef := #[]
-  definedTheorems : Array LiterateThm := #[]
-deriving Repr, Inhabited
+/-- The ordinary displayed prose for a role, including Markdown declaration
+docstrings. Prefer a Verso body when present, then Markdown, then placeholders. -/
+def NodeInventory.defaultProseView (node : NodeInventory) (role : Name) : Option InformalBody :=
+  let verso := node.proseView `verso role
+  let markdown := node.proseView `markdown role
+  verso.filter (·.hasBody) <|> markdown.filter (·.hasBody) <|> verso <|> markdown
 
-/-- External markup languages that can be attached to a Blueprint label. -/
-inductive ExternalMarkupLanguage where
-  | tex
-  | markdown
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
+/-- Native source snapshots at one presentation placement, across all realizations.
+The original association inventory retains the realization and context. -/
+def NodeInventory.nativeRefsOn (node : NodeInventory) (placement : Name) : Array ExternalRef :=
+  ExternalRef.mergeSnapshots #[] <|
+    (node.nativeAssociations.filter (·.placement == placement)).map (·.reference)
 
-def ExternalMarkupLanguage.displayName : ExternalMarkupLanguage → String
-  | .tex => "TeX"
-  | .markdown => "Markdown"
+def NodeInventory.inlineCodes (node : NodeInventory) : Array Code :=
+  node.sources.filterMap fun source => match source.payload with
+    | .leanInline code => some code | _ => none
 
-def ExternalMarkupLanguage.key : ExternalMarkupLanguage → String
-  | .tex => "tex"
-  | .markdown => "markdown"
+def NodeInventory.hasAttributeAssociations (node : NodeInventory) : Bool :=
+  node.nativeAssociations.any (·.reference.origin == .blueprintAttr)
 
-instance : ToString ExternalMarkupLanguage where
-  toString := ExternalMarkupLanguage.key
+/-- All captured associations, including arbitrary named placements. -/
+def NodeInventory.externalAssociationSnapshots (node : NodeInventory) : Array ExternalRef :=
+  node.nativeAssociations.map (·.reference)
 
-/-- Project-relative source location for imported external markup. -/
-structure ExternalMarkupLocation where
-  path : String
-  range : Lean.Lsp.Range
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
-
-/-- Key for external markup attached to a Blueprint label. -/
-structure ExternalMarkupKey where
-  language : ExternalMarkupLanguage
-  slot : String
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
-
-def ExternalMarkupKey.compare (a b : ExternalMarkupKey) : Ordering :=
-  Ord.compare a.language.key b.language.key |>.then <| Ord.compare a.slot b.slot
-
-instance : Ord ExternalMarkupKey where
-  compare := ExternalMarkupKey.compare
-
-/-- External markup payload associated with one language/slot key. -/
-structure ExternalMarkupValue where
-  raw : String
-  location : Option ExternalMarkupLocation := none
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
-
-/-- Manifest/display record for one external markup attachment. -/
-structure ExternalMarkup where
-  language : ExternalMarkupLanguage
-  slot : String
-  raw : String
-  location : Option ExternalMarkupLocation := none
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
-
-/-- Default slot for labeled external-markup witness blocks that omit `(slot := ...)`. -/
-def defaultExternalMarkupSlot : String := "default"
-
-/-- Ordered, unique external markup attachments keyed by language and slot. -/
-structure ExternalMarkupSet where
-  entries : Std.TreeMap ExternalMarkupKey ExternalMarkupValue := {}
-deriving Repr, Inhabited
-
-def ExternalMarkup.key (markup : ExternalMarkup) : ExternalMarkupKey := {
-  language := markup.language
-  slot := markup.slot
-}
-
-def ExternalMarkup.value (markup : ExternalMarkup) : ExternalMarkupValue := {
-  raw := markup.raw
-  location := markup.location
-}
-
-def ExternalMarkupSet.isEmpty (markup : ExternalMarkupSet) : Bool :=
-  markup.entries.isEmpty
-
-def ExternalMarkupSet.find? (markup : ExternalMarkupSet)
-    (language : ExternalMarkupLanguage) (slot : String) : Option ExternalMarkupValue :=
-  markup.entries.get? { language, slot }
-
-def ExternalMarkupSet.contains (markup : ExternalMarkupSet) (key : ExternalMarkupKey) : Bool :=
-  markup.entries.contains key
-
-def ExternalMarkupSet.insert (markup : ExternalMarkupSet) (entry : ExternalMarkup) :
-    ExternalMarkupSet :=
-  { entries := markup.entries.insert entry.key entry.value }
-
-def ExternalMarkupSet.toArray (markup : ExternalMarkupSet) : Array ExternalMarkup :=
-  Id.run do
-    let mut out := #[]
-    for (key, value) in markup.entries do
-      out := out.push {
-        language := key.language
-        slot := key.slot
-        raw := value.raw
-        location := value.location
-      }
-    out
-
-instance : ToJson ExternalMarkupSet where
-  toJson markup := toJson markup.toArray
-
-instance : FromJson ExternalMarkupSet where
-  fromJson? json := do
-    let entries ← fromJson? (α := Array ExternalMarkup) json
-    let mut markup : ExternalMarkupSet := {}
-    for entry in entries do
-      let key := entry.key
-      if markup.contains key then
-        throw s!"duplicate external markup entry for language '{key.language}' and slot '{key.slot}'"
-      markup := markup.insert entry
-    pure markup
-
-/-- Traversal payload for all external markup associated with one Blueprint label. -/
-structure ExternalMarkupData where
-  label : Label
-  markup : ExternalMarkupSet := {}
-deriving Repr, Inhabited, ToJson, FromJson
-
-inductive ExternalOrigin where
-  | directiveLean
-  | blueprintAttr
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
-
-inductive ExternalDeclProvenance where
-  | inWorkspace (moduleName : Name) (sourcePath : String)
-  | outWorkspace (moduleName : Name) (sourcePath? : Option String := none)
-  | unknown
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
-
-def ExternalDeclProvenance.moduleName? : ExternalDeclProvenance → Option Name
-  | .inWorkspace moduleName _ => some moduleName
-  | .outWorkspace moduleName _ => some moduleName
-  | .unknown => none
-
-def ExternalDeclProvenance.sourcePath? : ExternalDeclProvenance → Option String
-  | .inWorkspace _ sourcePath => some sourcePath
-  | .outWorkspace _ sourcePath? => sourcePath?
-  | .unknown => none
-
-def ExternalDeclProvenance.label : ExternalDeclProvenance → String
-  | .inWorkspace _ _ => "in workspace"
-  | .outWorkspace _ _ => "out workspace"
-  | .unknown => "unknown provenance"
-
-inductive ExternalDeclLookupError where
-  | notPresentAtRegistration
-  | notFoundInEnvironment
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
-
-def ExternalDeclLookupError.message : ExternalDeclLookupError → String
-  | .notPresentAtRegistration => "name was not present during directive/code-block registration"
-  | .notFoundInEnvironment => "name is not present in current environment"
-
-deriving instance ToJson, FromJson for Except
-
-instance [Quote ε] [Quote α] : Quote (Except ε α) where
-  quote
-    | .ok value => Syntax.mkApp (mkCIdent ``Except.ok) #[quote value]
-    | .error error => Syntax.mkApp (mkCIdent ``Except.error) #[quote error]
-
-abbrev ExternalDeclRender := Except Informal.ExternalDeclRenderError Informal.ExternalDeclRenderedHtml
-
-instance : DecidableEq ExternalDeclRender
-  | .ok a, .ok b =>
-    if h : a = b then .isTrue (h ▸ rfl) else .isFalse (fun eq => h (Except.ok.inj eq))
-  | .error a, .error b =>
-    if h : a = b then .isTrue (h ▸ rfl) else .isFalse (fun eq => h (Except.error.inj eq))
-  | .ok _, .error _ => .isFalse (by intro h; cases h)
-  | .error _, .ok _ => .isFalse (by intro h; cases h)
-
-/--
-Reference to an external declaration mentioned by a blueprint node.
-{lit}`written` preserves the user spelling, while {lit}`canonical` is scope-erased for
-environment lookup and duplicate detection. Declaration names are Lean-owned;
-Blueprint label policies must not rewrite them.
--/
-structure ExternalRef where
-  written : Name
-  canonical : Name
-  origin : ExternalOrigin := .directiveLean
-  /--
-  Whether this declaration was present in the Lean environment at the time the
-  reference was registered from blueprint markup.
-  -/
-  present : Bool := true
-  /--
-  Snapshot of proof/completeness status at registration time.
-  -/
-  provedStatus : ProvedStatus := .incomplete {}
-  /--
-  Snapshot of declaration provenance metadata.
-  -/
-  provenance : ExternalDeclProvenance := .unknown
-  /--
-  Snapshot of declaration source ranges (if known at registration time).
-  -/
-  range? : Option Lean.DeclarationRange := none
-  selectionRange? : Option Lean.DeclarationRange := none
-  /--
-  Snapshot of declaration kind and optional source link.
-  -/
-  kind : NodeKind := .definition
-  sourceHref? : Option String := none
-  /--
-  Snapshot of the direct external rendering outcome.
-  -/
-  render : ExternalDeclRender := .error (.moduleUnavailable canonical)
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
-
-def ExternalRef.ofName (name : Name) (origin : ExternalOrigin := .directiveLean) : ExternalRef :=
-  { written := name, canonical := name.eraseMacroScopes, origin, kind := .definition }
-
-structure RustInlineCode where
-  raw : String
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
-
-private def pushNameUnique (names : Array Name) (name : Name) : Array Name :=
-  let name := name.eraseMacroScopes
-  if names.contains name then names else names.push name
-
-def Code.definedDeclNames (code : Code) : Array Name :=
-  (code.definedDefs.map (·.name) ++ code.definedTheorems.map (·.name)).foldl
-    pushNameUnique #[]
-
-structure InformalBody where
-  stx : Syntax
-  previewBlocks : Array (Verso.Doc.Block Verso.Genre.Manual) := #[]
-  /--
-  Manual block term syntax retained when the producing phase cannot evaluate it
-  into typed preview blocks, as with a docstring on an imported Blueprint
-  attribute.
-  -/
-  elabStx : Array Syntax := #[]
-deriving Repr, Inhabited
-
-def InformalBody.hasBody (data : InformalBody) : Bool :=
-  !data.previewBlocks.isEmpty || !data.elabStx.isEmpty
-
-/-- An assembled body and the declarations needed to validate its dependencies. -/
-structure InformalData extends InformalBody where
-  /-- One declaration per label and authority; manual precedence never erases validation evidence. -/
-  useDeclarations : Array UseRef := #[]
-deriving Repr, Inhabited
-
-def InformalData.hasBody (data : InformalData) : Bool := data.toInformalBody.hasBody
-
-/-- Effective dependency edges, with manual metadata taking precedence. -/
-def InformalData.deps (data : InformalData) : Array UseRef :=
-  UseRef.mergeByLabel #[] data.useDeclarations
-
-def InformalData.dependencyLabels (data : InformalData) : Array Label :=
-  data.deps.map (·.label)
-
-structure Node where
-  kind : NodeKind := .lemma
-  /-- An author-supplied kind takes precedence over classification inferred from Lean code. -/
-  kindIsExplicit : Bool := false
-  count : Nat := 0
-  statement : Option InformalData := none -- Informal Object statement
-  proof : Option InformalData := none -- Informal Object proof
-  /-- Statement-facet external associations, in registration order. -/
-  externalRefs : Array ExternalRef := #[]
-  /-- Proof-facet external associations, in registration order. They also contribute to the node. -/
-  proofExternalRefs : Array ExternalRef := #[]
-  /-- Whether accepted selected evidence includes a Blueprint-attribute association.
-  This capability is independent of the snapshot retained for each declaration. -/
-  blueprintAttributeAttachments : Bool := false
-  /-- Every associated literate block, in registration order. -/
-  literateCodes : Array Code := #[]
-  rustCode : Option RustInlineCode := none -- Informal object associated Rust code
-  externalMarkup : ExternalMarkupSet := {} -- Raw external markup keyed by language and slot
-  parent : Option Parent := none -- Optional parent group for summaries/graphs
-  priority : Option String := none -- Optional author-provided triage hint
-  owner : Option AuthorId := none
-  tags : Array String := #[]
-  effort : Option String := none
-  prUrl : Option String := none
-  issueUrl : Option String := none
-deriving Repr, Inhabited
-
-/--
-Body, dependency, metadata, and literate-code inputs for one registration.
-External associations and priority belong exclusively to identified contribution
-records. Dependencies are independent of body
-additions; adding code or dependencies cannot reclassify an authored statement.
--/
-structure NodeContribution where
-  /-- Explicit kind from a statement directive, including an empty placeholder. -/
-  kind : Option NodeKind := none
-  count : Nat := 0
-  statementBody : Option InformalBody := none
-  proofBody : Option InformalBody := none
-  statementUses : Array UseRef := #[]
-  proofUses : Array UseRef := #[]
-  literateCodes : Array Code := #[]
-  rustCode : Option RustInlineCode := none
-  externalMarkup : ExternalMarkupSet := {}
-  parent : Option Parent := none
-  owner : Option AuthorId := none
-  tags : Array String := #[]
-  effort : Option String := none
-  prUrl : Option String := none
-  issueUrl : Option String := none
-deriving Repr, Inhabited
-
-/-- Stable canonical union; build an ephemeral index once for this incoming group. -/
-def ExternalRef.mergeSnapshots (current incoming : Array ExternalRef) : Array ExternalRef := Id.run do
-  let mut positions : NameMap Nat := {}
-  let mut refs := #[]
-  for ref in current ++ incoming do
-    let ref := { ref with canonical := ref.canonical.eraseMacroScopes }
-    match positions.get? ref.canonical with
-    | some i =>
-      let previous := refs[i]!
-      let selected := if !previous.present && ref.present then ref else previous
-      refs := refs.set! i { selected with
-        provedStatus := ProvedStatus.mergeConservative previous.provedStatus ref.provedStatus }
-    | none =>
-      positions := positions.insert ref.canonical refs.size
-      refs := refs.push ref
-  return refs
-/-- All captured external associations. Facet snapshots remain separate;
-declaration membership and status projections consume both facets. -/
-def Node.externalAssociationSnapshots (node : Node) : Array ExternalRef :=
-  node.externalRefs ++ node.proofExternalRefs
-
-/-- Canonical node associations from both facets. Rendering keeps each facet's
+/-- Canonical node associations from every placement. Rendering keeps each placement's
 snapshot; node-level projections retain every observed status conservatively. -/
-def Node.associatedExternalRefs (node : Node) : Array ExternalRef :=
+def NodeInventory.associatedExternalRefs (node : NodeInventory) : Array ExternalRef :=
   ExternalRef.mergeSnapshots #[] node.externalAssociationSnapshots
 
-/-- External summary entries not already supplied by a compiled literate declaration. -/
-def Node.summaryExternalRefs (node : Node) : Array ExternalRef :=
-  let names := node.literateCodes.foldl (init := ({} : NameSet)) fun names code =>
-    code.definedDeclNames.foldl (fun names name => names.insert name) names
-  node.associatedExternalRefs.filter fun ref => !names.contains ref.canonical.eraseMacroScopes
-
-/-- Prefer each inline declaration once for summaries, preserving status evidence
-from every external and inline association of the same canonical declaration.
-The authored code blocks remain unchanged for rendering and provenance. -/
-def Node.summaryLiterateCodes (node : Node) : Array Code := Id.run do
-  let observations := node.associatedExternalRefs.map
-      (fun ref => (ref.canonical, if ref.present then ref.provedStatus else .missing)) ++
-    node.literateCodes.flatMap fun code =>
-      code.definedDefs.map (fun decl => (decl.name, decl.provedStatus)) ++
-      code.definedTheorems.map (fun decl => (decl.name, decl.provedStatus))
-  let statuses := ProvedStatus.indexByName observations
-  let mut seen : NameSet := {}
-  let mut codes := #[]
-  for code in node.literateCodes do
-    let mut definitions := #[]
-    let mut theorems := #[]
-    for decl in code.definedDefs do
-      let name := decl.name.eraseMacroScopes
-      unless seen.contains name do
-        seen := seen.insert name
-        definitions := definitions.push { decl with provedStatus := statuses.getD name decl.provedStatus }
-    for decl in code.definedTheorems do
-      let name := decl.name.eraseMacroScopes
-      unless seen.contains name do
-        seen := seen.insert name
-        theorems := theorems.push { decl with provedStatus := statuses.getD name decl.provedStatus }
-    codes := codes.push { code with definedDefs := definitions, definedTheorems := theorems }
-  return codes
-
-def Node.leanDecls (node : Node) : Array Name :=
+def NodeInventory.leanDecls (node : NodeInventory) : Array Name :=
   let external := node.externalAssociationSnapshots.foldl (init := #[]) fun acc ref =>
-    if ref.present then pushNameUnique acc ref.canonical else acc
-  node.literateCodes.foldl (init := external) fun acc code =>
-    code.definedDeclNames.foldl pushNameUnique acc
+    if ref.present then pushUniqueNativeName acc ref.canonical else acc
+  node.inlineCodes.foldl (init := external) fun acc code =>
+    code.definedDeclNames.foldl pushUniqueNativeName acc
 
-def Node.hasAssociatedCode (node : Node) : Bool :=
-  !node.externalRefs.isEmpty || !node.proofExternalRefs.isEmpty || !node.literateCodes.isEmpty
+def NodeInventory.hasAssociatedCode (node : NodeInventory) : Bool :=
+  !node.nativeAssociations.isEmpty || !node.inlineCodes.isEmpty
 
-def Node.hasStatementBody (node : Node) : Bool := node.statement.any (·.hasBody)
+def NodeInventory.hasStatementBody (node : NodeInventory) : Bool :=
+  node.sources.any (·.adoption.isSome) || (node.defaultProseView `statement).any (·.hasBody)
 
-def Node.hasProofBody (node : Node) : Bool := node.proof.any (·.hasBody)
+def NodeInventory.hasProofBody (node : NodeInventory) : Bool := (node.defaultProseView `proof).any (·.hasBody)
 
 end Informal.Data

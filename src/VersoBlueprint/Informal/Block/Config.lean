@@ -9,7 +9,9 @@ import VersoManual
 import VersoBlueprint.Data
 import VersoBlueprint.DependencyAnalysis
 import VersoBlueprint.DirectiveArgParsing
+import VersoBlueprint.Docstring.Compiled
 import VersoBlueprint.Environment
+import VersoBlueprint.ExternalModuleSource
 import VersoBlueprint.Informal.ExternalCode
 import VersoBlueprint.Informal.LabelArg
 import VersoBlueprint.Informal.UseConfig
@@ -37,8 +39,8 @@ structure Config where
   label : Data.Label
   /-- Syntax node of the original label argument. -/
   labelSyntax : Syntax := Syntax.missing
-  /-- Optional Lean/external-code references associated with either facet. -/
-  lean : Option String := none
+  /-- Canonical declaration from the Lean attachment whose own comment supplies the statement. -/
+  leanDocstring : Option String := none
   /-- Optional local override for automatic dependency inference. -/
   autoDeps : Option Bool := none
   /-- Optional parent node label. -/
@@ -91,7 +93,7 @@ variable [Monad m] [MonadInfoTree m] [MonadResolveName m] [MonadLiftT CoreM m] [
     [MonadError m] [MonadFileMap m] [MonadLog m] [AddMessageContext m] [MonadOptions m]
 
 def Config.parse : ArgParse m Config :=
-  (fun (labelArg : Verso.ArgParse.WithSyntax String) lean autoDeps parent priority owner tags effort prUrl
+  (fun (labelArg : Verso.ArgParse.WithSyntax String) lean leanDocstring autoDeps parent priority owner tags effort prUrl
       issueUrl uses usesOrigin usesIntent =>
     let (externalCode, invalidExternalCode) := ExternalCode.parseExternalCodeList lean
     let parsedLabel := LabelArg.parse labelArg
@@ -99,7 +101,7 @@ def Config.parse : ArgParse m Config :=
     {
       label := parsedLabel.label
       labelSyntax := parsedLabel.labelSyntax
-      lean := lean
+      leanDocstring
       autoDeps := autoDeps
       parent := parent.map LabelNameParsing.parse
       priority := priority
@@ -114,7 +116,7 @@ def Config.parse : ArgParse m Config :=
       externalCode := externalCode
       invalidExternalCode := invalidExternalCode
     }) <$> .positional `label (.withSyntax .string) <*> .named `lean .string true
-        <*> .named' `autoDeps true
+        <*> .named `leanDocstring .string true <*> .named' `autoDeps true
         <*> .named `parent .string true <*> .named `priority .string true <*> .named `owner .string true
         <*> .named `tags .string true <*> .named `effort .string true <*> .named `pr_url .string true
         <*> .named `issue_url .string true
@@ -124,22 +126,6 @@ instance : FromArgs Config m where
   fromArgs := Config.parse
 
 end
-
-/-- Directive configuration after proof-vs-statement validation and name resolution. -/
-structure ResolvedConfig where
-  label : Data.Label
-  labelSyntax : Syntax
-  envKind : Data.InProgressKind
-  externalRefs : Array Data.ExternalRef := #[]
-  parent : Option Data.Parent := none
-  priority : Option String := none
-  owner : Option Data.AuthorId := none
-  tags : Array String := #[]
-  effort : Option String := none
-  prUrl : Option String := none
-  issueUrl : Option String := none
-  statementUses : Array Data.UseRef := #[]
-  proofUses : Array Data.UseRef := #[]
 
 private def resolvePriority? {m}
     [Monad m] [MonadOptions m] [MonadLog m] [AddMessageContext m] [MonadFileMap m]
@@ -226,6 +212,26 @@ private def resolveHttpUrlOption? {m}
         pure none
     | none => pure none
 
+private def docstringSelection (refs : Array Data.ExternalRef) (name : String) (isProof : Bool) :
+    CoreM (SourceData.AdoptedDocstring × Name) := do
+  if isProof then throwError "'leanDocstring' belongs on a statement directive"
+  let name := name.trimAscii.toString
+  let canonical := name.toName
+  unless !canonical.isAnonymous && canonical.toString == name &&
+      refs.any (fun r => r.canonical == canonical && r.present) do
+    throwError "'leanDocstring' must select the canonical name of one present declaration in 'lean'"
+  let env ← getEnv
+  let some idx := env.getModuleIdxFor? canonical
+    | throwError "'leanDocstring' requires an imported declaration"
+  let some moduleName := ExternalModuleSource.moduleNameAt? env idx
+    | throwError "'leanDocstring' could not determine the imported declaration's module"
+  let format := match Docstring.directCompiled env canonical with
+    | .ok (.inl _) | .error .missing => `markdown
+    | .ok (.inr _) | .error .ambiguous => `verso
+  return ({
+    consumerModule := env.mainModule, canonical, moduleName
+    package := env.getModulePackageByIdx? idx }, format)
+
 /--
 Resolve a directive config for environment registration.
 
@@ -236,11 +242,11 @@ transaction rejects the registration if resolution logged any errors.
 def Config.resolveForDirective {m}
     [Monad m] [MonadResolveName m] [MonadOptions m] [MonadLiftT CoreM m] [MonadEnv m]
     [MonadLog m] [AddMessageContext m] [MonadFileMap m] [MonadError m]
-    (cfg : Config) (kind : Data.NodeKind) (isProof : Bool) : m ResolvedConfig := do
-  let envKind : Data.InProgressKind :=
-    if isProof then .proof else .statement kind
+    (cfg : Config) (kind : Data.NodeKind) (isProof : Bool) : m Environment.DirectiveDraft := do
   let resolvedExternalCode ←
     ExternalCode.resolveExternalCodeList cfg.label cfg.labelSyntax kind cfg.externalCode
+  let adoption ← cfg.leanDocstring.mapM fun name =>
+    liftM <| docstringSelection resolvedExternalCode name isProof
   let hasExternalRaw := !resolvedExternalCode.isEmpty
   if !cfg.invalidExternalCode.isEmpty then
     logWarningAt cfg.labelSyntax m!"Label {cfg.label}: ignoring malformed names in '(lean := ...)' ({String.intercalate ", " cfg.invalidExternalCode.toList})"
@@ -254,16 +260,17 @@ def Config.resolveForDirective {m}
   let tags ← resolveTags cfg isProof
   let prUrl ← resolveHttpUrlOption? cfg isProof "pr_url" cfg.prUrl
   let issueUrl ← resolveHttpUrlOption? cfg isProof "issue_url" cfg.issueUrl
-  let inferredDeps ←
+  let inferredUses ←
     if hasExternalRaw && DependencyAnalysis.enabled (← getOptions) cfg.autoDeps then
-      liftM <| DependencyAnalysis.inferExternalRefs resolvedExternalCode
-    else
-      pure {}
-  let inferredUseRefs := inferredDeps.toUseRefs cfg.metadataUses (some cfg.label)
+      let names := (resolvedExternalCode.filter (·.present)).map (·.canonical)
+      liftM <| DependencyAnalysis.inferDeclUses cfg.label names
+    else pure #[]
+  let authoredAxis := if isProof then `proof else `statement
+  let uses := inferredUses ++ SourceData.usesFor cfg.label none authoredAxis cfg.metadataUses
   pure {
     label := cfg.label
-    labelSyntax := cfg.labelSyntax
-    envKind
+    kind := if isProof then none else some kind
+    adoption
     externalRefs := resolvedExternalCode
     parent := cfg.parent
     priority
@@ -272,8 +279,7 @@ def Config.resolveForDirective {m}
     effort
     prUrl
     issueUrl
-    statementUses := inferredUseRefs.statement
-    proofUses := inferredUseRefs.proof
+    uses
   }
 
 end Informal

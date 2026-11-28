@@ -29,7 +29,7 @@ def groupedGraphInput : Informal.Graph.Graph String := #[
     proofDeps := #[`gb_source]
     parent? := some `group_alpha
     shape := "ellipse"
-    fillcolor := proofBackgroundReadyColor
+    fillcolor := proofBackgroundNeutralColor
     color := statementBorderReadyColor
     fontcolor := "#111827"
   },

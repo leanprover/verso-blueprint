@@ -14,6 +14,7 @@ import VersoBlueprint.Informal.LeanCodeLink
 import VersoBlueprint.Informal.LeanCodePreview
 import VersoBlueprint.Informal.MetadataView
 import VersoBlueprint.Lib.HoverRender
+import VersoBlueprint.Lib.PreviewResources
 
 /-!
 HTML primitives, row builders, and asset wiring used by the Blueprint summary renderer.
@@ -27,7 +28,12 @@ open Informal Data Environment
 private def triageVisibleLimit : Nat := 10
 
 def statusCountsText (counts : EntryStatusCounts) : String :=
-  s!"completed: {counts.completed}; deps incomplete: {counts.completedDepsNo}; incomplete code: {counts.withIncompleteCode}; no proof: {counts.noProof}"
+  String.intercalate " · " [
+    s!"Lean requirements complete: {counts.completed}",
+    s!"native checks complete, prerequisites unfinished: {counts.completedDepsNo}",
+    s!"native statement unfinished: {counts.withIncompleteCode}",
+    s!"native proof unfinished: {counts.noProof}"
+  ]
 
 private def metadataPresentationOfPriorityItem (item : PriorityItem) : MetadataPresentation := {
   ownerText := item.ownerDisplayName
@@ -47,33 +53,6 @@ private def metadataPresentationOfMetadataEntryItem (item : MetadataEntryItem) :
   tags := item.tags.toArray
 }
 
-def Summary.previewLabels (data : Summary) : Array Name :=
-  let allLabels : List Name :=
-    data.pendingInformalEntries.map (·.label) ++
-    data.incompleteDetails.map (·.label) ++
-    data.missingLeanDecls.map (·.label) ++
-    data.renderFailures.map (·.label) ++
-    data.definitionIndex.map (·.label) ++
-    data.theoremLikeIndex.map (·.label) ++
-    data.actionablePriorities.map (·.label) ++
-    data.quickWins.map (·.label) ++
-    data.mostUsed.map (·.label) ++
-    data.heaviestPrerequisites.map (·.label) ++
-    data.noPrerequisites.map (·.label) ++
-    data.noDependents.map (·.label) ++
-    data.linkedPrs.map (·.label) ++
-    data.missingOwners.map (·.label) ++
-    data.missingEffort.map (·.label) ++
-    data.untaggedEntries.map (·.label) ++
-    data.theoremLikeByParent.foldr (init := []) fun group acc =>
-      group.entries.map (·.label) ++ acc
-  let (_, labels) := allLabels.foldl (init := (({} : NameSet), (#[] : Array Name))) fun (seen, labels) label =>
-    if seen.contains label then
-      (seen, labels)
-    else
-      (seen.insert label, labels.push label)
-  labels
-
 -- Keep this binding in Lean so summary CSS edits ride along with command module rebuilds.
 def summaryCss := include_str "../summary.css"
 
@@ -90,7 +69,8 @@ structure SummaryHtmlContext where
   entryHref? : Name → Option String
   declHref? : Name → Name → Option String
   declPreviewLookupKey? : Name → Name → Option String
-  previewLookupKey? : Name → Option String
+  previewKeys : Name → Array PreviewKey
+  renderPreview : PreviewResources.Render
 
 structure SummaryRows where
   pendingInformalRows : Array Output.Html := #[]
@@ -118,31 +98,32 @@ structure SummaryRows where
   theoremLikeByParentRows : Array Output.Html := #[]
   blockerRows : Array Output.Html := #[]
 
-private def summaryRenderLeanDeclLink (target : Name) (node : Output.Html)
-    (href? : Option String) (linkTitle? : Option String := Option.none)
-    (previewLookupKey? : Option String := Option.none) : Output.Html :=
-  match href? with
+private def SummaryHtmlContext.declLink (ctx : SummaryHtmlContext) (label target : Name)
+    (node : Output.Html) : Output.Html :=
+  match ctx.declHref? label target with
   | some href =>
-    Informal.LeanCodeLink.renderResolved
-      target node "" (some href) linkTitle?
-      (previewTitle := Informal.LeanCodePreview.title target)
-      (previewLookupKey? := previewLookupKey?)
+    let key := (ctx.declPreviewLookupKey? label target).getD (Informal.LeanCodePreviewKey.lookupKey target)
+    PreviewResources.select ctx.renderPreview (PreviewKey.ofString? key).toArray
+      (fun key => Informal.LeanCodeLink.renderResolved target node "" (some href)
+        (previewTitle := Informal.LeanCodePreview.title target)
+        (previewLookupKey? := some key.value))
+      (fun _ => .tag "a" #[("href", href)] node)
   | Option.none => node
 
 private def SummaryHtmlContext.entryRef (ctx : SummaryHtmlContext) (label : Name) : Output.Html :=
-  let previewLookupKey? := ctx.previewLookupKey? label
-  let previewLabel? : Option Name := previewLookupKey?.map (fun _ => label)
   let labelNode : Output.Html :=
     match ctx.entryHref? label with
     | Option.some href => {{ <a href={{href}}> <code>s!"{label}"</code> </a> }}
     | Option.none => {{ <code>s!"{label}"</code> }}
-  Informal.HoverRender.summaryPreviewWrap labelNode previewLabel? previewLookupKey?
+  PreviewResources.select ctx.renderPreview (ctx.previewKeys label)
+    (fun key => Informal.HoverRender.summaryPreviewWrap labelNode (some label) (some key.value))
+    (fun _ => Informal.HoverRender.summaryPreviewWrap labelNode Option.none)
+    (defaultOnly := true)
 
 private def SummaryHtmlContext.declItems (ctx : SummaryHtmlContext) (label : Name)
     (decls : List Name) : Array Output.Html :=
   decls.toArray.map fun decl =>
-    let declNode := summaryRenderLeanDeclLink decl {{<code>s!"{decl}"</code>}}
-      (ctx.declHref? label decl) (previewLookupKey? := ctx.declPreviewLookupKey? label decl)
+    let declNode := ctx.declLink label decl {{<code>s!"{decl}"</code>}}
     {{ <li>{{declNode}}</li> }}
 
 private def summaryBadgeClass : String := "bp_summary_badge"
@@ -363,10 +344,7 @@ private def SummaryHtmlContext.leanRows (ctx : SummaryHtmlContext) (items : List
 private def SummaryHtmlContext.incompleteRow (ctx : SummaryHtmlContext) (item : IncompleteItem) :
     SummaryHtmlM Output.Html := do
   let entryRef := ctx.entryRef item.label
-  let declLink :=
-    summaryRenderLeanDeclLink item.decl {{<code>s!"{item.decl}"</code>}}
-      (ctx.declHref? item.label item.decl)
-      (previewLookupKey? := ctx.declPreviewLookupKey? item.label item.decl)
+  let declLink := ctx.declLink item.label item.decl {{<code>s!"{item.decl}"</code>}}
   let view := item.status.presentation
   let declPrefix ←
     match item.status with
@@ -414,12 +392,7 @@ private def SummaryHtmlContext.incompleteRow (ctx : SummaryHtmlContext) (item : 
 
 private def SummaryHtmlContext.externalDeclNode (ctx : SummaryHtmlContext) (label written canonical : Name) :
     Output.Html :=
-  let canonicalNode : Output.Html :=
-    summaryRenderLeanDeclLink
-      canonical
-      {{<code>s!"{canonical}"</code>}}
-      (ctx.declHref? label canonical)
-      (previewLookupKey? := ctx.declPreviewLookupKey? label canonical)
+  let canonicalNode := ctx.declLink label canonical {{<code>s!"{canonical}"</code>}}
   if written == canonical then
     canonicalNode
   else

@@ -14,6 +14,9 @@ private theorem hiddenComplete : True := True.intro
 
 public theorem holeBridge : True := hiddenHole
 public theorem completeBridge : True := hiddenComplete
+public def hiddenDef : Nat := 1
+public opaque hiddenOpaque : Nat := 2
+public axiom genuineAxiom : True
 
 @[expose] public def exposedHoleConsumer : Bool :=
   let _proof := holeBridge

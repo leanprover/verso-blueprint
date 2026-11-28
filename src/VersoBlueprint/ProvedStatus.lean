@@ -81,11 +81,18 @@ def ProvedStatus.hasUnverifiedType (status : ProvedStatus) : Bool :=
 def ProvedStatus.hasUnverifiedProof (status : ProvedStatus) : Bool :=
   status.verificationGaps.any fun gap => gap.location == .proof || gap.location == .unknown
 
+/-- A known hole blocks a theorem's statement if it affects the type or could
+not be localized. A definition's statement also depends on its body. -/
+def ProvedStatus.hasStatementGap (status : ProvedStatus) (kind : NodeKind) : Bool :=
+  status.hasUnlocalizedSorry || status.hasTypeGap || (kind == .definition && status.hasProofGap)
+
+def ProvedStatus.hasUnverifiedStatement (status : ProvedStatus) (kind : NodeKind) : Bool :=
+  status.hasUnverifiedType || (kind == .definition && status.hasUnverifiedProof)
+
 /-- Theorem statements require a verified statement closure. Definitions also
 require a verified body closure. Unlocalized holes block both tracks. -/
 def ProvedStatus.blocksStatementCompletion (status : ProvedStatus) (kind : NodeKind) : Bool :=
-  status.hasUnlocalizedSorry || status.hasTypeGap || status.hasUnverifiedType ||
-    (kind == .definition && (status.hasProofGap || status.hasUnverifiedProof))
+  status.hasStatementGap kind || status.hasUnverifiedStatement kind
 
 def ProvedStatus.blocksProofCompletion (status : ProvedStatus) : Bool :=
   status.isIncomplete
@@ -242,19 +249,6 @@ def ProvedStatus.withDirectRefCounts (status : ProvedStatus) (typeRefs proofRefs
         | .unknown => item }
   | other => other
 
-/-- True when any declaration in a collection is incomplete. -/
-def ProvedStatus.anyIncomplete (decls : Array α) (statusOf : α → ProvedStatus) : Bool :=
-  decls.any fun decl => (statusOf decl).isIncomplete
-
-/-- True when any declaration blocks statement completion for the given node kind. -/
-def ProvedStatus.anyBlocksStatementCompletion (kind : NodeKind) (decls : Array α)
-    (statusOf : α → ProvedStatus) : Bool :=
-  decls.any fun decl => (statusOf decl).blocksStatementCompletion kind
-
-/-- True when any declaration blocks proof completion. -/
-def ProvedStatus.anyBlocksProofCompletion (decls : Array α) (statusOf : α → ProvedStatus) : Bool :=
-  decls.any fun decl => (statusOf decl).blocksProofCompletion
-
 @[simp] theorem ProvedStatus.mergeConservative_proved_left (status : ProvedStatus) :
     ProvedStatus.mergeConservative .proved status = status := by
   cases status <;> rfl
@@ -310,71 +304,139 @@ private def axisRoots (name : Name) (expressions : Array Expr) : Array Name :=
 Ordinary hidden imports remain unverified even when cached footprints are empty.
 `collectAxioms` is used only for positive sorry evidence; original kind comes
 from Lean metadata. -/
-def analyzeDeclaration [Monad m] [MonadEnv m] (name : Name) : m ProvedStatus := do
+private def analyzeDeclarationIn [Monad m] [MonadEnv m] (name : Name) : SorryInspectionM m ProvedStatus := do
   let env ← getEnv
   let some info := env.checked.get.find? name
     | return .incomplete { unverified := #[{ declaration := name }] }
-  let axioms ← match info with
-    | .axiomInfo _ => collectAxioms name
-    | _ => pure #[]
   let body := ConstantInfo.blueprintBodyAccess env info
   if let .axiomInfo _ := info then
     if let .absent := body then return .axiomLike
-  let computation : SorryInspectionM m ProvedStatus := do
-    let whole ← inspectSorryDependencies #[name] (stopAtBlocker := true)
-    let completion := ProvedStatus.ofInspection whole {}
-    if completion.isProved then return completion
-    let mut statements := #[info.type]
-    if let .inductInfo induct := info then
-      for ctor in induct.ctors do
-        if let some ctorInfo := (← getEnv).checked.get.find? ctor then
-          statements := statements.push ctorInfo.type
-    let statement ← inspectSorryDependencies (axisRoots name statements) (stopAtBlocker := true)
-    let proofs := match body with
-      | .available value => #[(proofBody info.type value)]
-      | _ => match info with
-        | .recInfo rec => rec.rules.toArray.map (·.rhs)
-        | _ => #[]
-    let proof ← inspectSorryDependencies (axisRoots name proofs) (stopAtBlocker := true)
-    let mut evidence : Array SorryInfo := #[]
-    if statements.any (·.hasSorry) then evidence := evidence.push { location := .statement }
-    if statement.hasSorry then evidence := evidence.push { location := .statement, origin := .dependency }
-    if proofs.any (·.hasSorry) then evidence := evidence.push { location := .proof }
-    if proof.hasSorry then evidence := evidence.push { location := .proof, origin := .dependency }
-    if axioms.contains ``sorryAx then
-      if let .unavailable := body then
-        evidence := evidence.push {
-          location := if statement.isComplete && !statements.any (·.hasSorry) then .proof else .unknown
-          origin := .unknown }
-    let mut gaps := statement.verificationGaps .statement ++ proof.verificationGaps .proof
+  let whole ← inspectSorryDependencies #[name] (stopAtBlocker := true)
+  recordSorryCertificateScan
+  let completion := ProvedStatus.ofInspection whole {}
+  if completion.isProved then return completion
+  let mut statements := #[info.type]
+  if let .inductInfo induct := info then
+    for ctor in induct.ctors do
+      if let some ctorInfo := (← getEnv).checked.get.find? ctor then
+        statements := statements.push ctorInfo.type
+  let statement ← inspectSorryDependencies (axisRoots name statements) (stopAtBlocker := true)
+  let proofs := match body with
+    | .available value => #[(proofBody info.type value)]
+    | _ => match info with
+      | .recInfo rec => rec.rules.toArray.map (·.rhs)
+      | _ => #[]
+  let proof ← inspectSorryDependencies (axisRoots name proofs) (stopAtBlocker := true)
+  let mut evidence : Array SorryInfo := #[]
+  if statements.any (·.hasSorry) then evidence := evidence.push { location := .statement }
+  if statement.hasSorry then evidence := evidence.push { location := .statement, origin := .dependency }
+  if proofs.any (·.hasSorry) then evidence := evidence.push { location := .proof }
+  if proof.hasSorry then evidence := evidence.push { location := .proof, origin := .dependency }
+  if whole.declarations[name]?.any (·.cachedSorry) then
     if let .unavailable := body then
-      gaps := gaps.push { location := .proof, declaration := name, reason := .bodyUnavailable }
-    -- Keep whole-inspection coverage failures even when an axis already found
-    -- a hole. Metadata dependencies need not appear in the axis expressions.
-    if evidence.isEmpty && whole.hasSorry then
-      evidence := evidence.push { location := .unknown, origin := .unknown }
-    for gap in whole.verificationGaps .unknown do
-      if !gaps.any (fun known => known.declaration == gap.declaration) then
-        let location := if gap.declaration == name && gap.reason == .bodyUnavailable then
-          .proof else .unknown
-        gaps := gaps.push { gap with location }
-    return ProvedStatus.ofInspection whole { knownSorry := evidence, unverified := gaps }
-  return (← computation.run {}).1
+      recordSorryCertificateScan
+      evidence := evidence.push {
+        location := if statement.isComplete && !statements.any (·.hasSorry) then .proof else .unknown
+        origin := .unknown }
+  let mut gaps := statement.verificationGaps .statement ++ proof.verificationGaps .proof
+  if let .unavailable := body then
+    gaps := gaps.push { location := .proof, declaration := name, reason := .bodyUnavailable }
+  -- Keep whole-inspection coverage failures even when an axis already found
+  -- a hole. Metadata dependencies need not appear in the axis expressions.
+  if evidence.isEmpty && whole.hasSorry then
+    evidence := evidence.push { location := .unknown, origin := .unknown }
+  for gap in whole.verificationGaps .unknown do
+    if !gaps.any (fun known => known.declaration == gap.declaration) then
+      let location := if gap.declaration == name && gap.reason == .bodyUnavailable then
+        .proof else .unknown
+      gaps := gaps.push { gap with location }
+  return .incomplete { knownSorry := evidence, unverified := gaps }
 
-/-- Analyze related roots in one stable checked environment. A clean union's
-single closed certificate covers every requested root. A blocked union does not
-attribute its blocker to unrelated roots: those use individual analysis. No
-negative imported footprint or cross-environment cache authorizes completion. -/
+/-- A standalone declaration check has no cache from earlier calls. -/
+def analyzeDeclaration [Monad m] [MonadEnv m] (name : Name) : m ProvedStatus := do
+  return (← (analyzeDeclarationIn name).run {}).1
+
+private def inspectBatch [Monad m] [MonadEnv m] (names : Array Name) :
+    SorryInspectionM m (Option InspectedDeclarations) := do
+  if names.isEmpty then return none
+  let inspection ← inspectSorryDependencies names (stopAtBlocker := true)
+  recordSorryCertificateScan
+  if (ProvedStatus.ofInspection inspection {}).isProved then
+    return some inspection.declarations
+  return none
+
+/-- Membership comes from a successfully certified region. It establishes
+coverage for theorem and definition bodies, while a root axiom has no body. -/
+private def certifiedStatus (env : Environment) (name : Name) : ProvedStatus :=
+  match env.checked.get.find? name with
+  | some (.axiomInfo _) => .axiomLike
+  | _ => .proved
+
+/-- A clean batch closes its union once. If that fails, the root-local checks
+share immediate inspections and classify their own blockers. -/
 def analyzeDeclarations [Monad m] [MonadEnv m] (names : Array Name) : m (Array ProvedStatus) := do
-  if names.isEmpty then return #[]
-  let (inspection, _) ← (inspectSorryDependencies names (stopAtBlocker := true)).run {}
-  let completion := ProvedStatus.ofInspection inspection {}
-  if completion.isProved then
+  let (verified, state) ← (inspectBatch names).run {}
+  if verified.isSome then
     let env ← getEnv
-    return names.map fun name =>
-      match env.checked.get.find? name with
-      | some (.axiomInfo _) => .axiomLike
-      | _ => completion
-  names.mapM analyzeDeclaration
+    return names.map (certifiedStatus env)
+  return (← (names.mapM analyzeDeclarationIn).run state).1
+
+private structure SorryInspectionSessionState where
+  inspection : SorryInspectionState := {}
+  verified : InspectedDeclarations := {}
+  fallback : Std.HashMap Name ProvedStatus := {}
+
+/-- Capture-local inspection. Environment identity covers the checked import
+view and extension state, including original-kind and collector metadata.
+The session's consumers are sequential. -/
+structure SorryInspectionSession where
+  private mk ::
+  private environment : Environment
+  private state : IO.Ref SorryInspectionSessionState
+
+def newSorryInspectionSession : CoreM SorryInspectionSession := do
+  return ⟨← getEnv, ← IO.mkRef {}⟩
+
+/-- Publish only after the analysis has completed in the pinned environment
+and passed Lean's interrupt and resource checks. -/
+private def SorryInspectionSession.run (session : SorryInspectionSession)
+    (action : SorryInspectionSessionState → CoreM (α × SorryInspectionSessionState)) : CoreM α := do
+  unless unsafe ptrEq (← getEnv) session.environment do
+    throwError "Sorry inspection session belongs to another environment snapshot"
+  Core.checkSystem "blueprint sorry inspection"
+  let (result, state) ← action (← session.state.get)
+  Core.checkSystem "blueprint sorry inspection"
+  session.state.set state
+  return result
+
+/-- Batch the eligible own-declaration roots. Only a closed, hole-free union
+can be reused as coverage. A blocked attempt publishes immediate inspections
+and leaves root-specific classification to the callers. -/
+def SorryInspectionSession.prepare (session : SorryInspectionSession) (names : Array Name) : CoreM Unit :=
+  session.run fun state => do
+    let (verified, inspection) ← (inspectBatch names).run state.inspection
+    return ((), { state with inspection, verified := verified.getD state.verified })
+
+def SorryInspectionSession.analyzeDeclaration (session : SorryInspectionSession)
+    (name : Name) : CoreM ProvedStatus :=
+  session.run fun state => do
+    if state.verified.contains name then
+      return (certifiedStatus session.environment name, state)
+    if let some status := state.fallback[name]? then return (status, state)
+    let (status, inspection) ← (analyzeDeclarationIn name).run state.inspection
+    return (status, { state with inspection, fallback := state.fallback.insert name status })
+
+/-- Independent expectations must close their own direct dependencies. The
+already certified region suffices only if it covers every direct dependency. -/
+def SorryInspectionSession.checkDependencies (session : SorryInspectionSession)
+    (roots : Array Name) : CoreM Bool :=
+  session.run fun state => do
+    if roots.all state.verified.contains then return (true, state)
+    let (verified, inspection) ← (inspectBatch roots).run state.inspection
+    return (verified.isSome, { state with inspection })
+
+/-- Actual walk and certificate work committed by this session. -/
+def SorryInspectionSession.work (session : SorryInspectionSession) : IO SorryInspectionWork := do
+  return (← session.state.get).inspection.work
 
 end Informal.Data

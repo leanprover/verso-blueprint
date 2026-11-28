@@ -15,6 +15,7 @@ import VersoManual
 
 import VersoBlueprint.Commands.Common
 import VersoBlueprint.Data
+import VersoBlueprint.Docstring.Manual
 import VersoBlueprint.Environment
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.Informal.Block.Common
@@ -72,6 +73,7 @@ private def informalBlockToHtml (renderPreview : PreviewResources.Render := Prev
         let ctxt ← HtmlT.context
         let some data ← ExtensionDecode.report? (RenderingResolution.occurrence s occurrence (some ctxt))
           | pure .empty
+        let blocks := data.visibleBody blocks
         let markup :=
           (Informal.TraversalIndex.ExternalMarkup.data? s data.label).map (·.markup.toArray) |>.getD #[]
         let selectedMarkupAndContent? :=
@@ -88,7 +90,7 @@ private def informalBlockToHtml (renderPreview : PreviewResources.Render := Prev
           | none => #[]
         let attrs := s.htmlId id ++ sourceBackedAttrs
         let codeHint? := data.codeData
-        let externalDecls := codeHint?.map (·.externalDecls) |>.getD #[]
+        let externalDecls := codeHint?.map (·.displayExternalDecls) |>.getD #[]
         let getDeclHref (decl : Name) : Option String :=
           Resolve.resolveInformalDeclHref? s data.label decl
         let getDeclAnchorAttrs (decl : Data.ExternalRef) : Array (String × String) :=
@@ -166,7 +168,7 @@ block_extension Block.informal (data : BlockOccurrence) where
       let some data ← ExtensionDecode.report? (RenderingResolution.occurrence st occurrence)
         | pure .empty
       let title := data.displayTitle st
-      let body ← blocks.mapM goB
+      let body ← (data.visibleBody blocks).mapM goB
       pure <| Informal.TeX.quotedBlock title body
   extraCss := Informal.Block.Assets.blockCssAssets
   extraJs := Informal.Block.Assets.blockJsAssets
@@ -249,19 +251,29 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
   | cfg, contents => do
     let blockRef ← getRef
     let label := cfg.label
-    let prepare := do
-      let resolved ← cfg.resolveForDirective kind isProof
-      pure ({
-        label, kind := resolved.envKind, externalRefs := resolved.externalRefs
-        parent := resolved.parent, priority := resolved.priority, owner := resolved.owner
-        tags := resolved.tags, effort := resolved.effort, prUrl := resolved.prUrl
-        issueUrl := resolved.issueUrl
-        deps := resolved.statementUses, proofUses := resolved.proofUses } : Environment.InProgress)
-    let some ((retainedContents, sourceRef), count) ← Environment.withDirective prepare blockRef do
+    let some ((retainedContents, sourceRef), count) ←
+      Environment.withDirective (cfg.resolveForDirective kind isProof) blockRef do
         let parsedContents ← parseDirectiveSourceMetadata cfg contents
-        let contents ← parsedContents.body.mapM elabBlock
-        let (previewBlocks, retainedContents) ← liftM <| retainElaboratedBlocks contents
-        pure ((retainedContents, parsedContents.sourceRef?), previewBlocks)
+        if cfg.leanDocstring.isSome && !parsedContents.body.isEmpty then
+          throwErrorAt blockRef "An adopted docstring and an explicit Verso body compete for the default statement"
+        let (blocks, retainedContents) ← match cfg.leanDocstring with
+          | none =>
+            let terms ← parsedContents.body.mapM elabBlock
+            liftM <| retainElaboratedBlocks terms
+          | some raw => do
+            let env ← getEnv
+            let name := raw.trimAscii.toString.toName
+            let .ok doc := Docstring.directCompiled env name | pure (#[], ← `(#[]))
+            let (blocks, deps, _) ← liftM <| Docstring.statementBlocks doc
+            for dependency in deps do
+              Environment.addUse blockRef dependency
+            let terms ← liftM <| Docstring.persistedManualBlockTerms blocks
+            pure (blocks, ← `(#[$terms,*]))
+        let sourceText := do
+          let first ← parsedContents.body[0]?
+          let last ← parsedContents.body.back?
+          (SourceData.originalSourceSpan? first.raw last.raw).map (·.trimAscii.toString)
+        pure ((retainedContents, parsedContents.sourceRef?), blocks, sourceText)
       | return ← ``(Block.concat #[])
     let opts ← getOptions
     let sourceLocation :=

@@ -7,6 +7,6 @@ import VersoBlueprintTests.BlueprintImportedContributions.LiterateKind
 import VersoBlueprintTests.BlueprintImportedContributions.KindBody
 
 #eval show Lean.CoreM Unit from do
-  let some node ← Informal.Environment.getNode? `kind_placeholder | throwError "Missing placeholder"
-  unless node.kind == .lemma && node.kindIsExplicit && node.literateCodes.size == 1 do
+  let some node ← Informal.Environment.getNodeInventory? `kind_placeholder | throwError "Missing placeholder"
+  unless node.kind == .lemma && node.kindIsExplicit && node.inlineCodes.size == 1 do
     throwError "Merged literate theorem changed the explicitly authored kind"

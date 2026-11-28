@@ -9,6 +9,7 @@ import Lean.EnvExtension
 import VersoManual
 import VersoBlueprint.Data
 import VersoBlueprint.NodeAssembly
+import VersoBlueprint.Translations
 
 namespace Informal.Environment
 
@@ -16,26 +17,28 @@ open Lean
 open Informal.Data
 open Informal.Contributions
 
+register_option verso.blueprint.project : String := {
+  defValue := ""
+  descr := "Explicit logical project for ordinary Blueprint sources and native associations"
+}
+
 /--
 Elaboration-time builder for the single currently open directive.
 
-This stays separate from `Data.Node`: it collects authored metadata and uses
+This stays separate from `Data.NodeInventory`: it collects authored metadata and uses
 before the final checked contribution is assembled.
 -/
-structure InProgress where
+structure DirectiveDraft extends Data.NodeContribution where
   label : Label
-  kind : Data.InProgressKind := .proof
   externalRefs : Array ExternalRef := #[]
-  parent : Option Parent := none
+  /-- Explicit external docstring plus its directly observed format. -/
+  adoption : Option (SourceData.AdoptedDocstring × Name) := none
   priority : Option String := none
-  owner : Option AuthorId := none
-  tags : Array String := #[]
-  effort : Option String := none
-  prUrl : Option String := none
-  issueUrl : Option String := none
-  deps : Array UseRef := #[]
-  proofUses : Array UseRef := #[]
+  uses : Array SourceData.UseDeclaration := #[]
 deriving Inhabited, Repr
+
+private def DirectiveDraft.role (draft : DirectiveDraft) : Name :=
+  if draft.kind.isSome then `statement else `proof
 
 inductive ImportedConflictKind where
   | node
@@ -50,14 +53,6 @@ structure ImportedConflict where
   modules : Array Name := #[]
 deriving Inhabited, Repr, DecidableEq
 
-/-- A checked node and the module provenance of its accepted contributions. -/
-structure RegisteredNode extends Node where
-  origin : Name
-  modules : Array Name := #[]
-deriving Inhabited, Repr
-
-instance : Coe RegisteredNode Node := ⟨RegisteredNode.toNode⟩
-
 /-- Unique module catalog in attribute-application order, with indexed membership. -/
 structure AttributeLabelCatalog where
   labels : Array Label := #[]
@@ -69,14 +64,58 @@ def AttributeLabelCatalog.insert (catalog : AttributeLabelCatalog) (label : Labe
   if catalog.members.contains label then catalog
   else { labels := catalog.labels.push label, members := catalog.members.insert label }
 
-private def pushUnique [BEq α] (values : Array α) (value : α) : Array α :=
-  if values.contains value then values else values.push value
+/-- Source-authored attachments and explicit human judgments. No nodes or native validation observations. -/
+structure AuthoredBatch where
+  sources : Array Realizations.DocumentKey := #[]
+  references : Array (Realizations.ObjectKey × Option Realizations.DocumentKey) := #[]
+  realizations : Array Realizations.Realization := #[]
+  translations : Array Translations.Translation := #[]
+  claims : Array Translations.Claim := #[]
+  requirements : Array Validation.Requirement := #[]
+  reviews : Array Validation.ReviewJudgment := #[]
+  reviewSelections : Array Validation.ReviewSelection := #[]
+deriving Inhabited, Repr, DecidableEq
 
-/-- All pending payload inputs and their provenance for one Blueprint label. -/
-structure PendingNode where
-  payloads : Array NodeContribution := #[]
-  /-- The local subset is exported; imported payloads remain evidence only. -/
-  localPayloads : Array NodeContribution := #[]
+/-- Persisted source recipe, never an admitted or checked model. -/
+structure AuthoringRecord where
+  origin : Realizations.Origin
+  project : Name
+  authored : AuthoredBatch := {}
+  nativeGoals : Array (Name × Name) := #[]
+deriving Inhabited, Repr, DecidableEq
+
+private def nameIdentity : Name → Json
+  | .anonymous => Json.arr #[]
+  | .str parent value => Json.arr #[toJson "str", nameIdentity parent, toJson value]
+  | .num parent value => Json.arr #[toJson "num", nameIdentity parent, toJson value]
+
+/-- Opaque structured identity; no ambiguous module/name concatenation or hash. -/
+private def authoringId (parts : Array Json) : Name := Name.mkSimple (Json.arr parts).compress
+
+private def authoringIssue (code message : String) (origins : Array Realizations.Origin := #[]) :
+    Realizations.Diagnostic :=
+  { code, subject := "authoring", message, origins := Realizations.canonical origins }
+
+/-- Check complete raw producer envelopes before any materialization. -/
+def authoringRecordIssues (records : Array AuthoringRecord) : Array Realizations.Diagnostic := Id.run do
+  let mut issues := #[]
+  for record in records do
+    if record.origin.id.isAnonymous || record.origin.moduleName.isAnonymous || record.project.isAnonymous ||
+        Realizations.blank record.origin.source || record.authored.sources.any (! ·.valid) ||
+        record.authored.references.any (fun (key, doc) => !key.valid || doc.any (! ·.valid)) ||
+        record.nativeGoals.any (fun (node, expected) => node.isAnonymous || expected.isAnonymous) then
+      issues := issues.push (authoringIssue "invalid-authoring" "Invalid source authoring envelope" #[record.origin])
+    let bucket := records.filter (·.origin.id == record.origin.id)
+    if bucket.any (fun other => decide (other ≠ record)) then
+      issues := issues.push (authoringIssue "producer-collision" "Conflicting raw authoring envelopes" (bucket.map (·.origin)))
+  return Realizations.canonical issues
+
+/-- Every registration of one Blueprint label and its provenance. These are the
+persisted inputs; the label's `NodeInventory` is assembled from them. -/
+structure NodeRegistrations where
+  registrations : Array SourceData.Registration := #[]
+  /-- The local subset is exported; imported registrations remain evidence only. -/
+  localRegistrations : Array SourceData.Registration := #[]
   /-- First contributing origin; an authored origin takes precedence on accepted nodes. -/
   origin : Name := .anonymous
   contributors : Array Name := #[]
@@ -84,14 +123,14 @@ structure PendingNode where
   authoredOriginConflict : Bool := false
 deriving Inhabited, Repr
 
-private def PendingNode.append (pending : PendingNode) (incomingOrigin contributor : Name)
-    (incoming : Array NodeContribution) (isLocal authored : Bool) : PendingNode :=
+private def NodeRegistrations.append (pending : NodeRegistrations) (incomingOrigin contributor : Name)
+    (incoming : Array SourceData.Registration) (isLocal authored : Bool) : NodeRegistrations :=
   let origin := if pending.contributors.isEmpty then incomingOrigin else pending.origin
   let authoredOriginConflict := pending.authoredOriginConflict ||
     (authored && pending.authoredOrigin?.any (· != incomingOrigin))
   { pending with
-    payloads := pending.payloads ++ incoming
-    localPayloads := if isLocal then pending.localPayloads ++ incoming else pending.localPayloads
+    registrations := pending.registrations ++ incoming
+    localRegistrations := if isLocal then pending.localRegistrations ++ incoming else pending.localRegistrations
     origin
     contributors := pushUnique pending.contributors contributor
     authoredOrigin? := if authored then pending.authoredOrigin? <|> some incomingOrigin else pending.authoredOrigin?
@@ -106,11 +145,12 @@ facts out of this environment extension unless they become stable semantic
 data.
 -/
 structure State where
-  data : NameMap RegisteredNode := {}
+  /-- Compiled node information, assembled from `nodeRegistrations`. Derived, never exported. -/
+  inventory : NameMap NodeInventory := {}
   /-- Next elaboration number, advanced only by accepted registrations and import replay. -/
   nextCount : Nat := 1
-  /-- Pending payloads and all label-local provenance, including rejected imports. -/
-  pendingNodes : NameMap PendingNode := {}
+  /-- Every label's registrations and provenance, including rejected imports. -/
+  nodeRegistrations : NameMap NodeRegistrations := {}
   /-- Complete selected-fact evidence, newest first. Reverse for assembly so
   declaration presentation follows registration order, including imported evidence. -/
   factRecords : List Record := []
@@ -129,7 +169,11 @@ structure State where
   importedConflicts : Array ImportedConflict := #[]
   importedConflictsReported : Bool := false
   /-- At most one directive can be open; nested declarations are rejected. -/
-  activeDirective : Option InProgress := none
+  activeDirective : Option DirectiveDraft := none
+  /-- Configuration belongs to this exact module and is never imported. -/
+  authoringProject? : Option (Name × Name) := none
+  authoringRecords : Array AuthoringRecord := #[]
+  localAuthoringRecords : Array AuthoringRecord := #[]
 deriving Inhabited, Repr
 
 private def ImportedConflictKind.rank : ImportedConflictKind → Nat
@@ -167,11 +211,12 @@ private def sortImportedConflicts (conflicts : Array ImportedConflict) : Array I
         a.label.toString < b.label.toString)
 
 inductive Entry where
-  | node (label origin contributor : Name) (contributions : Array NodeContribution)
+  | node (label origin contributor : Name) (contributions : Array SourceData.Registration)
     (facts : List Record := []) (authored : Bool := false)
   | blueprintAttributeLabel (moduleName : Name) (label : Label)
   | group (label : Name) (header : String)
   | author (label : Name) (info : AuthorInfo)
+  | authoring (record : AuthoringRecord)
 deriving Inhabited, Repr
 
 private def addBlueprintAttributeLabel
@@ -184,72 +229,64 @@ private def addLeanDeclLabel
     (leanNameLabels : NameMap (Array Label)) (decl label : Name) : NameMap (Array Label) :=
   let decl := decl.eraseMacroScopes
   let labels := leanNameLabels.getD decl #[]
-  leanNameLabels.insert decl (Label.pushUnique labels label)
+  leanNameLabels.insert decl (pushUnique labels label)
 
 private def addNodeLeanDeclLabels
-    (leanNameLabels : NameMap (Array Label)) (label : Name) (node : Node) :
+    (leanNameLabels : NameMap (Array Label)) (label : Name) (node : NodeInventory) :
     NameMap (Array Label) :=
   node.leanDecls.foldl (init := leanNameLabels) fun acc decl => addLeanDeclLabel acc decl label
 
-private def claimsAuthoredNode (contribution : NodeContribution) : Bool :=
-  contribution.kind.isSome || contribution.statementBody.any (·.hasBody) || contribution.proofBody.any (·.hasBody)
-
-/-- Commit all node stores together only after the shared reducer accepts the registration. -/
-private def State.addNode (state : State) (label origin contributor : Name)
-    (incoming : Array NodeContribution) (facts : List Record) : Except (Array String) (State × Node) := do
-  let authored := incoming.any claimsAuthoredNode
-  let pending := (state.pendingNodes.getD label {}).append origin contributor incoming true authored
+private def assembleNode (label : Label) (pending : NodeRegistrations)
+    (records : List Record) : Except (Array String) NodeInventory := do
   if pending.authoredOriginConflict then
     throw #[s!"Label {label} was independently introduced by authored contributions"]
-  let records := facts.foldl (fun records record => collector.insert record records) state.factRecords
-  let assembled ← NodeAssembly.assemble label pending.payloads records.reverse
-  let node := assembled.node
-  let nodeOrigin := pending.authoredOrigin?.getD pending.origin
-  let registered : RegisteredNode := {
-    toNode := node
-    origin := nodeOrigin
+  let assembled ← NodeAssembly.assemble label pending.registrations records
+  return { assembled.node with
+    origin := pending.authoredOrigin?.getD pending.origin
     modules := pending.contributors }
-  return ({ state with
-    data := state.data.insert label registered
+
+private def State.installNode (state : State) (label : Label) (node : NodeInventory) : State :=
+  { state with
+    inventory := state.inventory.insert label node
     nextCount := max state.nextCount (node.count + 1)
-    leanNameLabels := addNodeLeanDeclLabels state.leanNameLabels label node
-    pendingNodes := state.pendingNodes.insert label pending
+    leanNameLabels := addNodeLeanDeclLabels state.leanNameLabels label node }
+
+private def insertFacts (facts records : List Record) : List Record :=
+  facts.foldl (fun records record => collector.insert record records) records
+
+/-- Assemble all ordinary stores before publishing any of them. -/
+private def State.addNode (state : State) (label : Label) (moduleName : Name)
+    (incoming : SourceData.Registration) (facts : List Record) : Except (Array String) (State × NodeInventory) := do
+  let previous := state.nodeRegistrations.getD label {}
+  let origin := previous.authoredOrigin?.getD moduleName
+  let pending := previous.append origin moduleName #[incoming] true incoming.claimsAuthoredNode
+  let records := insertFacts facts state.factRecords
+  let node ← assembleNode label pending records.reverse
+  return ({ state.installNode label node with
+    nodeRegistrations := state.nodeRegistrations.insert label pending
     factRecords := records
-    localFactRecords := facts.foldl (fun records record => collector.insert record records) state.localFactRecords
-    }, node)
+    localFactRecords := insertFacts facts state.localFactRecords }, node)
 
 /-- Resolve every imported label against the complete decoded evidence set. -/
 private def State.reassembleImported (state : State) : State := Id.run do
-  let mut data : NameMap RegisteredNode := {}
-  let mut leanNameLabels : NameMap (Array Label) := {}
-  let mut nextCount := 1
-  let mut conflicts := state.importedConflicts
+  let mut assembled := { state with inventory := {}, leanNameLabels := {}, nextCount := 1 }
   let records := state.factRecords.reverse
-  for (label, pending) in state.pendingNodes.toArray do
-    if pending.authoredOriginConflict then
-      let origins := pending.contributors
-      conflicts := pushImportedConflict conflicts .node label
-        #[s!"Label {label} was independently introduced by authored contributions"] origins
-    else match NodeAssembly.assemble label pending.payloads records with
-    | .ok assembled =>
-      let node := assembled.node
-      let origin := pending.authoredOrigin?.getD pending.origin
-      let modules := pending.contributors
-      data := data.insert label { toNode := node, origin, modules }
-      nextCount := max nextCount (node.count + 1)
-      leanNameLabels := addNodeLeanDeclLabels leanNameLabels label node
+  for (label, pending) in state.nodeRegistrations.toArray do
+    match assembleNode label pending records with
+    | .ok node => assembled := assembled.installNode label node
     | .error reasons =>
-      conflicts := pushImportedConflict conflicts .node label reasons
-        pending.contributors
-  return { state with data, leanNameLabels, nextCount, importedConflicts := sortImportedConflicts conflicts }
+      let conflicts := pushImportedConflict assembled.importedConflicts .node label reasons pending.contributors
+      assembled := { assembled with importedConflicts := conflicts }
+  return { assembled with importedConflicts := sortImportedConflicts assembled.importedConflicts }
 
 /-- Decode imports as raw evidence; resolution and node diagnostics happen once below. -/
 private def State.collectImportedEntry (state : State) : Entry → State
+  | .authoring record => { state with authoringRecords := state.authoringRecords.push record }
   | .node label origin contributor contributions facts authored =>
-    let pending := (state.pendingNodes.getD label {}).append origin contributor contributions false authored
-    let records := facts.foldl (fun records record => collector.insert record records) state.factRecords
+    let pending := (state.nodeRegistrations.getD label {}).append origin contributor contributions false authored
+    let records := insertFacts facts state.factRecords
     { state with
-      pendingNodes := state.pendingNodes.insert label pending
+      nodeRegistrations := state.nodeRegistrations.insert label pending
       factRecords := records
       }
   | .blueprintAttributeLabel moduleName label =>
@@ -277,21 +314,15 @@ initialize informalExt : PersistentEnvExtension Entry Empty State ←
       pure state.reassembleImported
     -- Export only local contributions, retaining the original label's module.
     exportEntriesFnEx env := fun state =>
-      let compact (payload : InformalBody) :=
-        if payload.previewBlocks.isEmpty then payload else { payload with elabStx := #[] }
-      let nodeEntries := state.pendingNodes.toArray.filterMap fun (name, pending) =>
-        if pending.localPayloads.isEmpty then none else some <| (name, pending)
+      let nodeEntries := state.nodeRegistrations.toArray.filterMap fun (name, pending) =>
+        if pending.localRegistrations.isEmpty then none else some <| (name, pending)
       let nodeEntries := nodeEntries.map fun (name, pending) =>
-        let contributions := pending.localPayloads
-        let contributions := contributions.map fun contribution =>
-          { contribution with
-            statementBody := contribution.statementBody.map compact
-            proofBody := contribution.proofBody.map compact }
-        match state.data.get? name with
+        let contributions := pending.localRegistrations
+        match state.inventory.get? name with
         | some node =>
           let facts := (state.localFactRecords.filter (fun record => record.label == name)).reverse
           Entry.node name (pending.authoredOrigin?.getD node.origin) env.mainModule
-            contributions facts (contributions.any claimsAuthoredNode)
+            contributions facts (contributions.any (·.claimsAuthoredNode))
         | none => panic! s!"Blueprint invariant violated: local contributions for {name} have no origin"
       let attributeLabelEntries :=
         state.localBlueprintAttributeLabelsByModule.toArray.flatMap fun (moduleName, labels) =>
@@ -301,7 +332,8 @@ initialize informalExt : PersistentEnvExtension Entry Empty State ←
       let authorEntries := state.localAuthors.toArray.map fun (label, info) =>
         Entry.author label info
       OLeanEntries.uniform
-        (nodeEntries ++ attributeLabelEntries ++ groupEntries ++ authorEntries)
+        (nodeEntries ++ attributeLabelEntries ++ groupEntries ++ authorEntries ++
+          state.localAuthoringRecords.map Entry.authoring)
   }
 
 section EnvOps
@@ -316,15 +348,88 @@ def modifyM (f : State -> m State) : m Unit := do
   let st ← f st
   modifyEnv (informalExt.setState · st)
 
-/-- Record a successful attribute registration in module application order. -/
-def registerBlueprintAttributeLabel (label : Label) : m Unit := do
-  let moduleName := (← getEnv).mainModule
-  modify fun state => {
-    state with
+def stagedAuthoring : CoreM (Array AuthoringRecord) :=
+  return (informalExt.getState (← getEnv)).authoringRecords
+
+def configureAuthoringProject (project : Name) : CoreM (Except (Array Realizations.Diagnostic) Unit) := do
+  let moduleName ← getMainModule
+  let before := informalExt.getState (← getEnv)
+  if project.isAnonymous || moduleName.isAnonymous then
+    return .error #[authoringIssue "missing-project" "An explicit nonempty logical project is required"]
+  if before.authoringProject?.any (fun (owner, value) => owner == moduleName && value != project) then
+    return .error #[authoringIssue "project-conflict" "This module already selected a different project"]
+  modify fun state => { state with authoringProject? := some (moduleName, project) }
+  return .ok ()
+
+/-- Resolve context at the producing site, never from an importing query's
+options. The authoring configuration is explicit and module-local; projects may
+configure the package/module option instead. The chosen context is retained in every raw association. -/
+def sourceProject : CoreM Name := do
+  let moduleName ← getMainModule
+  let state := informalExt.getState (← getEnv)
+  if let some (owner, project) := state.authoringProject? then
+    if owner == moduleName then return project
+  let value := (verso.blueprint.project.get (← getOptions)).trimAscii.toString
+  let project := value.toName
+  unless !project.isAnonymous && project.toString == value do
+    throwError "Blueprint sources require an explicit canonical 'verso.blueprint.project' option"
+  return project
+
+/-- Capture the owning source identity at production time. Missing ranges stay
+explicit; no reader/provider runs before the owning module has finished building.
+Pass `role := none` only for compiled Lean payloads, whose roles are checked. -/
+def sourceAt (node realization : Name) (role : Option Name) (language : Name)
+    (payload : SourceData.ProviderPayload) (ref : Syntax) : CoreM SourceData.SourceSelection := do
+  let context : Realizations.Context := ⟨language, ← sourceProject⟩
+  let location ← SourceLocation.ofSyntax? ref
+  return {
+    destination := ⟨⟨node, realization⟩, role⟩
+    document := ⟨context, SourceData.modulePath (← getMainModule)⟩
+    source := match location with
+      | some location => .found location
+      | none => .unavailable "Original source range unavailable at registration"
+    payload }
+
+private def State.planAuthoring (state : State) (record : AuthoringRecord) :
+    Except (Array Realizations.Diagnostic) State := do
+  let issues := authoringRecordIssues (state.authoringRecords.push record)
+  unless issues.isEmpty do throw issues
+  if state.authoringRecords.any (fun previous => decide (previous = record)) then return state
+  return { state with
+    authoringRecords := state.authoringRecords.push record
+    localAuthoringRecords := state.localAuthoringRecords.push record }
+
+private def stageAuthoring (id : Name) (authored : AuthoredBatch)
+    (nativeGoals : Array (Name × Name)) : CoreM (Except (Array Realizations.Diagnostic) Unit) := do
+  let moduleName ← getMainModule
+  let before := informalExt.getState (← getEnv)
+  let some (owner, project) := before.authoringProject?
+    | return .error #[authoringIssue "missing-project" "Configure this authoring module explicitly"]
+  unless owner == moduleName && !id.isAnonymous do
+    return .error #[authoringIssue "invalid-authoring" "Missing current-module configuration or site identity"]
+  let origin : Realizations.Origin := {
+    id := authoringId #[nameIdentity moduleName, toJson "authored", nameIdentity id]
+    moduleName, source := SourceData.modulePath moduleName }
+  match before.planAuthoring { origin, project, authored, nativeGoals } with
+  | .error issues => return .error issues
+  | .ok candidate =>
+    modify fun _ => candidate
+    return .ok ()
+
+def stageAuthored (id : Name) (batch : AuthoredBatch) : CoreM (Except (Array Realizations.Diagnostic) Unit) :=
+  stageAuthoring id batch #[]
+
+def stageNativeExpectation (id node expectedProposition : Name) :
+    CoreM (Except (Array Realizations.Diagnostic) Unit) :=
+  stageAuthoring id {} #[(node, expectedProposition)]
+
+private def State.recordAttributeLabel (state : State) (moduleName : Name) (label : Label) : State :=
+  let label := label.eraseMacroScopes
+  { state with
     blueprintAttributeLabelsByModule :=
-      addBlueprintAttributeLabel state.blueprintAttributeLabelsByModule moduleName label.eraseMacroScopes
+      addBlueprintAttributeLabel state.blueprintAttributeLabelsByModule moduleName label
     localBlueprintAttributeLabelsByModule :=
-      addBlueprintAttributeLabel state.localBlueprintAttributeLabelsByModule moduleName label.eraseMacroScopes }
+      addBlueprintAttributeLabel state.localBlueprintAttributeLabelsByModule moduleName label }
 
 /-- Labels contributed by attributes applied in this exact module, in application order. -/
 def blueprintAttributeLabelsForModule (moduleName : Name) : m (Array Label) := do
@@ -341,57 +446,58 @@ def reportImportedConflicts : m Unit := do
       logError conflict.message
     return { state with importedConflictsReported := true }
 
-/-- Commit one checked registration after its admission inputs have been validated. -/
-private def commitContribution (label : Label) (contribution : NodeContribution) (facts : List Record) :
-    m (Option Node) := do
+private def hasErrorsSince [MonadLiftT CoreM m] (messageCount : Nat) : m Bool := do
+  let messages := (← liftM Core.getMessageLog).reportedPlusUnreported
+  return (messages.toArray.extract messageCount messages.size).any (·.severity == .error)
+
+/-- Publish a complete node registration, including the module catalog for an
+attribute. An attribute cannot publish after reporting a newly found import conflict. -/
+private def commitContribution (label : Label) (contribution : SourceData.Registration) (facts : List Record)
+    (attributeGuard : Option (m Bool) := none) : m (Option NodeInventory) := do
+  reportImportedConflicts
   let mainModule ← getMainModule
   let state := informalExt.getState (← getEnv)
-  let origin := (state.pendingNodes.getD label {}).authoredOrigin?.getD mainModule
-  match state.addNode label origin mainModule #[contribution] facts with
+  match state.addNode label mainModule contribution facts with
   | .ok (state, node) =>
-    modifyEnv (informalExt.setState · state)
+    let mut state := state
+    if let some mayPublish := attributeGuard then
+      unless ← mayPublish do return none
+      state := state.recordAttributeLabel mainModule label
+    modify fun _ => state
     return some node
   | .error reasons =>
     for reason in reasons do logError reason
     return none
 
 /-- Register a node payload under an explicit label. -/
-def contribute (label : Label) (contribution : NodeContribution) : m (Option Node) := do
-  reportImportedConflicts
+def contribute (label : Label) (contribution : SourceData.Registration) : m (Option NodeInventory) :=
   commitContribution label contribution []
 
-/--
-Register a producer-identified selected record with a node payload.
-The record is the sole owner of the selected label, external references, and priority.
--/
-def contributeRecord (fact : Record) (contribution : NodeContribution) :
-    m (Option Node) := do
-  reportImportedConflicts
+/-- Register a producer-identified selected record with a node payload. -/
+def contributeRecord (fact : Record) (contribution : SourceData.Registration) :
+    m (Option NodeInventory) :=
   commitContribution fact.label contribution [fact]
 
+/-- Admit an ordinary attribute association and export its catalog entry together. -/
+def contributeAttribute (fact : Record) (payload : SourceData.Registration) : CoreM (Option NodeInventory) := do
+  let messageCount := (← Core.getMessageLog).reportedPlusUnreported.size
+  commitContribution fact.label payload [fact] (some (do return !(← hasErrorsSince messageCount)))
+
 def checkLabelAndNesting (label : Label) (kind : Data.InProgressKind) : m Bool := do
-  let { data, activeDirective, .. } := informalExt.getState (← getEnv)
-  match (kind, data.get? label, activeDirective.isNone) with
+  let { inventory, activeDirective, .. } := informalExt.getState (← getEnv)
+  match (kind, inventory.get? label, activeDirective.isNone) with
   | (.statement _, none, true) => return true
   | (.statement _, some node, true) =>
-    let statementCanBeFilled :=
-      match node.statement with
-      | none => true
-      | some statement => !statement.hasBody
-    if statementCanBeFilled then
+    if !node.hasStatementBody then
       return true
     else do
       logError m!"Label {label} already defined"
       return false
   | (.proof, some node, true) =>
-    let proofCanBeFilled :=
-      match node.proof with
-      | none => true
-      | some proof => !proof.hasBody
-    if !proofCanBeFilled then
+    if node.hasProofBody then
       logError m!"Label {label} already has a proof"
       return false
-    else if node.statement.isNone then
+    else if !node.kindIsExplicit && (node.defaultProseView `statement).isNone then
       logError m!"Cannot add proof for {label}: statement/dependencies are missing"
       return false
     else
@@ -403,35 +509,33 @@ def checkLabelAndNesting (label : Label) (kind : Data.InProgressKind) : m Bool :
     logError m!"Cannot declare nested definitions"
     return false
 
-private def InProgress.toContribution (current : InProgress) (count : Nat) (ref : Syntax)
-    (blocks : Array (Verso.Doc.Block Verso.Genre.Manual)) : NodeContribution := {
-  kind := match current.kind with | .statement kind => some kind | .proof => none
-  count := match current.kind with | .statement _ => count | .proof => 0
-  statementBody := match current.kind with
-    | .statement _ => some { stx := ref, previewBlocks := blocks }
-    | .proof => none
-  proofBody := match current.kind with
-    | .statement _ => none
-    | .proof => some { stx := ref, previewBlocks := blocks }
-  statementUses := match current.kind with | .statement _ => current.deps | .proof => #[]
-  proofUses := match current.kind with
-    | .statement _ => current.proofUses
-    | .proof => current.deps ++ current.proofUses
-  parent := current.parent
-  owner := current.owner
-  tags := current.tags
-  effort := current.effort
-  prUrl := current.prUrl
-  issueUrl := current.issueUrl
-}
+private def DirectiveDraft.toRegistration (current : DirectiveDraft) (count : Nat) (ref : Syntax)
+    (blocks : Array (Verso.Doc.Block Verso.Genre.Manual)) (sourceText : Option String) :
+    CoreM SourceData.Registration := do
+  let format := current.adoption.map (·.2) |>.getD `verso
+  let origin := current.adoption.map (fun (selection, _) => SourceData.ProseOrigin.adopted selection) |>.getD .authored
+  let sources ← if blocks.isEmpty && current.adoption.isNone then pure #[] else
+    pure #[← sourceAt current.label format (some current.role) format
+      (.prose { sourceText, blocks } origin) ref]
+  return {
+    toNodeContribution := { current.toNodeContribution with count := if current.kind.isSome then count else 0 }
+    sources
+    uses := current.uses }
 
-private def InProgress.selectedFact? (current : InProgress) (ref : Syntax) : CoreM (Option Record) := do
+private def DirectiveDraft.selectedFact? (current : DirectiveDraft) (ref : Syntax) : CoreM (Option Record) := do
   let externalRefs := current.externalRefs
   if externalRefs.isEmpty && current.priority.isNone then
     return none
   let some position := ref.getPos?
     | throwError "Blueprint selected contributions require a stable source position"
   let source ← Data.SourceLocation.ofSyntax? ref
+  let mut associations : Array SourceData.NativeAssociation := #[]
+  unless externalRefs.isEmpty do
+    let context : Realizations.Context := ⟨`lean, ← sourceProject⟩
+    associations := externalRefs.map fun reference => {
+      realization := ⟨current.label, `lean⟩, context
+      placement := current.role
+      reference }
   return some {
     id := {
       moduleName := ← getMainModule
@@ -440,14 +544,32 @@ private def InProgress.selectedFact? (current : InProgress) (ref : Syntax) : Cor
       site := position.byteIdx
       slot := 0 }
     label := current.label
-    references := match current.kind with | .statement _ => externalRefs | .proof => #[]
-    proofReferences := match current.kind with | .proof => externalRefs | .statement _ => #[]
+    nativeAssociations := associations
     priority := current.priority
     source }
 
-private def hasErrorsSince [MonadLiftT CoreM m] (messageCount : Nat) : m Bool := do
-  let messages := (← liftM Core.getMessageLog).reportedPlusUnreported
-  return (messages.toArray.extract messageCount messages.size).any (·.severity == .error)
+private def withRegistrationTransaction [MonadExceptOf Exception m] [MonadLiftT CoreM m]
+    (action : m (Option α)) : m (Option α) := do
+  let before := informalExt.getState (← getEnv)
+  let result ← try action catch exception =>
+    modify fun _ => before
+    throw exception
+  if result.isNone then modify fun _ => before
+  return result
+
+/-- Publish an elaborated Lean fence only after its recovered command state has
+reported no errors. Roll back every Blueprint registration from the fence on
+failure while retaining the Lean messages and recovered environment. -/
+def withCodeRegistration [MonadExceptOf Exception m] [MonadLiftT CoreM m]
+    (elaborate : m α) (register : α → m (Option β)) : m (Option β) := do
+  reportImportedConflicts
+  withRegistrationTransaction do
+    let messageCount := (← liftM Core.getMessageLog).reportedPlusUnreported.size
+    let value ← elaborate
+    if ← hasErrorsSince messageCount then return none
+    let result ← register value
+    if ← hasErrorsSince messageCount then return none
+    return result
 
 /--
 Elaborate and register one directive as a scoped Blueprint-state transaction.
@@ -456,53 +578,39 @@ or exceptions restore all Blueprint stores. Other Lean environment changes and
 messages are retained. Every exit restores the enclosing directive scope.
 -/
 def withDirective [MonadExceptOf Exception m] [MonadLiftT CoreM m]
-    (prepare : m InProgress) (ref : Syntax)
-    (body : m (α × Array (Verso.Doc.Block Verso.Genre.Manual))) : m (Option (α × Nat)) := do
+    (prepare : m DirectiveDraft) (ref : Syntax)
+    (body : m (α × Array (Verso.Doc.Block Verso.Genre.Manual) × Option String)) :
+    m (Option (α × Nat)) := do
   reportImportedConflicts
-  let before := informalExt.getState (← getEnv)
-  let messageCount := (← liftM Core.getMessageLog).reportedPlusUnreported.size
-  let result ← try
+  withRegistrationTransaction do
+    let messageCount := (← liftM Core.getMessageLog).reportedPlusUnreported.size
     let frame ← prepare
-    if (← hasErrorsSince messageCount) || !(← checkLabelAndNesting frame.label frame.kind) then
-      pure none
-    else
-      modify fun state => { state with activeDirective := some frame }
-      let (value, blocks) ← body
-      if ← hasErrorsSince messageCount then
-        pure none
-      else
-        let state := informalExt.getState (← getEnv)
-        match state.activeDirective with
-        | none =>
-          logError "Internal error: Blueprint directive scope was closed during elaboration"
-          pure none
-        | some current =>
-          let contribution := current.toContribution state.nextCount ref blocks
-          let fact? ← liftM <| current.selectedFact? ref
-          let node? ← match fact? with
-            | some fact => contributeRecord fact contribution
-            | none => contribute frame.label contribution
-          pure <| node?.map fun node => (value, node.count)
-  catch exception =>
-    modify fun _ => before
-    throw exception
-  match result with
-  | some _ => modify fun state => { state with activeDirective := before.activeDirective }
-  | none => modify fun _ => before
-  return result
+    let kind := frame.kind.map InProgressKind.statement |>.getD .proof
+    if (← hasErrorsSince messageCount) || !(← checkLabelAndNesting frame.label kind) then return none
+    modify fun state => { state with activeDirective := some frame }
+    let (value, blocks, sourceText) ← body
+    if ← hasErrorsSince messageCount then return none
+    let state := informalExt.getState (← getEnv)
+    let some current := state.activeDirective
+      | logError "Internal error: Blueprint directive scope was closed during elaboration"; return none
+    let contribution ← liftM <| current.toRegistration state.nextCount ref blocks sourceText
+    let fact? ← liftM <| current.selectedFact? ref
+    let some node ← commitContribution frame.label contribution fact?.toList | return none
+    modify fun state => { state with activeDirective := none }
+    return some (value, node.count)
 
 def addUse (stx : Syntax) (useRef : UseRef) : m Unit := do
   match (informalExt.getState (← getEnv)).activeDirective with
   | none => logErrorAt stx m!"uses declaration outside an informal environment"
   | some current =>
     modify fun state =>
-      { state with activeDirective := some { current with deps := current.deps.push useRef } }
+      { state with activeDirective := some { current with uses := current.uses.push {
+        node := current.label
+        role := current.role
+        reference := useRef } } }
 
-def addDep (stx : Syntax) (dep : Name) : m Unit :=
-  addUse stx { label := dep }
-
-def getNode? (label : Label) : m (Option Node) := do
-  return ((informalExt.getState (← getEnv)).data.get? label).map (·.toNode)
+def getNodeInventory? (label : Label) : m (Option NodeInventory) := do
+  return (informalExt.getState (← getEnv)).inventory.get? label
 
 def labelsForLeanDecl (decl : Name) : m (Array Label) := do
   return (informalExt.getState (← getEnv)).leanNameLabels.getD decl.eraseMacroScopes #[]

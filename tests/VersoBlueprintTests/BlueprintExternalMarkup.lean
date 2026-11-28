@@ -31,6 +31,12 @@ private def externalMarkupLocation?
     (slot : String) : Option Informal.Data.ExternalMarkupLocation :=
   sources.find? language slot |>.bind (·.location)
 
+private def nodeExternalMarkup (node : Informal.Data.NodeInventory) : Informal.Data.ExternalMarkupSet :=
+  node.sources.foldl (init := {}) fun entries source =>
+    match source.payload with
+    | .markup markup _ => entries.insert markup
+    | _ => entries
+
 private def previewEntry?
     (manifest : Informal.PreviewManifest.File) (key : String) :
     Option Informal.PreviewManifest.Entry :=
@@ -70,6 +76,18 @@ private def entryIsExternalMarkup (entry : Informal.PreviewManifest.Entry) : Boo
   match entry.targetKind with
   | .externalMarkup => true
   | _ => false
+
+private def isSolePlacedStatement
+    (files : PreviewManifest.Files) (entry : PreviewManifest.Entry) : Bool :=
+  let markupKey := PreviewManifest.externalMarkupEntryKey entry.label
+  entry.targetKind == .block && entry.facet == .statement &&
+    (files.manifest.findEntry? markupKey).isNone && (files.htmlCache.findHtml? markupKey).isNone
+
+private def renderCachedStatement
+    (files : PreviewManifest.Files) (entry : PreviewManifest.Entry) : IO String := do
+  let node := ({ label := entry.authoredLabel } : Graft.BlueprintNodeConfig).toNode
+  let context := Graft.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)
+  return (← Graft.renderNodeFromManifestCache {} context node).asString
 
 #docs (Manual) externalMarkupDoc "External Markup" :=
 :::::::
@@ -196,7 +214,7 @@ Markdown statement witness.
 :::::::
 
 /--
-error: Label «external.duplicate» already has associated tex external markup in slot 'proof'
+error: Label «external.duplicate»: duplicate-source: realization 'tex.proof' already has a statement source
 -/
 #guard_msgs in
 #docs (Manual) duplicateExternalMarkupSlotDoc "Duplicate External Markup Slot" :=
@@ -300,7 +318,7 @@ being reviewed.
 This theorem is not native Verso yet. The theorem directive intentionally has no
 body, but it still has source provenance, imported Markdown, and Lean
 declarations. The preview manifest must therefore keep the source and Lean data
-on the external-markup entry.
+on the placed statement entry.
 
 :::theorem "ImportedPaper:Theorem2.1" (lean := "Nat.add, Nat.mul") (tags := "external-source,markdown-only,bodyless")
 %%%
@@ -555,26 +573,20 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
   show IO (Array String) from do
     let (showcaseHtml, showcaseState) ←
       renderManualDocHtmlStringAndState extension_impls% externalMarkupShowcaseDoc
+        (model := externalMarkupShowcaseDocBlueprint.model)
     let showcaseFiles ←
       Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ())
         (preparePreviewState showcaseState)
     let manifest := showcaseFiles.manifest
     let nativeKey := Informal.PreviewCache.statementKey (Name.mkSimple "showcase.visible.attachments")
-    let theorem21Key :=
-      Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "ImportedPaper:Theorem2.1")
+    let theorem21Key := Informal.PreviewCache.statementKey (Name.mkSimple "ImportedPaper:Theorem2.1")
     let selectedMarkdownKey :=
-      Informal.PreviewManifest.externalMarkupEntryKey
-        (Name.mkSimple "ImportedPaper:Theorem2.1.SelectedMarkdown")
-    let theorem22Key :=
-      Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "ImportedPaper:Theorem2.2")
-    let definition23Key :=
-      Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "ImportedPaper:Definition2.3")
-    let proposition24Key :=
-      Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "ImportedPaper:Proposition2.4")
-    let theorem21PreviewKey := Informal.PreviewKey.ofString? <|
-      Informal.PreviewCache.statementKey (Name.mkSimple "ImportedPaper:Theorem2.1")
-    let proposition24PreviewKey := Informal.PreviewKey.ofString? <|
-      Informal.PreviewCache.statementKey (Name.mkSimple "ImportedPaper:Proposition2.4")
+      Informal.PreviewCache.statementKey (Name.mkSimple "ImportedPaper:Theorem2.1.SelectedMarkdown")
+    let theorem22Key := Informal.PreviewCache.statementKey (Name.mkSimple "ImportedPaper:Theorem2.2")
+    let definition23Key := Informal.PreviewCache.statementKey (Name.mkSimple "ImportedPaper:Definition2.3")
+    let proposition24Key := Informal.PreviewCache.statementKey (Name.mkSimple "ImportedPaper:Proposition2.4")
+    let theorem21PreviewKey := Informal.PreviewKey.ofString? theorem21Key
+    let proposition24PreviewKey := Informal.PreviewKey.ofString? proposition24Key
     let rewriteKey := Informal.PreviewCache.statementKey (Name.mkSimple "showcase.native.rewrite")
     let some nativeEntry := previewEntry? manifest nativeKey
       | return #["missing native entry"]
@@ -600,6 +612,10 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
       | return #["missing definition 2.3 HTML"]
     let some proposition24Html := showcaseFiles.htmlCache.findHtml? proposition24Key
       | return #["missing proposition 2.4 HTML"]
+    let theorem21Shell ← renderCachedStatement showcaseFiles theorem21Entry
+    let selectedMarkdownShell ← renderCachedStatement showcaseFiles selectedMarkdownEntry
+    let definition23Shell ← renderCachedStatement showcaseFiles definition23Entry
+    let proposition24Shell ← renderCachedStatement showcaseFiles proposition24Entry
     let theorem21Refs := entryExternalDeclNames theorem21Entry
     let selectedMarkdownRefs := entryExternalDeclNames selectedMarkdownEntry
     let theorem22Refs := entryExternalDeclNames theorem22Entry
@@ -641,7 +657,7 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
       ("native rendered body", hasSubstr nativeHtml "source markup remains available")
     ]
     let theorem21Checks : Array (String × Bool) := #[
-      ("theorem 2.1 external entry", entryIsExternalMarkup theorem21Entry),
+      ("theorem 2.1 sole placed statement", isSolePlacedStatement showcaseFiles theorem21Entry),
       ("theorem 2.1 authored label", theorem21Entry.authoredLabel == "ImportedPaper:Theorem2.1"),
       ("theorem 2.1 markdown attachment", entryHasExternalMarkup theorem21Entry .markdown "statement"),
       ("theorem 2.1 Nat.add key", theorem21Entry.leanCodePreviewKeys.any (hasSubstr · "Nat.add")),
@@ -649,16 +665,19 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
       ("theorem 2.1 Nat.add data", theorem21Refs.contains `Nat.add),
       ("theorem 2.1 Nat.mul data", theorem21Refs.contains `Nat.mul),
       ("theorem 2.1 source page", entryHasSourcePage theorem21Entry "imported-paper" "12"),
-      ("theorem 2.1 markdown badge", hasSubstr theorem21Html "bp_external_markup_badge_markdown"),
-      ("theorem 2.1 source preview", htmlHasSourcePreview theorem21Html "imported-paper" "p. 12"),
+      ("theorem 2.1 markdown badge", hasSubstr theorem21Shell "bp_external_markup_badge_markdown"),
+      ("theorem 2.1 source preview", htmlHasSourcePreview theorem21Shell "imported-paper" "p. 12"),
       ("theorem 2.1 used-by code-backed preview key",
         theorem21Entry.usedBy.any (fun entry =>
           entry.label == Name.mkSimple "ImportedPaper:Proposition2.4" &&
             entry.previewKey == proposition24PreviewKey)),
-      ("theorem 2.1 rendered markdown", hasSubstr theorem21Html "<h1>Theorem 2.1</h1>")
+      ("theorem 2.1 rendered markdown", hasSubstr theorem21Html "<h1>Theorem 2.1</h1>"),
+      ("theorem 2.1 cached source body",
+        hasSubstr theorem21Html "data-bp-source-backed" &&
+        !hasSubstr theorem21Html "bp_extra_slot_markup")
     ]
     let selectedMarkdownChecks : Array (String × Bool) := #[
-      ("selected Markdown external entry", entryIsExternalMarkup selectedMarkdownEntry),
+      ("selected Markdown sole placed statement", isSolePlacedStatement showcaseFiles selectedMarkdownEntry),
       ("selected Markdown authored label", selectedMarkdownEntry.authoredLabel == "ImportedPaper:Theorem2.1.SelectedMarkdown"),
       ("selected Markdown markdown attachment", entryHasExternalMarkup selectedMarkdownEntry .markdown "statement"),
       ("selected Markdown tex attachment", entryHasExternalMarkup selectedMarkdownEntry .tex "statement"),
@@ -669,37 +688,37 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
             hasSubstr markup.raw "Selected Markdown statement"),
       ("selected Markdown Nat.add data", selectedMarkdownRefs.contains `Nat.add),
       ("selected Markdown source page", entryHasSourcePage selectedMarkdownEntry "imported-paper" "12"),
-      ("selected Markdown markdown badge", hasSubstr selectedMarkdownHtml "bp_external_markup_badge_markdown"),
-      ("selected Markdown tex badge", hasSubstr selectedMarkdownHtml "bp_external_markup_badge_tex"),
-      ("selected Markdown source preview", htmlHasSourcePreview selectedMarkdownHtml "imported-paper" "p. 12"),
+      ("selected Markdown markdown badge", hasSubstr selectedMarkdownShell "bp_external_markup_badge_markdown"),
+      ("selected Markdown tex badge", hasSubstr selectedMarkdownShell "bp_external_markup_badge_tex"),
+      ("selected Markdown source preview", htmlHasSourcePreview selectedMarkdownShell "imported-paper" "p. 12"),
       ("selected Markdown rendered body", hasSubstr selectedMarkdownHtml "<h2>Selected Markdown statement</h2>"),
       ("selected Markdown did not render tex body", !hasSubstr selectedMarkdownHtml "thm:selected-markdown")
     ]
     let theorem22Checks : Array (String × Bool) := #[
-      ("theorem 2.2 external entry", entryIsExternalMarkup theorem22Entry),
+      ("theorem 2.2 sole placed statement", isSolePlacedStatement showcaseFiles theorem22Entry),
       ("theorem 2.2 authored label", theorem22Entry.authoredLabel == "ImportedPaper:Theorem2.2"),
       ("theorem 2.2 Nat.add data", theorem22Refs.contains `Nat.add),
       ("theorem 2.2 source page", entryHasSourcePage theorem22Entry "imported-paper" "13")
     ]
     let definition23Checks : Array (String × Bool) := #[
-      ("definition 2.3 external entry", entryIsExternalMarkup definition23Entry),
+      ("definition 2.3 sole placed statement", isSolePlacedStatement showcaseFiles definition23Entry),
       ("definition 2.3 kind", definition23Entry.kind == some .definition),
       ("definition 2.3 authored label", definition23Entry.authoredLabel == "ImportedPaper:Definition2.3"),
       ("definition 2.3 tex attachment", entryHasExternalMarkup definition23Entry .tex "statement"),
       ("definition 2.3 Nat.mul data", definition23Refs.contains `Nat.mul),
       ("definition 2.3 source page", entryHasSourcePage definition23Entry "imported-paper" "14"),
-      ("definition 2.3 tex badge", hasSubstr definition23Html "bp_external_markup_badge_tex"),
+      ("definition 2.3 tex badge", hasSubstr definition23Shell "bp_external_markup_badge_tex"),
       ("definition 2.3 rendered tex", hasSubstr definition23Html "\\begin{definition}")
     ]
     let proposition24Checks : Array (String × Bool) := #[
-      ("proposition 2.4 external entry", entryIsExternalMarkup proposition24Entry),
+      ("proposition 2.4 sole placed statement", isSolePlacedStatement showcaseFiles proposition24Entry),
       ("proposition 2.4 authored label", proposition24Entry.authoredLabel == "ImportedPaper:Proposition2.4"),
       ("proposition 2.4 markdown attachment", entryHasExternalMarkup proposition24Entry .markdown "statement"),
       ("proposition 2.4 Nat.add data", proposition24Refs.contains `Nat.add),
       ("proposition 2.4 Nat.mul data", proposition24Refs.contains `Nat.mul),
       ("proposition 2.4 source page 15", entryHasSourcePage proposition24Entry "imported-paper" "15"),
       ("proposition 2.4 source page 16", entryHasSourcePage proposition24Entry "imported-paper" "16"),
-      ("proposition 2.4 source preview", htmlHasSourcePreview proposition24Html "imported-paper" "pp. 15, 16"),
+      ("proposition 2.4 source preview", htmlHasSourcePreview proposition24Shell "imported-paper" "pp. 15, 16"),
       ("proposition 2.4 statement use", proposition24Entry.statementUses.any (fun use => use.label == Name.mkSimple "ImportedPaper:Theorem2.1")),
       ("proposition 2.4 use preview key",
         proposition24Entry.uses.any (fun entry =>
@@ -731,6 +750,7 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
   show IO (Array String) from do
     let (_showcaseHtml, showcaseState) ←
       renderManualDocHtmlStringAndState extension_impls% externalMarkupShowcaseDoc
+        (model := externalMarkupShowcaseDocBlueprint.model)
     let showcaseFiles ←
       Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ())
         (preparePreviewState showcaseState)
@@ -738,11 +758,9 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
     let theorem21Label := Name.mkSimple "ImportedPaper:Theorem2.1"
     let proposition24Label := Name.mkSimple "ImportedPaper:Proposition2.4"
     let rewriteLabel := Name.mkSimple "showcase.native.rewrite"
-    let theorem21Key := Informal.PreviewManifest.externalMarkupEntryKey theorem21Label
-    let proposition24Key := Informal.PreviewManifest.externalMarkupEntryKey proposition24Label
+    let theorem21Key := Informal.PreviewCache.statementKey theorem21Label
+    let proposition24Key := Informal.PreviewCache.statementKey proposition24Label
     let rewriteKey := Informal.PreviewCache.statementKey rewriteLabel
-    let theorem21PreviewKey := Informal.PreviewCache.statementKey theorem21Label
-    let proposition24PreviewKey := Informal.PreviewCache.statementKey proposition24Label
     let some theorem21Entry := previewEntry? showcaseFiles.manifest theorem21Key
       | return #["missing theorem 2.1 no-render entry"]
     let some proposition24Entry := previewEntry? showcaseFiles.manifest proposition24Key
@@ -750,26 +768,30 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
     let some rewriteEntry := previewEntry? showcaseFiles.manifest rewriteKey
       | return #["missing native rewrite no-render entry"]
     let checks : Array (String × Bool) := #[
-      ("theorem 2.1 semantic entry", entryIsExternalMarkup theorem21Entry),
-      ("theorem 2.1 no HTML", (showcaseFiles.htmlCache.findHtml? theorem21Key).isNone),
+      ("theorem 2.1 sole placed statement", isSolePlacedStatement showcaseFiles theorem21Entry),
+      ("proposition 2.4 sole placed statement", isSolePlacedStatement showcaseFiles proposition24Entry),
+      ("unrendered attachments retained as metadata",
+        entryHasExternalMarkup theorem21Entry .markdown "statement" &&
+          entryHasExternalMarkup proposition24Entry .markdown "statement"),
+      ("code-backed statements retain only their code previews",
+        theorem21Entry.codeOnlyPreview && proposition24Entry.codeOnlyPreview &&
+          #[theorem21Key, proposition24Key].all (fun key =>
+            (showcaseFiles.htmlCache.findHtml? key).any (!hasSubstr · "bp_external_markdown_body"))),
       ("theorem 2.1 keeps Lean keys",
         theorem21Entry.leanCodePreviewKeys.any (hasSubstr · "Nat.add") &&
           theorem21Entry.leanCodePreviewKeys.any (hasSubstr · "Nat.mul")),
-      ("code-backed statements retain cached previews",
-        (showcaseFiles.htmlCache.findHtml? theorem21PreviewKey).isSome &&
-          (showcaseFiles.htmlCache.findHtml? proposition24PreviewKey).isSome),
       ("proposition 2.4 use preview retained",
         proposition24Entry.uses.any (fun entry =>
           entry.label == theorem21Label &&
-            entry.previewKey == Informal.PreviewKey.ofString? theorem21PreviewKey)),
+            entry.previewKey == Informal.PreviewKey.ofString? theorem21Key)),
       ("theorem 2.1 used-by preview retained",
         theorem21Entry.usedBy.any (fun entry =>
           entry.label == proposition24Label &&
-            entry.previewKey == Informal.PreviewKey.ofString? proposition24PreviewKey)),
+            entry.previewKey == Informal.PreviewKey.ofString? proposition24Key)),
       ("native rewrite external use preview retained",
         rewriteEntry.uses.any (fun entry =>
           entry.label == theorem21Label &&
-            entry.previewKey == Informal.PreviewKey.ofString? theorem21PreviewKey))
+            entry.previewKey == Informal.PreviewKey.ofString? theorem21Key))
     ]
     pure <| failedCheckLabels checks
 
@@ -778,24 +800,27 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
 #eval
   show CoreM Bool from do
     let state := Informal.Environment.informalExt.getState (← getEnv)
-    let some node := state.data.get? (Name.mkSimple "external.markup")
+    let some node := state.inventory.get? (Name.mkSimple "external.markup")
       | pure false
-    let some unlabeledAnchor := state.data.get? (Name.mkSimple "external.unlabeled.anchor")
+    let some unlabeledAnchor := state.inventory.get? (Name.mkSimple "external.unlabeled.anchor")
       | pure false
-    let some witness := state.data.get? (Name.mkSimple "external.witness")
+    let some witness := state.inventory.get? (Name.mkSimple "external.witness")
       | pure false
-    let some multi := state.data.get? (Name.mkSimple "external.multi")
+    let some multi := state.inventory.get? (Name.mkSimple "external.multi")
       | pure false
-    let texStatement := externalMarkupRaw? node.externalMarkup .tex "statement" |>.getD ""
-    let mdProof := externalMarkupRaw? node.externalMarkup .markdown "proof" |>.getD ""
-    let witnessSource := externalMarkupRaw? witness.externalMarkup .tex Informal.Data.defaultExternalMarkupSlot |>.getD ""
-    let multiTex := externalMarkupRaw? multi.externalMarkup .tex "statement" |>.getD ""
-    let multiMd := externalMarkupRaw? multi.externalMarkup .markdown "statement" |>.getD ""
-    let some loc := externalMarkupLocation? node.externalMarkup .tex "statement"
+    let nodeMarkup := nodeExternalMarkup node
+    let witnessMarkup := nodeExternalMarkup witness
+    let multiMarkup := nodeExternalMarkup multi
+    let texStatement := externalMarkupRaw? nodeMarkup .tex "statement" |>.getD ""
+    let mdProof := externalMarkupRaw? nodeMarkup .markdown "proof" |>.getD ""
+    let witnessSource := externalMarkupRaw? witnessMarkup .tex Informal.Data.defaultExternalMarkupSlot |>.getD ""
+    let multiTex := externalMarkupRaw? multiMarkup .tex "statement" |>.getD ""
+    let multiMd := externalMarkupRaw? multiMarkup .markdown "statement" |>.getD ""
+    let some loc := externalMarkupLocation? nodeMarkup .tex "statement"
       | pure false
     pure <|
       node.kind == .theorem &&
-      node.statement.isSome &&
+      (node.proseView `verso `statement).isSome &&
       hasSubstr texStatement "\\begin{theorem}" &&
       hasSubstr texStatement "\\label{thm:external-markup}" &&
       hasSubstr mdProof "Imported **Markdown** proof witness." &&
@@ -805,14 +830,14 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
       loc.range.«end».line == 8 &&
       loc.range.«end».character == 0 &&
       unlabeledAnchor.kind == .theorem &&
-      unlabeledAnchor.statement.isSome &&
-      unlabeledAnchor.externalMarkup.isEmpty &&
-      witness.statement.isNone &&
-      witness.proof.isNone &&
+      (unlabeledAnchor.proseView `verso `statement).isSome &&
+      !(unlabeledAnchor.sources.any fun source => match source.payload with | .markup _ _ => true | _ => false) &&
+      (witness.proseView `verso `statement).isNone &&
+      (witness.proseView `verso `proof).isNone &&
       hasSubstr witnessSource "\\begin{theorem}" &&
       hasSubstr witnessSource "\\label{thm:external-witness}" &&
-      multi.statement.isNone &&
-      multi.proof.isNone &&
+      (multi.proseView `verso `statement).isNone &&
+      (multi.proseView `verso `proof).isNone &&
       hasSubstr multiTex "TeX statement witness." &&
       hasSubstr multiMd "Markdown statement witness."
 
@@ -820,12 +845,13 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
 #guard_msgs in
 #eval
   show IO Bool from do
-    let (externalOut, externalState) ← renderManualDocHtmlStringAndState extension_impls% externalMarkupDoc
-    let unlabeledOut ← renderManualDocHtmlString extension_impls% unlabeledExternalMarkupDoc
-    let witnessOut ← renderManualDocHtmlString extension_impls% externalMarkupWitnessDoc
-    let multiOut ← renderManualDocHtmlString extension_impls% externalMarkupMultiLanguageDoc
-    let summaryOut ← renderManualDocHtmlString extension_impls% externalMarkupSummaryDisplayDoc
-    let sourceOut ← renderManualDocHtmlString extension_impls% externalMarkupSourceDisplayDoc
+    let model := externalMarkupShowcaseDocBlueprint.model
+    let (externalOut, externalState) ← renderManualDocHtmlStringAndState extension_impls% externalMarkupDoc (model := model)
+    let unlabeledOut ← renderManualDocHtmlString extension_impls% unlabeledExternalMarkupDoc (model := model)
+    let witnessOut ← renderManualDocHtmlString extension_impls% externalMarkupWitnessDoc (model := model)
+    let multiOut ← renderManualDocHtmlString extension_impls% externalMarkupMultiLanguageDoc (model := model)
+    let summaryOut ← renderManualDocHtmlString extension_impls% externalMarkupSummaryDisplayDoc (model := model)
+    let sourceOut ← renderManualDocHtmlString extension_impls% externalMarkupSourceDisplayDoc (model := model)
     let traversed := (Informal.TraversalIndex.ExternalMarkup.data? externalState (Name.mkSimple "external.markup")).map (·.markup) |>.getD {}
     let traversedTex := externalMarkupRaw? traversed .tex "statement" |>.getD ""
     let traversedMd := externalMarkupRaw? traversed .markdown "proof" |>.getD ""
@@ -835,7 +861,7 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
     let externalMarkupOnlyKey := Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "external.markup")
     let some externalBlockEntry := externalFiles.manifest.previews.find? (fun entry => entry.key == externalBlockKey)
       | return false
-    let (_witnessOut, witnessState) ← renderManualDocHtmlStringAndState extension_impls% externalMarkupWitnessDoc
+    let (_witnessOut, witnessState) ← renderManualDocHtmlStringAndState extension_impls% externalMarkupWitnessDoc (model := model)
     let preparedWitnessState := preparePreviewState witnessState
     let witnessFiles ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) preparedWitnessState
     let witnessFilesNoRender ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) preparedWitnessState
@@ -850,31 +876,34 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
     unless witnessEntry.title == "external.witness" && witnessEntry.displayCaption.isNone &&
         witnessEntry.displayLabel.isNone && witnessEntry.kind.isSome do
       throw <| IO.userError s!"Source-only preview invented a numbered heading: {toJson witnessEntry}"
+    let some witnessMetadata := witnessFilesNoRender.manifest.findEntry? witnessKey
+      | return false
     let some witnessHtml := witnessFiles.htmlCache.findHtml? witnessKey
       | return false
     let some witnessHtmlNoNotice := witnessFilesNoNotice.htmlCache.findHtml? witnessKey
       | return false
-    let (_markdownOut, markdownState) ← renderManualDocHtmlStringAndState extension_impls% externalMarkdownWitnessDoc
+    let (_markdownOut, markdownState) ← renderManualDocHtmlStringAndState extension_impls% externalMarkdownWitnessDoc (model := model)
     let markdownFiles ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ())
       (preparePreviewState markdownState)
     let markdownKey := Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "external.markdown.witness")
     let some markdownHtml := markdownFiles.htmlCache.findHtml? markdownKey
       | return false
-    let (_bodylessOut, bodylessState) ← renderManualDocHtmlStringAndState extension_impls% externalBodylessLeanWitnessDoc
+    let (_bodylessOut, bodylessState) ← renderManualDocHtmlStringAndState extension_impls% externalBodylessLeanWitnessDoc (model := model)
     let bodylessFiles ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ())
       (preparePreviewState bodylessState)
-    let bodylessKey := Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "external.bodyless.lean")
+    let bodylessKey := Informal.PreviewCache.statementKey (Name.mkSimple "external.bodyless.lean")
     let some bodylessEntry := bodylessFiles.manifest.previews.find? (fun entry => entry.key == bodylessKey)
       | return false
     let some bodylessHtml := bodylessFiles.htmlCache.findHtml? bodylessKey
       | return false
+    let bodylessShell ← renderCachedStatement bodylessFiles bodylessEntry
     let (_punctuationOut, punctuationState) ←
-      renderManualDocHtmlStringAndState extension_impls% externalPunctuationBodylessLeanWitnessDoc
+      renderManualDocHtmlStringAndState extension_impls% externalPunctuationBodylessLeanWitnessDoc (model := model)
     let punctuationFiles ←
       Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ())
         (preparePreviewState punctuationState)
     let punctuationLabel := Name.mkSimple "Chapter4:Theorem4.2.1"
-    let punctuationKey := Informal.PreviewManifest.externalMarkupEntryKey punctuationLabel
+    let punctuationKey := Informal.PreviewCache.statementKey punctuationLabel
     let some punctuationEntry := punctuationFiles.manifest.previews.find? (fun entry => entry.key == punctuationKey)
       | return false
     let bodylessLosses :=
@@ -913,16 +942,17 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
     let some brokenBodylessLoss := brokenBodylessLosses[0]?
       | return false
     let brokenBodylessLossMessage := brokenBodylessLoss.warningMessage
-    let (_sourcedWitnessOut, sourcedWitnessState) ← renderManualDocHtmlStringAndState extension_impls% sourcedExternalMarkupWitnessDoc
+    let (_sourcedWitnessOut, sourcedWitnessState) ← renderManualDocHtmlStringAndState extension_impls% sourcedExternalMarkupWitnessDoc (model := model)
     let sourcedWitnessFiles ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ())
       (preparePreviewState sourcedWitnessState)
     let sourcedWitnessKey :=
-      Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "external.sourced.witness")
+      Informal.PreviewCache.statementKey (Name.mkSimple "external.sourced.witness")
     let some sourcedWitnessEntry :=
         sourcedWitnessFiles.manifest.previews.find? (fun entry => entry.key == sourcedWitnessKey)
       | return false
     let some sourcedWitnessHtml := sourcedWitnessFiles.htmlCache.findHtml? sourcedWitnessKey
       | return false
+    let sourcedWitnessShell ← renderCachedStatement sourcedWitnessFiles sourcedWitnessEntry
     pure <|
       hasSubstr traversedTex "\\begin{theorem}" &&
       hasSubstr traversedMd "Imported **Markdown** proof witness." &&
@@ -939,6 +969,9 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
       hasSubstr witnessHtml "bp_external_markup_badge_prefix" &&
       hasSubstr witnessHtml "External TeX source markup attached" &&
       hasSubstr witnessHtml "\\begin{theorem}" &&
+      entryIsExternalMarkup witnessMetadata &&
+      entryHasExternalMarkup witnessMetadata .tex Informal.Data.defaultExternalMarkupSlot &&
+      !witnessMetadata.defaultPreview &&
       (witnessFilesNoRender.htmlCache.findHtml? witnessKey).isNone &&
       !hasSubstr witnessHtmlNoNotice "bp_external_markup_notice" &&
       hasSubstr witnessHtmlNoNotice "\\begin{theorem}" &&
@@ -952,13 +985,15 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
       hasSubstr markdownHtml "<pre><code>#check Nat.add" &&
       hasSubstr markdownHtml "&lt;span&gt;raw HTML stays text&lt;/span&gt;" &&
       hasSubstr markdownHtml "For every $n$" &&
-      entryIsExternalMarkup bodylessEntry &&
+      isSolePlacedStatement bodylessFiles bodylessEntry &&
+      entryHasExternalMarkup bodylessEntry .markdown "statement" &&
       bodylessEntry.authoredLabel == "external.bodyless.lean" &&
       bodylessEntry.leanCodePreviewKeys.any (hasSubstr · "Nat.add") &&
       bodylessEntry.leanCodePreviewKeys.any (hasSubstr · "Nat.mul") &&
       bodylessExternalRefs.contains `Nat.add &&
       bodylessExternalRefs.contains `Nat.mul &&
-      entryIsExternalMarkup punctuationEntry &&
+      isSolePlacedStatement punctuationFiles punctuationEntry &&
+      entryHasExternalMarkup punctuationEntry .markdown "statement" &&
       punctuationEntry.label == punctuationLabel &&
       punctuationEntry.authoredLabel == "Chapter4:Theorem4.2.1" &&
       punctuationEntry.leanCodePreviewKeys.any (hasSubstr · "Nat.add") &&
@@ -972,14 +1007,15 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
       hasSubstr brokenBodylessLossMessage "lost Lean preview keys" &&
       hasSubstr brokenBodylessLossMessage s!"manifest entry {bodylessKey}" &&
       hasSubstr bodylessHtml "Bodyless Lean-backed witness" &&
-      hasSubstr bodylessHtml "bp_external_markup_badge_markdown" &&
-      sourcedWitnessEntry.targetKind == .externalMarkup &&
+      hasSubstr bodylessShell "bp_external_markup_badge_markdown" &&
+      isSolePlacedStatement sourcedWitnessFiles sourcedWitnessEntry &&
       sourcedWitnessEntry.externalMarkup.size == 1 &&
       sourcedWitnessEntry.sources.any (fun sourceRef =>
         sourceRef.document == "external-paper" &&
           sourceRef.spans.size == 1 &&
           sourceRef.spans[0]!.page == some "7") &&
-      htmlHasSourcePreview sourcedWitnessHtml "external-paper" "p. 7" &&
+      hasSubstr sourcedWitnessHtml "Imported Markdown statement with source provenance." &&
+      htmlHasSourcePreview sourcedWitnessShell "external-paper" "p. 7" &&
       hasSubstr externalOut "bp_extra_slot_markup" &&
       hasSubstr externalOut "bp_external_markup_badge_markdown" &&
       hasSubstr externalOut "bp_external_markup_badge_tex" &&
@@ -1003,6 +1039,7 @@ def externalMarkupShowcaseDocBlueprint : Informal.BlueprintDocument := .capture 
 -- A rejected stored facet must not become an absent-facet markup fallback.
 #eval show IO Unit from do
   let (_, state) ← renderManualDocHtmlStringAndState extension_impls% externalMarkupWitnessDoc
+    (model := externalMarkupShowcaseDocBlueprint.model)
   let label := Name.mkSimple "external.witness"
   let key := PreviewCache.statementKey label
   let errors ← IO.mkRef (#[] : Array String)

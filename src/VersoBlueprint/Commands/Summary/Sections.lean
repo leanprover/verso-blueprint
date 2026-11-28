@@ -30,6 +30,9 @@ open Verso.Multi (AllRemotes)
 private def actionableEntryDescription : String :=
   "Entries with an actionable next formalization step."
 
+private def leanRequirementsCompleteDescription : String :=
+  "The ordinary Lean declarations pass their native checks and selected Blueprint prerequisites."
+
 private def summaryOverviewSection (data : Summary) (rows : SummaryRows) : Output.Html :=
   let showBlockers := !rows.blockerRows.isEmpty
   let showPendingInformal := !rows.pendingInformalRows.isEmpty
@@ -42,9 +45,9 @@ private def summaryOverviewSection (data : Summary) (rows : SummaryRows) : Outpu
             (toString data.coverageSplit.readyToFormalize)
             (Option.some actionableEntryDescription)}}
         {{summaryCard
-            "Fully closed"
-            (toString data.coverageSplit.fullyClosed)
-            (Option.some "Local code and prerequisite closure are both complete.")}}
+            "Lean requirements complete"
+            (toString data.coverageSplit.requirementsComplete)
+            (some leanRequirementsCompleteDescription)}}
         {{summaryCard
             "Actionable priorities"
             (toString data.actionablePriorities.length)
@@ -312,8 +315,8 @@ private def summaryStructureSection (data : Summary) (rows : SummaryRows) : Outp
   let showStructureCards :=
     data.informalOnlyEntries > 0 ||
     data.coverageSplit.readyToFormalize > 0 ||
-    data.coverageSplit.formalizedWithoutAncestors > 0 ||
-    data.coverageSplit.fullyClosed > 0 ||
+    data.coverageSplit.nativeCompleteRequirementsPending > 0 ||
+    data.coverageSplit.requirementsComplete > 0 ||
     data.coverageSplit.blockedOrIncomplete > 0
   if !(showStructureCards || showHeaviestPrerequisites || showNoPrerequisites ||
       showNoDependents || showProofDebtHotspots) then
@@ -325,27 +328,27 @@ private def summaryStructureSection (data : Summary) (rows : SummaryRows) : Outp
               (data.informalOnlyEntries > 0)
               "Informal-only"
               (toString data.informalOnlyEntries)
-              (Option.some "Statements with no associated Lean code yet.")}}
+              (Option.some "Entries with an informal statement and unassessed native Lean checks.")}}
           {{summaryOptionalCard
               (data.coverageSplit.readyToFormalize > 0)
               "Ready to formalize"
               (toString data.coverageSplit.readyToFormalize)
               (Option.some actionableEntryDescription)}}
           {{summaryOptionalCard
-              (data.coverageSplit.formalizedWithoutAncestors > 0)
-              "Formalized, ancestors open"
-              (toString data.coverageSplit.formalizedWithoutAncestors)
-              (Option.some "Local Lean work is done, but prerequisite closure is still open.")}}
+              (data.coverageSplit.nativeCompleteRequirementsPending > 0)
+              "Native checks complete, prerequisites unfinished"
+              (toString data.coverageSplit.nativeCompleteRequirementsPending)
+              (Option.some "Local native checks pass while one or more selected Blueprint prerequisites remain unfinished.")}}
           {{summaryOptionalCard
-              (data.coverageSplit.fullyClosed > 0)
-              "Fully closed"
-              (toString data.coverageSplit.fullyClosed)
-              (Option.some "Local code and ancestor closure are both complete.")}}
+              (data.coverageSplit.requirementsComplete > 0)
+              "Lean requirements complete"
+              (toString data.coverageSplit.requirementsComplete)
+              (some leanRequirementsCompleteDescription)}}
           {{summaryOptionalWarnCard
               (data.coverageSplit.blockedOrIncomplete > 0)
               "Blocked or incomplete"
               (toString data.coverageSplit.blockedOrIncomplete)
-              (Option.some "Entries not covered by the highlighted readiness buckets above.")}}
+              (Option.some "Entries with unfinished native Lean checks and no actionable next step.")}}
         </div>
         {{summaryOptionalCappedDetailsList
             showHeaviestPrerequisites
@@ -382,7 +385,10 @@ def SummaryBlockData.resolve (data : SummaryBlockData) (state : TraverseState) :
     | Option.none => Informal.TraversalIndex.RenderOverviews.required state `summary
   return { summary with showDebugDiagnostics := data.showDebugDiagnostics }
 
-private def summaryBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT ExtensionImpls (BuildLogT IO))) :=
+private def summaryBlockToHtml
+    (renderPreview : PreviewResources.Render := PreviewResources.immediate)
+    (previewFor? : Option (Lean.Name → Option Informal.PreviewKey) := none) :
+    BlockToHtml Manual (ReaderT AllRemotes (ReaderT ExtensionImpls (BuildLogT IO))) :=
   fun _goI _goB _id json _blocks => do
     let some data ←
         Informal.ExtensionDecode.decode?
@@ -395,10 +401,9 @@ private def summaryBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT
       | .ok data => pure (some data)
       | .error message => Verso.reportError message; pure none
     let some data := resolved? | pure .empty
-    let previewLookupKeys := (data.previewLabels).foldl (init := ({} : Lean.NameMap String)) fun keys label =>
-      match Informal.PreviewSource.traversalPreviewCandidateKey? s label with
-      | some key => keys.insert label (toString key)
-      | Option.none => keys
+    let previewKeys := match previewFor? with
+      | Option.none => (Informal.PreviewSource.traversalPreviewCandidateKeys s ·)
+      | some previewFor => fun label => (previewFor label).toArray
     let ctx : SummaryHtmlContext := {
       entryHref? := fun label => Informal.TraversalIndex.Nodes.href? s label
       declHref? := fun label decl =>
@@ -406,7 +411,8 @@ private def summaryBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT
       declPreviewLookupKey? := fun label decl => do
         let block ← Informal.TraversalIndex.InlineCode.forDecl? s label decl
         some (Informal.TraversalIndex.LeanCodePreviews.lookupInlineKey block.blockId)
-      previewLookupKey? := fun label => previewLookupKeys.get? label
+      previewKeys
+      renderPreview
     }
     let previewPanel := Informal.HoverRender.summaryPreviewPanel
     let summaryAttrs :=
@@ -442,8 +448,16 @@ block_extension Block.summary (summary : SummaryBlockData) where
     open Verso.Output.TeX in
     some <| fun _goI _goB _id _data _blocks =>
       pure <| .text "The Blueprint summary is available in the HTML output."
-  toHtml := some summaryBlockToHtml
+  toHtml := some (summaryBlockToHtml PreviewResources.immediate none)
   extraCss := summaryAssetBundle.css
   extraJs := summaryAssetBundle.js
+
+/-- Choose summary preview links through the same resource pipeline as inline and relation previews. -/
+def withSummaryPreviewRendering (impls : ExtensionImpls) (renderPreview : PreviewResources.Render)
+    (previewFor? : Option (Lean.Name → Option Informal.PreviewKey) := none) : ExtensionImpls :=
+  match impls.getBlock? ``Block.summary with
+  | Option.none => impls
+  | some descriptor =>
+    impls.insertBlock ``Block.summary { descriptor with toHtml := some (summaryBlockToHtml renderPreview previewFor?) }
 
 end Informal.Commands

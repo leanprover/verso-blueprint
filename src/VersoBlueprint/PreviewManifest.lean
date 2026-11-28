@@ -218,9 +218,6 @@ private def storedEntryCountText (count : Nat) : String :=
   else
     s!"{count} stored entries"
 
-private def logBuildProgressItemCount (verbose : Bool) (label : String) (count : Nat) : IO Unit :=
-  logBuildProgress verbose s!"{label}: {storedEntryCountText count}"
-
 private def withTimedBuildProgress
     {m : Type → Type} [Monad m] [MonadLiftT BaseIO m] [MonadLiftT IO m] {α : Type}
     (verbose : Bool) (label : String) (action : m α) : m α := do
@@ -302,8 +299,8 @@ Non-visual cache body for a semantic block whose only visible payload is an
 associated Lean-code panel. Browser cache readers reject empty HTML strings, so
 code-only nodes use an explicit inert fragment as their block body.
 -/
-private def codeOnlyBlockPreviewHtml : String :=
-  "<span class=\"bp_code_only_preview_body\" aria-hidden=\"true\"></span>"
+private def codeOnlyBlockPreviewHtml : Output.Html :=
+  .tag "span" #[("class", "bp_code_only_preview_body"), ("aria-hidden", "true")] .empty
 
 private def callbackLogger (logError : String → IO Unit) : Verso.Logger IO where
   log severity text loc := do
@@ -683,7 +680,7 @@ This is a VBP stale-artifact diagnostic marker, not a public interchange
 version. It may change whenever the generated-data reader needs a clean
 validation boundary.
 -/
-def manifestInternalSchemaVersion : Nat := 11
+def manifestInternalSchemaVersion : Nat := 16
 
 def manifestInternalSchemaVersionField : String := "vbpInternalSchemaVersion"
 
@@ -711,12 +708,6 @@ def graphApiModuleAliasFilename : String := "graph.mjs"
 def dataApiModuleAliasFilename : String := "data.mjs"
 
 def previewApiModuleAliasFilename : String := "preview.mjs"
-
-def graphApiModulePath : String := apiModuleDirname ++ "/" ++ graphApiModuleAliasFilename
-
-def dataApiModulePath : String := apiModuleDirname ++ "/" ++ dataApiModuleAliasFilename
-
-def previewApiModulePath : String := apiModuleDirname ++ "/" ++ previewApiModuleAliasFilename
 
 -- Keep this module rebuilt when the standalone browser ESM APIs change.
 private def graphCoreModuleMjs : String := include_str "blueprint-graph-core.mjs"
@@ -860,9 +851,7 @@ still use `Name`, but Lean's pretty printer quotes punctuation-heavy components.
 This projection keeps those authored labels usable by generated clients without
 requiring them to parse Lean pretty-name syntax.
 -/
-def labelString : Name → String
-  | .str .anonymous s => s
-  | name => name.toString
+def labelString : Name → String := Data.Label.publicString
 
 /-- Manifest-owned related informal node metadata for slide and tooling consumers. -/
 structure RelatedEntry where
@@ -942,6 +931,10 @@ structure Entry extends Informal.BlockMetadata where
   /-- This facet has no prose/witness body; hover readers compose its associated
   Lean cache fragments instead of displaying the inert block-body fragment. -/
   codeOnlyPreview : Bool := false
+  /-- This preview body was rendered from external source markup rather than native Verso prose. -/
+  sourceBackedPreview : Bool := false
+  /-- The default standalone preview selected after all resource bodies are rendered. -/
+  defaultPreview : Bool := false
   /-- Canonical Lean code data associated with this informal node, if any. -/
   codeData : Option Informal.BlockCodeData := none
   /--
@@ -978,18 +971,13 @@ structure EntryHeading where
   label : String
 deriving Inhabited, Repr
 
-/-- Informal block kind represented by this manifest entry. -/
-def Entry.blockKind (entry : Entry) : Informal.Data.InProgressKind :=
-  match entry.facet with
-  | .proof => .proof
-  | .statement => .statement (entry.kind.getD .theorem)
-
 /-- Primary source ref for internal block-rendering paths that still accept one source attachment. -/
 def Entry.primarySource? (entry : Entry) : Option Informal.Source.Ref :=
   entry.sources[0]?
 
 /-- Convert manifest entry metadata to the shared informal block model. -/
-def Entry.blockData (entry : Entry) : Informal.BlockData := {
+def Entry.blockData (entry : Entry) (assessment : Option Realizations.NodeAssessment := none) : Informal.BlockData := {
+  assessment
   toBlockMetadata := entry.toBlockMetadata
   kind := entry.kind.getD .theorem
   isProof := entry.facet == .proof
@@ -1018,7 +1006,41 @@ def Entry.heading (entry : Entry) (displayLabelOverride? : Option String := none
   let label := ((displayLabelOverride? <|> entry.displayLabel).getD fallbackLabel).trimAscii.toString
   { caption, label }
 
+/-- Display information independent of a rendered preview resource. -/
+structure NodeOccurrenceMetadata extends Informal.BlockMetadata where
+  authoredLabel : String := labelString label
+  kind : Option Informal.Data.NodeKind := none
+  title : String
+  href : Option String := none
+  parentTitle : Option String := none
+  uses : Array RelatedEntry := #[]
+  usedBy : Array RelatedEntry := #[]
+  deriving Inhabited, Repr, ToJson, FromJson
+
+def Entry.nodeMetadata (entry : Entry) : NodeOccurrenceMetadata := {
+  toBlockMetadata := entry.toBlockMetadata
+  authoredLabel := entry.authoredLabel
+  kind := entry.kind
+  title := entry.title
+  href := entry.href
+  parentTitle := entry.parentTitle
+  uses := entry.uses
+  usedBy := entry.usedBy
+}
+
+/-- One included label and its independently captured assessment. A resource
+supplies its display metadata when present; an occurrence without a resource
+retains its own metadata and has no preview key. -/
+structure NodeRow where
+  label : Name
+  primaryKey : Option String := none
+  bodyless : Option NodeOccurrenceMetadata := none
+  assessment : Option Realizations.NodeAssessment
+  deriving Inhabited, Repr, ToJson, FromJson
+
 structure File where
+  /-- Included Blueprint labels, independent of graph blocks and preview multiplicity. -/
+  nodes : Array NodeRow := #[]
   /--
   Internal generated-data schema marker for VBP tooling; not part of the public
   interface.
@@ -1114,9 +1136,6 @@ def Index.findEntry? (index : Index) (key : String) : Option Entry :=
 def Index.findHtml? (index : Index) (key : String) : Option String :=
   (index.findEntry? key).map (·.html)
 
-def File.findEntry? (file : File) (key : String) : Option Entry :=
-  file.index.findEntry? key
-
 def File.findHtml? (file : File) (key : String) : Option String :=
   file.index.findHtml? key
 
@@ -1157,7 +1176,7 @@ def Index.codeHtmlEntries (index : Index) (entry : _root_.Informal.PreviewManife
     if bodies.any (·.1 == key) then bodies else
       match index.findHtml? key with
       | some html =>
-        if html.trimAscii.isEmpty then bodies else bodies.push (key, html)
+        if PreviewResources.textIsBlank html then bodies else bodies.push (key, html)
       | none => bodies
 
 def Index.codeHtmlBodies (index : Index) (entry : _root_.Informal.PreviewManifest.Entry) :
@@ -1257,11 +1276,13 @@ deriving Inhabited, Repr
 
 structure Index where
   entriesByKey : Std.HashMap String Entry := {}
+  nodesByLabel : Std.HashMap Name NodeRow := {}
   groupsByLabel : Std.HashMap Name GroupRelation := {}
 deriving Inhabited
 
 def Index.ofFile (file : File) : Index := {
   entriesByKey := file.previews.foldl (fun entries entry => entries.insert entry.key entry) {}
+  nodesByLabel := file.nodes.foldl (fun nodes row => nodes.insert row.label row) {}
   groupsByLabel := file.groups.foldl (fun groups group => groups.insert group.label group) {}
 }
 
@@ -1277,6 +1298,12 @@ def File.findEntry? (file : File) (key : String) : Option Entry :=
 def Index.findGroup? (index : Index) (label : Name) : Option GroupRelation :=
   index.groupsByLabel.get? label
 
+def Index.primaryEntry? (index : Index) (row : NodeRow) : Option Entry :=
+  (row.primaryKey.bind index.findEntry?).filter (·.label == row.label)
+
+def Index.nodeMetadata? (index : Index) (row : NodeRow) : Option NodeOccurrenceMetadata :=
+  (index.primaryEntry? row).map Entry.nodeMetadata <|> row.bodyless
+
 private def GroupRelation.withoutMember (group : GroupRelation) (label : Name) : GroupRelation :=
   { group with entries := group.entries.filter (fun member => member.label != label) }
 
@@ -1285,6 +1312,11 @@ def Index.groupForEntry? (index : Index) (entry : Entry) : Option GroupRelation 
   let parent ← entry.parent
   let group ← index.findGroup? parent
   pure (group.withoutMember entry.label)
+
+def Index.groupForNode? (index : Index) (node : NodeOccurrenceMetadata) : Option GroupRelation := do
+  let parent ← node.parent
+  let group ← index.findGroup? parent
+  pure (group.withoutMember node.label)
 
 /-- Group metadata for an entry, with the current node removed from the member list. -/
 def File.groupForEntry? (file : File) (entry : Entry) : Option GroupRelation := do
@@ -1299,14 +1331,34 @@ serialized preview reference can render.
 structure PreviewArtifactIndex where
   manifestKeys : Std.HashSet String := {}
   htmlCacheKeys : Std.HashSet String := {}
+  previewKeys : Std.HashSet String := {}
+  defaultKeys : Lean.NameMap PreviewKey := {}
 
 private def PreviewArtifactIndex.ofKeys
-    (manifest : File) (htmlKeys : Array String) : PreviewArtifactIndex := {
-  manifestKeys :=
-    manifest.previews.foldl (fun keys entry => keys.insert entry.key) {}
-  htmlCacheKeys :=
-    htmlKeys.foldl (fun keys key => keys.insert key) {}
-}
+    (manifest : File) (htmlKeys : Array String) :
+    PreviewArtifactIndex := Id.run do
+  let manifestKeys := manifest.previews.foldl
+    (fun (keys : Std.HashSet String) entry => keys.insert entry.key) {}
+  let codePreviewKeys := manifest.previews.foldl
+    (fun (keys : Std.HashSet String) entry =>
+      if entry.targetKind == .leanDecl || entry.targetKind == .inlineLeanCode then
+        keys.insert entry.key
+      else keys) {}
+  let htmlCacheKeys := htmlKeys.foldl (fun (keys : Std.HashSet String) key => keys.insert key) {}
+  let hasPair (key : String) := manifestKeys.contains key && htmlCacheKeys.contains key
+  let hasCodePair (key : String) := codePreviewKeys.contains key && htmlCacheKeys.contains key
+  let mut previewKeys : Std.HashSet String := {}
+  let mut defaultKeys : Lean.NameMap PreviewKey := {}
+  for entry in manifest.previews do
+    unless hasPair entry.key do continue
+    if entry.codeOnlyPreview then
+      if entry.leanCodePreviewKeys.isEmpty ||
+          !entry.leanCodePreviewKeys.all (fun k => k != entry.key && hasCodePair k) then continue
+    previewKeys := previewKeys.insert entry.key
+    if entry.defaultPreview then
+      if let some key := PreviewKey.ofString? entry.key then
+        defaultKeys := defaultKeys.insert entry.label key
+  return { manifestKeys, htmlCacheKeys, previewKeys, defaultKeys }
 
 private def PreviewArtifactIndex.ofArtifacts
     (manifest : File) (htmlCache : HtmlCache.File) : PreviewArtifactIndex :=
@@ -1329,7 +1381,26 @@ def PreviewArtifactIndex.hasCacheKey
 
 def PreviewArtifactIndex.resolves (index : PreviewArtifactIndex) (key : String) :
     Bool :=
-  index.hasManifestKey key && index.hasCacheKey key
+  index.previewKeys.contains key
+
+def PreviewArtifactIndex.defaultKey? (index : PreviewArtifactIndex) (label : Name) :
+    Option PreviewKey :=
+  index.defaultKeys.get? label
+
+/-- Exact facet lookup. Only the statement can fall back to external markup. -/
+def PreviewArtifactIndex.facetKey? (index : PreviewArtifactIndex)
+    (label : Name) (facet : PreviewCache.Facet) : Option PreviewKey :=
+  let key := PreviewCache.key label facet
+  if index.resolves key then PreviewKey.ofString? key else
+  if facet == .statement then
+    let markupKey := PreviewSource.externalMarkupKey label
+    if index.resolves markupKey then PreviewKey.ofString? markupKey else none
+  else none
+
+private def PreviewArtifactIndex.defaultMembership (index : PreviewArtifactIndex) : PreviewKey → Bool :=
+  let keys := index.defaultKeys.foldl
+    (fun (keys : Std.HashSet String) _ key => keys.insert key.value) {}
+  fun key => keys.contains key.value
 
 /-- Install the standard page consumers of this output's prepared resources.
 The same availability index feeds relations and authored references; graph pages
@@ -1338,9 +1409,11 @@ these same presentation decisions until the completed resource set is available.
 def Files.withPageExtensions (files : Files) (impls : ExtensionImpls) : ExtensionImpls :=
   let index := PreviewArtifactIndex.ofFiles files
   let available := fun key : PreviewKey => index.resolves key.value
+  let renderPreview := PreviewResources.immediate available index.defaultMembership
   Informal.Commands.withPreparedGraphs impls files.manifest.graphs
-    |> (Inline.withPreviewAvailability · available)
-    |> (Block.withPreviewAvailability · available)
+    |> (Informal.Commands.withSummaryPreviewRendering · renderPreview (some index.defaultKey?))
+    |> (Inline.withPreviewRendering · renderPreview)
+    |> (Block.withPreviewRendering · renderPreview)
 
 private def PreviewArtifactIndex.previewKey?
     (index : PreviewArtifactIndex) (key? : Option Informal.PreviewKey) :
@@ -1349,7 +1422,7 @@ private def PreviewArtifactIndex.previewKey?
 
 private def RelatedEntry.finalizePreviewReferences
     (index : PreviewArtifactIndex) (entry : RelatedEntry) : RelatedEntry :=
-  { entry with previewKey := index.previewKey? entry.previewKey }
+  { entry with previewKey := index.defaultKey? entry.label <|> index.previewKey? entry.previewKey }
 
 private def GroupRelation.finalizePreviewReferences
     (index : PreviewArtifactIndex) (group : GroupRelation) : GroupRelation :=
@@ -1359,6 +1432,7 @@ private def Entry.finalizePreviewReferences
     (index : PreviewArtifactIndex) (entry : Entry) : Entry :=
   {
     entry with
+      defaultPreview := (index.defaultKey? entry.label).any (·.value == entry.key)
       leanCodePreviewKeys := entry.leanCodePreviewKeys.filter index.resolves
       uses := entry.uses.map (RelatedEntry.finalizePreviewReferences index)
       usedBy := entry.usedBy.map (RelatedEntry.finalizePreviewReferences index)
@@ -1375,6 +1449,10 @@ def File.finalizePreviewReferences
     (file : File) (index : PreviewArtifactIndex) : File :=
   {
     file with
+      nodes := file.nodes.map fun row => { row with bodyless := row.bodyless.map fun node => {
+        node with
+        uses := node.uses.map (RelatedEntry.finalizePreviewReferences index)
+        usedBy := node.usedBy.map (RelatedEntry.finalizePreviewReferences index) } }
       previews := file.previews.map (Entry.finalizePreviewReferences index)
       groups := file.groups.map (GroupRelation.finalizePreviewReferences index)
       graphs := file.graphs.map (graphFinalizePreviewReferences index)
@@ -1517,14 +1595,33 @@ def File.entriesForSourceDocument (file : File) (id : String) : Array Entry :=
 def File.blockStatementEntries (file : File) : Array Entry :=
   file.previews.filter (fun entry => entry.isBlock && entry.isStatement)
 
-/--
-Statement-facet entries that should be visible as Blueprint nodes to query
-clients. Bodyless source-backed nodes are exported as external-markup entries,
-but they still carry the same semantic label, dependency, ownership, and source
-metadata as block entries.
--/
-def File.queryableStatementEntries (file : File) : Array Entry :=
-  file.previews.filter (·.isQueryableStatement)
+/-- Give each included label one row. A block statement supplies its primary metadata
+ahead of an external markup statement or a proof-only resource. -/
+def collectNodeRows (entries : Array Entry) (assessmentFor : Name → Option Realizations.NodeAssessment) :
+    Array NodeRow := Id.run do
+  let mut order := #[]
+  let mut primary : Std.HashMap Name (Nat × String) := {}
+  for entry in entries do
+    unless entry.isBlock || entry.isExternalMarkup do continue
+    let rank := if entry.isBlock && entry.isStatement then 0 else if entry.isExternalMarkup then 1 else 2
+    match primary.get? entry.label with
+    | none => order := order.push entry.label
+    | some (oldRank, _) => if oldRank ≤ rank then continue
+    primary := primary.insert entry.label (rank, entry.key)
+  return order.map fun label => {
+    label, primaryKey := (primary.get? label).map (·.2), assessment := assessmentFor label }
+
+/-- One primary metadata resource per included semantic label. -/
+def File.nodeEntries (file : File) : Array Entry :=
+  let index := file.index
+  file.nodes.filterMap index.primaryEntry?
+
+def File.findNodeRow? (file : File) (label : String) : Option NodeRow :=
+  file.nodes.find? fun row => labelString row.label == label
+
+private def File.nodeMetadata (file : File) : Array NodeOccurrenceMetadata :=
+  let index := file.index
+  file.nodes.filterMap index.nodeMetadata?
 
 /-- All block entries matching the authored public label string, including non-statement facets. -/
 def File.findBlockEntriesByLabel (file : File) (label : String) : Array Entry :=
@@ -1559,72 +1656,48 @@ Statement entries are primary because most clients ask for node metadata rather
 than a proof-only rendered facet. Bodyless source-backed nodes are represented
 by statement-facet external-markup entries and participate in the same lookup.
 -/
-def File.findPrimaryQueryableEntry? (file : File) (label : String) : Option Entry :=
-  let entries := file.findQueryableEntriesByLabel label
-  entries.find? (·.isStatement) <|> entries[0]?
-
-private def pushUniqueString (values : Array String) (value : String) : Array String :=
-  if values.contains value then values else values.push value
+def File.findPrimaryQueryableEntry? (file : File) (label : String) : Option Entry := do
+  let row ← file.findNodeRow? label
+  file.index.primaryEntry? row
 
 /-- Sorted owner names present on queryable statement entries. -/
 def File.ownerValues (file : File) : Array String :=
-  let owners := file.queryableStatementEntries.foldl (init := #[]) fun owners entry =>
+  let owners := file.nodeMetadata.foldl (init := #[]) fun owners entry =>
       match entry.ownerDisplayName with
       | none => owners
-      | some owner => pushUniqueString owners owner
+      | some owner => pushUnique owners owner
   owners.qsort (· < ·)
 
 /-- Sorted tag values present on queryable statement entries. -/
 def File.tagValues (file : File) : Array String :=
-  let tags := file.queryableStatementEntries.foldl (init := #[]) fun tags entry =>
-      entry.tags.foldl pushUniqueString tags
+  let tags := file.nodeMetadata.foldl (init := #[]) fun tags entry =>
+      entry.tags.foldl pushUnique tags
   tags.qsort (· < ·)
 
 /-- Queryable statement entries carrying owner, tag, priority, or effort metadata. -/
-def File.metadataEntries (file : File) : Array Entry :=
-  file.queryableStatementEntries.filter fun entry =>
-    entry.ownerDisplayName.isSome || entry.priority.isSome ||
-      entry.effort.isSome || !entry.tags.isEmpty
+def NodeOccurrenceMetadata.hasTriageMetadata (node : NodeOccurrenceMetadata) : Bool :=
+  node.ownerDisplayName.isSome || node.priority.isSome ||
+    node.effort.isSome || !node.tags.isEmpty
 
-private def File.actionableGraphNodeWithStep? (file : File) (label : Name) :
-    Option (Informal.Graph.NodeData × String) :=
-  file.graphs.findSome? fun graph =>
-    graph.nodes.findSome? fun node =>
-      if node.label == label then
-        node.actionableStage?.map fun nextStep => (node, nextStep)
-      else
-        none
-
-/-- First finalized graph node showing an actionable next step for `label`. -/
-def File.actionableGraphNode? (file : File) (label : Name) : Option Informal.Graph.NodeData :=
-  (file.actionableGraphNodeWithStep? label).map (·.1)
-
-/-- A queryable statement entry paired with its actionable finalized graph status. -/
+/-- Captured actionable work for one included semantic label. -/
 structure WorkQueueItem where
-  /-- Queryable statement-level manifest entry. -/
-  entry : Entry
-  /-- Matching finalized graph node whose status makes the entry actionable. -/
-  graphNode : Informal.Graph.NodeData
-  /-- Actionable formalization track, either `"statement"` or `"proof"`. -/
+  node : NodeRow
+  statementStatus : Graph.StatementStatus
+  proofStatus : Graph.ProofStatus
   nextStep : String
 
-/--
-Queryable statement entries paired with their actionable finalized graph status.
-
-Finalized graph nodes are the generated planning source of truth. This query
-does not infer readiness from entry metadata; a manifest without matching graph
-nodes therefore has an empty work queue.
--/
 def File.workQueueItems (file : File) : Array WorkQueueItem :=
-  file.queryableStatementEntries.filterMap fun entry => do
-    let (graphNode, nextStep) ← file.actionableGraphNodeWithStep? entry.label
-    pure { entry, graphNode, nextStep }
+  file.nodes.filterMap fun row => do
+    let assessment ← row.assessment
+    let nextStep ← Graph.actionableStageForAssessment? assessment
+    let (statementStatus, proofStatus) := Graph.statusesForAssessment assessment
+    return { node := row, statementStatus, proofStatus, nextStep }
 
 private def containsSearchText (text value : String) : Bool :=
   value.toLower.contains text
 
 /-- Case-insensitive text search over user-facing block manifest fields. -/
-def Entry.matchesText (entry : Entry) (query : String) : Bool :=
+def NodeOccurrenceMetadata.matchesText (entry : NodeOccurrenceMetadata) (query : String) : Bool :=
   let text := query.toLower
   containsSearchText text entry.authoredLabel ||
     containsSearchText text entry.title ||
@@ -1673,27 +1746,51 @@ private def checkManifestInternalSchema (json : Json) : Except String Unit := do
     .error <| unsupportedManifestSchemaMessage
       s!"found `{manifestInternalSchemaVersionField}` {version}, expected {manifestInternalSchemaVersion}"
 
-def readFile (path : System.FilePath) : IO File := do
+/-- A persisted catalog has exactly one row per included label. Its primary key
+must name that label's preferred resource, and captured graph occurrences must
+agree with the same assessment used by queries. -/
+private def File.validateNodes (file : File) : Except String Unit := do
+  let expected := collectNodeRows file.previews (fun _ => none)
+  let index := file.index
+  unless index.nodesByLabel.size == file.nodes.size do
+    throw "missing or duplicate Blueprint node rows"
+  let primary := expected.foldl (init := ({} : Std.HashMap Name String)) fun rows row =>
+    row.primaryKey.elim rows (fun key => rows.insert row.label key)
+  for row in expected do
+    unless (index.nodesByLabel.get? row.label).any (·.primaryKey == row.primaryKey) do
+      throw s!"incorrect primary resource for Blueprint node {row.label}"
+  for row in file.nodes do
+    match row.primaryKey, row.bodyless with
+    | some key, none =>
+      unless primary.get? row.label == some key do
+        throw s!"incorrect primary resource for Blueprint node {row.label}"
+    | none, some data =>
+      unless data.label == row.label && data.authoredLabel == labelString row.label &&
+          !(primary.contains row.label) do
+        throw s!"incorrect bodyless metadata for Blueprint node {row.label}"
+    | _, _ => throw s!"expected either a primary resource or bodyless metadata for Blueprint node {row.label}"
+  for graph in file.graphs do
+    for node in graph.nodes do
+      if let some row := index.nodesByLabel.get? node.label then
+        unless node.assessment == row.assessment do
+          throw s!"graph occurrence disagrees with the node assessment for {node.label}"
+
+private def readManifest (path : System.FilePath) (includeGraphs : Bool) : IO File := do
   let json ← readJsonFile path "Blueprint manifest"
-  match checkManifestInternalSchema json with
-  | .ok () => decodeJsonAs path "Blueprint manifest" json
+  let result : Except String File := do
+    checkManifestInternalSchema json
+    discard <| json.getObjVal? "nodes"
+    let file : File ← fromJson? (if includeGraphs then json else json.setObjVal! "graphs" (Json.arr #[]))
+    file.validateNodes
+    return file
+  match result with
+  | .ok file => return file
   | .error err => throw <| IO.userError s!"could not decode Blueprint manifest {path}: {err}"
 
-/--
-Read the semantic projection consumed by graph-free `vbp query` selectors
-without materializing graph render projections they do not read.
+def readFile (path : System.FilePath) : IO File := readManifest path true
 
-The manifest schema and every non-graph field are decoded normally. Use
-`readFile` for artifact audits: its strict `GraphData` decoder reconstructs and
-checks derived edges, groups, preview mappings, and DOT variants.
--/
-def readFileWithoutGraphs (path : System.FilePath) : IO File := do
-  let json ← readJsonFile path "Blueprint manifest"
-  match checkManifestInternalSchema json with
-  | .ok () =>
-      decodeJsonAs path "Blueprint manifest" <|
-        json.setObjVal! "graphs" (Json.arr #[])
-  | .error err => throw <| IO.userError s!"could not decode Blueprint manifest {path}: {err}"
+/-- Read semantic node rows and preview metadata without reconstructing graph layouts. -/
+def readFileWithoutGraphs (path : System.FilePath) : IO File := readManifest path false
 
 private structure SchemaState where
   seen : Std.HashSet Name := {}
@@ -1742,6 +1839,8 @@ private partial def schemaForType (ty : Expr) : StateT SchemaState MetaM Json :=
       pure <| Json.mkObj [("type", Json.str "integer")]
   | .const ``Float _ =>
       pure <| Json.mkObj [("type", Json.str "number")]
+  | .const ``Lean.Json _ =>
+      pure <| Json.mkObj []
   | .const ``Array _ =>
       let itemSchema ← schemaForType args[0]!
       pure <| Json.mkObj [("type", Json.str "array"), ("items", itemSchema)]
@@ -1787,7 +1886,16 @@ private partial def schemaForType (ty : Expr) : StateT SchemaState MetaM Json :=
             | throwError "Invalid JSON key for schema field {name}.{field}"
           let ty ← Meta.whnf (← fieldType projection)
           let ty := if isOptional && ty.isAppOf ``Option then ty.appArg! else ty
-          let schema ← schemaForType ty
+          let schema ←
+            if name == ``Realizations.NodeAssessment && field == `details then
+              pure <| Json.mkObj [
+                ("anyOf", Json.arr #[
+                  Json.mkObj [("type", Json.str "object")],
+                  Json.mkObj [("type", Json.str "null")]
+                ])
+              ]
+            else
+              schemaForType ty
           let docs? ← findDocString? env projection
           let schema :=
             match docs? with
@@ -1952,9 +2060,6 @@ private def blockParentTitle? (state : TraverseState) (blockData : Informal.Bloc
   blockData.parent.map fun parent =>
     (groupTitle? state parent).getD parent.toString
 
-private def pushUnique [BEq α] (values : Array α) (value : α) : Array α :=
-  if values.contains value then values else values.push value
-
 private def externalDeclsFromLeanPreviewKeys
     (state : TraverseState)
     (keys : Array String) : Array Informal.Data.ExternalRef :=
@@ -1968,42 +2073,82 @@ private def blockCodeData?
     (entry : PreviewCache.Entry)
     (blockData : Informal.BlockData) : Option Informal.BlockCodeData :=
   let code := blockData.codeData.getD {}
-  let externalDecls := externalDeclsFromLeanPreviewKeys state entry.leanCodePreviewKeys
-  let externalDecls := if externalDecls.isEmpty then
-    code.externalDecls
-    else externalDecls
-  { code with externalDecls }.nonempty?
+  if !code.externalDecls.isEmpty then code.nonempty? else
+    { code with externalDecls := externalDeclsFromLeanPreviewKeys state entry.leanCodePreviewKeys }.nonempty?
 
-/-- Per-export inputs, ordered by storage key. Rejected entries remain present as
-`none` so markup fallback cannot mistake corrupt content for an absent facet. -/
-private abbrev FacetInputs := Std.TreeMap String (Option RenderingResolution.Facet) compare
+/-- Resolved inputs for one included node. A statement synthesized solely for
+external markup keeps its distinct resource key. -/
+private structure SiteInput where
+  canonical : BlockData
+  markup : Array Data.ExternalMarkup
+  statement? : Option (EntryKind × RenderingResolution.Facet)
+  proof? : Option RenderingResolution.Facet
 
-private def prepareFacetInputs (state : TraverseState) (logError : String → IO Unit) :
-    IO FacetInputs := do
-  let mut inputs := {}
-  for decoded in Informal.TraversalIndex.TraversalPreviews.entries state do
+private def SiteInput.facets (input : SiteInput) : Array RenderingResolution.Facet :=
+  (input.statement?.map (·.2)).toArray ++ input.proof?.toArray
+
+private def prepareSiteInputs (state : TraverseState) (logError : String → IO Unit) :
+    IO (Array SiteInput) := do
+  let mut facets : Std.HashMap String (Option PreviewCache.Entry) := {}
+  let mut requested : NameSet := {}
+  for decoded in TraversalIndex.TraversalPreviews.entries state do
     match decoded with
     | .error error =>
       logError s!"Blueprint manifest: malformed preview entry {error.canonicalName}: {error.message}"
-      inputs := inputs.insert error.canonicalName none
+      facets := facets.insert error.canonicalName none
     | .ok stored =>
-      match RenderingResolution.facet state stored.canonicalName stored.data with
+      match RenderingResolution.checkFacetKey stored.canonicalName stored.data with
       | .error error =>
         logError s!"Blueprint manifest: {error}"
-        inputs := inputs.insert stored.canonicalName none
-      | .ok resolved => inputs := inputs.insert stored.canonicalName (some resolved)
-  return inputs
+        facets := facets.insert stored.canonicalName none
+      | .ok () =>
+        facets := facets.insert stored.canonicalName (some stored.data)
+        requested := requested.insert stored.data.label
+  let mut markupByLabel : Lean.NameMap (Array Data.ExternalMarkup) := {}
+  for decoded in TraversalIndex.ExternalMarkup.entries state do
+    match decoded with
+    | .error error =>
+      logError s!"Blueprint manifest: malformed external-markup entry {error.canonicalName}: {error.message}"
+    | .ok stored =>
+      if stored.canonicalName != stored.data.label.toString then
+        logError s!"Blueprint manifest: external-markup key {stored.canonicalName} disagrees with its label {stored.data.label}"
+      else unless stored.data.markup.isEmpty do
+        requested := requested.insert stored.data.label
+        markupByLabel := markupByLabel.insert stored.data.label stored.data.markup.toArray
+  let mut inputs := #[]
+  for decoded in TraversalIndex.Nodes.allEntries state do
+    match decoded with
+    | .error error => logError s!"Blueprint manifest: malformed node {error.canonicalName}: {error.message}"
+    | .ok stored =>
+      let node := stored.data
+      let label := node.label
+      if stored.canonicalName != label.toString then
+        logError s!"Blueprint manifest: node key {stored.canonicalName} disagrees with its label {label}"
+        continue
+      unless requested.contains label || TraversalIndex.Nodes.hasRenderedOccurrence state label do continue
+      requested := requested.erase label
+      let canonical := (TraversalIndex.Nodes.resolveCanonical state node).withResolvedNumbering state
+      let resolve := RenderingResolution.Facet.ofNode node canonical
+      let markup := (markupByLabel.get? label).getD #[]
+      let statement? := match facets[PreviewCache.statementKey label]? with
+        | some stored => stored.map fun preview => (EntryKind.block, resolve preview)
+        | none => if markup.isEmpty then none else
+            some (.externalMarkup, resolve (PreviewCache.Entry.ofBlocks label .statement #[]))
+      let proof? := (facets[PreviewCache.proofKey label]?).join.map resolve
+      inputs := inputs.push { canonical, markup, statement?, proof? }
+  for label in requested do
+    logError s!"Blueprint manifest: missing rendering node for '{label}'"
+  return inputs.qsort fun a b => a.canonical.traversalOrderLess b.canonical
 
-private def leanCodePreviewSourceRefs (state : TraverseState) (inputs : FacetInputs) :
+private def leanCodePreviewSourceRefs (state : TraverseState) (inputs : Array SiteInput) :
     Std.HashMap String (Array Informal.Source.Ref) := Id.run do
   let mut sources : Std.HashMap String (Array Informal.Source.Ref) := {}
-  for (_, resolved?) in inputs do
-    if let some resolved := resolved? then
-      if let some sourceRef := resolved.preview.sourceRef then
-        for key in RenderingResolution.codePreviewKeys state resolved do
-          let current := (sources.get? key).getD #[]
-          sources := sources.insert key (pushUnique current sourceRef)
-  sources
+  for input in inputs do
+    for facet in input.facets do
+      if let some sourceRef := facet.preview.sourceRef then
+        for key in RenderingResolution.codePreviewKeys state facet do
+          sources := sources.insert key (pushUnique (sources[key]?.getD #[]) sourceRef)
+  return sources
 
 private def relatedEntryForBlock
     (state : TraverseState)
@@ -2022,7 +2167,7 @@ private def RelatedEntry.ofPanel (entry : Informal.RelatedPanel.PanelEntry) : Re
   label := entry.label
   title := entry.previewTitle
   href := entry.href
-  previewKey := entry.previewKey
+  previewKey := entry.previewKeys[0]?
   dependencies := entry.dependencies
 }
 
@@ -2041,30 +2186,6 @@ private def groupRelationHeader
       (if header.isEmpty then parent.toString else header, true)
   | none => (parent.toString, false)
 
-private def statementGroupParent? (blockData : Informal.BlockData) : Option Name := do
-  let parent ← blockData.parent
-  let false := blockData.isProof
-    | none
-  pure parent
-
-/-- Build each group relation once, preserving traversal order for its statement members. -/
-private def buildGroupRelations (state : TraverseState) : Array GroupRelation := Id.run do
-  let mut groups : Array GroupRelation := #[]
-  let mut groupIndexes : Std.HashMap Name Nat := {}
-  for blockData in Informal.collectStoredBlocks state do
-    let some parent := statementGroupParent? blockData
-      | continue
-    let member := relatedEntryForBlock state blockData
-    match groupIndexes.get? parent with
-    | some index =>
-        let group := groups[index]!
-        groups := groups.set! index { group with entries := group.entries.push member }
-    | none =>
-        let (title, declared) := groupRelationHeader state parent
-        groupIndexes := groupIndexes.insert parent groups.size
-        groups := groups.push { label := parent, title, declared, entries := #[member] }
-  return groups
-
 /--
 Resolve traversal-backed group metadata from the member index installed by the
 standard Blueprint traversal pipeline.
@@ -2080,28 +2201,18 @@ def groupRelationForEntry? (state : TraverseState) (entry : Entry) : Option Grou
   let (title, declared) := groupRelationHeader state parent
   pure { label := parent, title, declared, entries }
 
-/--
-Construct the metadata shell used by source-backed external-markup entries when
-the label has no rendered block preview body.
--/
-private def emptyTraversalPreview (label : Name) (facet : PreviewCache.Facet) :
-    PreviewCache.Entry :=
-  PreviewCache.Entry.ofBlocks label facet #[]
-
 private def blockSemanticManifestEntry
     (state : TraverseState)
     (resolved : RenderingResolution.Facet)
-    (key : String := PreviewCache.key resolved.preview.label resolved.preview.facet)
-    (targetKind : EntryKind := .block)
-    (externalMarkup? : Option (Array Informal.Data.ExternalMarkup) := none) : Entry :=
+    (externalMarkup : Array Informal.Data.ExternalMarkup) (codeKeys : Array String) : Entry :=
   let preview := resolved.preview
   let blockData := resolved.data
   let reference := RenderingResolution.referenceOfData state resolved.data (some preview.facet)
   let headingParts? := blockHeadingParts? state blockData preview.facet
   let codeData := blockCodeData? state preview blockData
   {
-    key
-    targetKind
+    key := PreviewCache.key preview.label preview.facet
+    targetKind := .block
     toBlockMetadata := blockData.toBlockMetadata
     facet := preview.facet
     kind := some blockData.kind
@@ -2111,12 +2222,12 @@ private def blockSemanticManifestEntry
     href := reference.href
     sourceLocation := preview.sourceLocation
     parentTitle := blockParentTitle? state blockData
-    leanCodePreviewKeys := RenderingResolution.codePreviewKeys state resolved
+    leanCodePreviewKeys := codeKeys
     codeData
     issueNumber := blockData.issueUrl.bind fun url => (Informal.issueNumberSegment? url).bind String.toNat?
     foldProofBlock := preview.foldProofBlock
     foldCodeBlock := preview.foldCodeBlock
-    externalMarkup := externalMarkup?.getD (externalMarkupArray state preview.label)
+    externalMarkup
     sources := preview.sourceRef.toArray
     uses := buildUsesRelations state blockData
     usedBy := buildUsedByRelations state blockData
@@ -2124,100 +2235,114 @@ private def blockSemanticManifestEntry
 
 /-- Project a resolved facet into the manifest shell without repeating semantic lookup. -/
 def blockEntryOfFacet (state : TraverseState) (resolved : RenderingResolution.Facet) : Entry :=
-  blockSemanticManifestEntry state resolved
+  blockSemanticManifestEntry state resolved (externalMarkup := externalMarkupArray state resolved.preview.label)
+    (codeKeys := RenderingResolution.codePreviewKeys state resolved)
 
 /-- Rendered resources stay structured until their nested presentation decisions
 can be resolved. Only the final HTML cache contains opaque serialized bodies. -/
 private structure RenderedResource where
   key : String
   html : Output.Html
+  hasProse : Bool := false
 
-private def buildTraversalEntries
-    (impls : ExtensionImpls)
-    (logError : String → IO Unit)
-    (state : TraverseState)
-    (inputs : FacetInputs)
-    (hoverState : Verso.Code.Hover.State Output.Html)
-    (externalMarkupConfig : Informal.ExternalMarkupRender.Config := {})
-    (verbose : Bool := false) :
-    IO (Array Entry × Array RenderedResource × Verso.Code.Hover.State Output.Html) := do
-  let mut entries := #[]
-  let mut htmlEntries := #[]
-  let mut hoverState := hoverState
-  logBuildProgressItemCount verbose "traversal preview entries" inputs.size
-  for (key, resolved?) in inputs do
-    if let some resolved := resolved? then
-      let entry := resolved.preview
-      let externalBody? := if entry.facet == .statement then
-        Informal.ExternalMarkupRender.previewBody? externalMarkupConfig (externalMarkupArray state entry.label)
-        else none
-      if !entry.hasRenderablePreview then
-        continue
-      let html ←
-        if entry.hasRenderedBody then
-          let rendered ← Informal.renderManualBlocksHtmlWithStateAndHovers
-            entry.blocks impls state
-            (logError := logError) (hoverState := hoverState)
-          hoverState := rendered.hoverState
-          let html := rendered.html
-          if PreviewResources.htmlIsBlank html then
-            continue
-          pure html
-        else
-          pure (externalBody?.getD (.text false codeOnlyBlockPreviewHtml))
-      let manifestEntry := { blockEntryOfFacet state resolved with
-        codeOnlyPreview := !entry.hasRenderedBody && externalBody?.isNone }
-      entries := entries.push manifestEntry
-      htmlEntries := htmlEntries.push { key, html }
-  pure (entries, htmlEntries, hoverState)
+/-- A metadata-only external statement has no rendered resource. Each label
+produces at most one entry for each facet. -/
+private abbrev SiteEntry := Entry × Option RenderedResource
 
-private def hasPreviewBackedBlockEntry (entries : Array Entry) (label : Name) : Bool :=
-  entries.any fun entry =>
-    entry.targetKind == .block && entry.label == label
+private structure SiteNode where
+  canonical : BlockData
+  statement? : Option SiteEntry
+  proof? : Option SiteEntry
 
-private def buildExternalMarkupEntries
-    (logError : String → IO Unit)
-    (state : TraverseState)
-    (inputs : FacetInputs)
-    (previewBackedEntries : Array Entry)
-    (renderConfig : Informal.ExternalMarkupRender.Config := {})
-    (verbose : Bool := false) :
-    IO (Array Entry × Array RenderedResource) := do
-  let mut entries := #[]
-  let mut htmlEntries := #[]
-  let decodedEntries := Informal.TraversalIndex.ExternalMarkup.entries state
-  logBuildProgressItemCount verbose "external markup manifest entries" decodedEntries.size
-  for decoded in decodedEntries do
-    match decoded with
-    | .error err =>
-      logError s!"Blueprint manifest: malformed external-markup entry {err.canonicalName}: {err.message}"
-    | .ok stored =>
-      let data := stored.data
-      if data.markup.isEmpty then
-        continue
-      let statementKey := PreviewCache.key data.label .statement
-      let resolved ← match inputs.get? statementKey with
-        | some (some resolved) => pure resolved
-        | some none => continue -- Already diagnosed during input preparation.
-        | none =>
-          match RenderingResolution.facet state statementKey (emptyTraversalPreview data.label .statement) with
-          | .ok resolved => pure resolved
-          | .error error =>
-            logError s!"Blueprint manifest: {error}"
-            continue
-      if hasPreviewBackedBlockEntry previewBackedEntries data.label && resolved.preview.hasRenderedBody then
-        continue
-      let manifestEntry := blockSemanticManifestEntry state resolved
-        (key := externalMarkupEntryKey data.label)
-        (targetKind := .externalMarkup)
-        (externalMarkup? := some data.markup.toArray)
-      entries := entries.push manifestEntry
-      if let some markup := Informal.ExternalMarkupRender.selected? renderConfig manifestEntry.externalMarkup then
-        let heading := manifestEntry.heading
-        if let some html := renderExternalMarkupEntryHtml renderConfig manifestEntry.blockData
-            heading.caption heading.label markup manifestEntry.externalMarkup manifestEntry.sources then
-          htmlEntries := htmlEntries.push { key := manifestEntry.key, html := .text false html }
-  pure (entries, htmlEntries)
+private def SiteNode.entries (node : SiteNode) := node.statement?.toArray ++ node.proof?.toArray
+
+private def SiteNode.row (state : TraverseState) (node : SiteNode) : NodeRow := Id.run do
+  let data := node.canonical
+  let primary := node.statement? <|> node.proof?
+  let bodyless := if primary.isSome then none else
+    let reference := RenderingResolution.referenceOfData state data
+    some {
+      toBlockMetadata := data.toBlockMetadata
+      kind := some data.kind, title := reference.title, href := reference.href
+      parentTitle := blockParentTitle? state data
+      uses := buildUsesRelations state data, usedBy := buildUsedByRelations state data }
+  return { label := data.label, assessment := data.assessment, primaryKey := primary.map (·.1.key), bodyless }
+
+/-- Prefer real prose on either facet, then a code-only facet, then a witness/markup body. -/
+private def SiteNode.defaultKey? (node : SiteNode) : Option PreviewKey := do
+  let entries := node.entries
+  let selected ← entries.find? (fun (_, body) => body.any (·.hasProse)) <|>
+    entries.find? (fun (entry, body) => entry.codeOnlyPreview && body.isSome) <|>
+    entries.find? (fun (_, body) => body.isSome)
+  PreviewKey.ofString? selected.1.key
+
+private def buildGroupRelations (state : TraverseState) (nodes : Array SiteNode) : Array GroupRelation := Id.run do
+  let mut groups : Array GroupRelation := #[]
+  let mut indexes : Lean.NameMap Nat := {}
+  for node in nodes do
+    let data := node.canonical
+    let some parent := data.parent | continue
+    let member := relatedEntryForBlock state data
+    match indexes.get? parent with
+    | some index => groups := groups.modify index fun group => { group with entries := group.entries.push member }
+    | none =>
+      let (title, declared) := groupRelationHeader state parent
+      indexes := indexes.insert parent groups.size
+      groups := groups.push { label := parent, title, declared, entries := #[member] }
+  return groups
+
+private def renderSiteFacet (impls : ExtensionImpls) (logError : String → IO Unit)
+    (state : TraverseState) (markupConfig : ExternalMarkupRender.Config) (markup : Array Data.ExternalMarkup)
+    (codeKeys : Std.HashSet String) (kind : EntryKind) (facet : RenderingResolution.Facet)
+    (hovers : Verso.Code.Hover.State Output.Html) : IO (Option SiteEntry × Verso.Code.Hover.State Output.Html) := do
+  let preview := facet.preview
+  let code := (RenderingResolution.codePreviewKeys state facet).filter codeKeys.contains
+  let entry := blockSemanticManifestEntry state facet (externalMarkup := markup) (codeKeys := code)
+  let mut hovers := hovers
+  if kind == .block then
+    let mut prose? := none
+    if preview.hasRenderedBody then
+      let rendered ← Informal.renderManualBlocksHtmlWithStateAndHovers preview.blocks impls state
+        (logError := logError) (hoverState := hovers)
+      hovers := rendered.hoverState
+      unless PreviewResources.htmlIsBlank rendered.html do prose? := some rendered.html
+    let body? := prose? <|> (do
+      guard (preview.facet == .statement)
+      (ExternalMarkupRender.previewBody? markupConfig markup).filter (!PreviewResources.htmlIsBlank ·))
+    if let some html := body? then
+      return (some ({ entry with sourceBackedPreview := prose?.isNone },
+        some { key := entry.key, html, hasProse := prose?.isSome }), hovers)
+    unless code.isEmpty do
+      return (some ({ entry with codeOnlyPreview := true }, some { key := entry.key, html := codeOnlyBlockPreviewHtml }), hovers)
+  if preview.facet == .proof || markup.isEmpty then return (none, hovers)
+  let entry := { entry with
+    key := externalMarkupEntryKey preview.label, targetKind := .externalMarkup,
+    sourceBackedPreview := true }
+  let resource := do
+    let selected ← ExternalMarkupRender.selected? markupConfig markup
+    let heading := entry.heading
+    let html ← renderExternalMarkupEntryHtml markupConfig entry.blockData heading.caption heading.label selected markup entry.sources
+    guard (!PreviewResources.textIsBlank html)
+    return { key := entry.key, html := .text false html : RenderedResource }
+  return (some (entry, resource), hovers)
+
+private def buildSiteNodes (impls : ExtensionImpls) (logError : String → IO Unit)
+    (state : TraverseState) (inputs : Array SiteInput) (codeKeys : Std.HashSet String)
+    (config : ExternalMarkupRender.Config) (hovers : Verso.Code.Hover.State Output.Html) :
+    IO (Array SiteNode × Verso.Code.Hover.State Output.Html) := do
+  let mut nodes := #[]
+  let mut hovers := hovers
+  for input in inputs do
+    let render := renderSiteFacet impls logError state config input.markup codeKeys
+    let (statement?, next) ← match input.statement? with
+      | some (kind, facet) => render kind facet hovers
+      | none => pure (none, hovers)
+    let (proof?, next) ← match input.proof? with
+      | some facet => render .block facet next
+      | none => pure (none, next)
+    nodes := nodes.push { canonical := input.canonical, statement?, proof? }
+    hovers := next
+  return (nodes, hovers)
 
 private def declarationRangeToLspRange (range : Lean.DeclarationRange) : Lean.Lsp.Range := {
   start := {
@@ -2283,7 +2408,7 @@ private def buildLeanCodeEntries
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
     (state : TraverseState)
-    (inputs : FacetInputs)
+    (inputs : Array SiteInput)
     (hoverState : Verso.Code.Hover.State Output.Html)
     (verbose : Bool := false) :
     IO (Array Entry × Array RenderedResource × Verso.Code.Hover.State Output.Html) := do
@@ -2413,11 +2538,12 @@ private def buildSourceDocuments
 private def validateSourceRefs
     (logError : String → IO Unit)
     (documents : Array Informal.Source.Document)
-    (inputs : FacetInputs) : IO Unit := do
-  for (key, resolved?) in inputs do
-    if let some resolved := resolved? then
-      if let some sourceRef := resolved.preview.sourceRef then
+    (inputs : Array SiteInput) : IO Unit := do
+  for input in inputs do
+    for facet in input.facets do
+      if let some sourceRef := facet.preview.sourceRef then
         unless documents.any (fun doc => doc.id == sourceRef.document) do
+          let key := PreviewCache.key facet.preview.label facet.preview.facet
           logError s!"Blueprint manifest: source ref for facet {key} references unknown source document '{sourceRef.document}'"
 
 /--
@@ -2438,15 +2564,11 @@ def buildPreviewDataFiles
   let state := preparedState.state
   let impls := Inline.withPreviewRendering impls PreviewResources.deferred
     |> (Block.withPreviewRendering · PreviewResources.deferred)
+    |> (Informal.Commands.withSummaryPreviewRendering · PreviewResources.deferred)
+    |> Informal.Commands.withDeferredGraphs
   let inputs ← withTimedBuildProgress verbose "preparing facet export inputs" <|
-    prepareFacetInputs state logError
+    prepareSiteInputs state logError
   let hoverState := HtmlCache.initialHoverState
-  let (traversalPreviews, traversalHtml, hoverState) ←
-    withTimedBuildProgress verbose "building traversal preview entries" <|
-      buildTraversalEntries impls logError state inputs hoverState externalMarkupConfig (verbose := verbose)
-  let (externalMarkupPreviews, externalMarkupHtml) ←
-    withTimedBuildProgress verbose "building external markup manifest entries" <|
-      buildExternalMarkupEntries logError state inputs traversalPreviews externalMarkupConfig (verbose := verbose)
   let (leanCodePreviews, leanCodeHtml, hoverState) ←
     withTimedBuildProgress verbose "building Lean code preview entries" <|
       buildLeanCodeEntries impls logError state inputs hoverState (verbose := verbose)
@@ -2458,27 +2580,29 @@ def buildPreviewDataFiles
       buildSourceDocuments logError state
   withTimedBuildProgress verbose "validating source references" <|
     validateSourceRefs logError sourceDocuments inputs
-  let (previews, groups, htmlEntries, graphs) ←
-    withTimedBuildProgress verbose "assembling Blueprint manifest/cache indexes" <| do
-      let previews :=
-        (traversalPreviews ++ externalMarkupPreviews ++ leanCodePreviews ++ citationPreviews).qsort
-          (fun a b => a.key < b.key)
-      let groups := buildGroupRelations state
-      let htmlEntries :=
-        (traversalHtml ++ externalMarkupHtml ++ leanCodeHtml ++ citationHtml).qsort
-          (fun a b => a.key < b.key)
-      let mut graphEntries := #[]
-      for decoded in Informal.GraphApi.cachedEntries state do
-        match decoded with
-        | .error err =>
-            logError s!"Blueprint manifest: malformed graph entry {err.canonicalName}: {err.message}"
-        | .ok stored =>
-            graphEntries := graphEntries.push stored.data
-      let graphs := graphEntries.qsort (fun a b => a.key < b.key)
-      pure (previews, groups, htmlEntries, graphs)
-  let manifest : File := { previews, groups, graphs, sourceDocuments }
-  let index := PreviewArtifactIndex.ofKeys manifest (htmlEntries.map (·.key))
-  let resolve := PreviewResources.finish (fun key => index.resolves key.value)
+  let codeKeys := leanCodeHtml.foldl (init := ({} : Std.HashSet String)) fun keys entry => keys.insert entry.key
+  let (siteNodes, hoverState) ← withTimedBuildProgress verbose "building node previews" <|
+    buildSiteNodes impls logError state inputs codeKeys externalMarkupConfig hoverState
+  let siteEntries := siteNodes.flatMap SiteNode.entries
+  let previews := (siteEntries.map (·.1) ++ leanCodePreviews ++ citationPreviews).qsort (fun a b => a.key < b.key)
+  let htmlEntries := (siteEntries.filterMap (·.2) ++ leanCodeHtml ++ citationHtml).qsort (fun a b => a.key < b.key)
+  let manifest : File := { nodes := siteNodes.map (SiteNode.row state), previews, sourceDocuments
+                           groups := buildGroupRelations state siteNodes }
+  let defaultKeys := siteNodes.foldl (init := ({} : Lean.NameMap PreviewKey)) fun keys node =>
+    match node.defaultKey? with
+    | some key => keys.insert node.canonical.label key
+    | none => keys
+  let index := { PreviewArtifactIndex.ofKeys manifest (htmlEntries.map (·.key)) with defaultKeys }
+  let mut graphEntries := #[]
+  for decoded in Informal.GraphApi.cachedEntries state (some index.defaultKey?) do
+    match decoded with
+    | .error err => logError s!"Blueprint manifest: malformed graph entry {err.canonicalName}: {err.message}"
+    | .ok stored => graphEntries := graphEntries.push stored.data
+  let graphs := graphEntries.qsort (fun a b => a.key < b.key)
+  let manifest := { manifest with graphs }
+  let defaultAvailable := index.defaultMembership
+  let resolveGraph := Informal.Commands.resolveDeferredGraphs state graphs
+  let resolve := fun html => PreviewResources.finish (fun key => index.resolves key.value) html defaultAvailable resolveGraph
   let serializeStart ← if verbose then IO.monoMsNow else pure 0
   let resolvedEntries ← htmlEntries.mapM fun entry => do
     let html ← match resolve entry.html with

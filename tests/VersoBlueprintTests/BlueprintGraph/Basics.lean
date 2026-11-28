@@ -13,12 +13,15 @@ open Informal
 open Informal.Data
 open Informal.Environment
 open Informal.Graph
+open Informal.Realizations
 open Verso.VersoBlueprintTests.BlueprintGraph.Shared
 
 theorem statusAdmittedHelper : True := by
   sorry
 
 theorem statusConsumer : True := statusAdmittedHelper
+
+theorem statusUsesProofInType : statusAdmittedHelper = True.intro := Eq.refl True.intro
 
 def statusSpec : Prop := by sorry
 
@@ -80,16 +83,18 @@ theorem statusDirectTypeOnly (_h : (by sorry : Prop)) : True := True.intro
     let recordAxioms ← collectAxioms record.name
     let recordStatus ← analyzeDeclaration record.name
     let completeStatus ← analyzeDeclaration complete.name
-    let node : Data.Node := {
-      kind := .definition
-      literateCodes := #[{ stx := .missing, definedDefs :=
-        #[{ name := record.name, provedStatus := recordStatus }] }]
+    let assessment : Realizations.NodeAssessment := {
+      hasNativeDeclarations := true
+      hasNativeBodyRequirement := true
+      nativeStatementComplete := false
+      nativeBodyComplete := false
+      statementDependenciesComplete := false
+      proofDependenciesComplete := false
     }
+    let (statement, proof) := Graph.statusesForAssessment assessment
     return recordAxioms.contains ``sorryAx &&
       recordStatus.hasTypeGap && recordStatus.dependsOnSorry &&
-      !recordStatus.containsExplicitSorry && !nodeLocalStatementFormalized {} node &&
-      statementStatus {} {} `record node != .formalized &&
-      proofStatus {} {} `record node == .incomplete &&
+      !recordStatus.containsExplicitSorry && statement == .blocked && proof == .none &&
       completeStatus.isProved
 
 /-- info: true -/
@@ -122,16 +127,10 @@ theorem statusDirectTypeOnly (_h : (by sorry : Prop)) : True := True.intro
       (match ConstantInfo.blueprintBodyAccess env unknown with
         | .unavailable => true
         | _ => false)
-    let node : Data.Node := {
-      kind := .theorem
-      literateCodes := #[{ stx := .missing, definedTheorems :=
-        #[{ name := consumer.name, provedStatus := consumerStatus }] }]
-    }
     return accessCases && helperStatus.containsExplicitSorry &&
       consumerStatus.dependsOnSorry &&
       !consumerStatus.containsExplicitSorry &&
-      consumerStatus.sorryRefCounts == (0, 0) &&
-      !nodeLocalProofFormalized {} node
+      consumerStatus.sorryRefCounts == (0, 0) && !consumerStatus.isProved
 
 /-- info: true -/
 #guard_msgs in
@@ -218,17 +217,12 @@ theorem statusDirectTypeOnly (_h : (by sorry : Prop)) : True := True.intro
 #guard_msgs in
 #eval
   let unknown : ProvedStatus := .incomplete { knownSorry := #[{ location := .unknown, origin := .unknown }] }
-  let node : Node := { kind := .theorem, externalRefs :=
-    #[{ (ExternalRef.ofName `hidden) with provedStatus := unknown }] }
-  let health := nodeCodeHealth {} node
   unknown.isIncomplete && !unknown.hasTypeGap && !unknown.hasProofGap &&
     !unknown.containsExplicitSorry && !unknown.dependsOnSorry &&
     unknown.statusLabel == "sorry detected" &&
     unknown.presentation.summaryText == "sorry detected location unknown" &&
     unknown.withDirectRefCounts 2 3 == unknown &&
     unknown.blocksStatementCompletion .theorem && unknown.blocksProofCompletion &&
-    health.provedStatus == unknown && health.hasStatementGaps && health.anyGapCount == 1 &&
-    !health.localProofFormalized && !health.localStatementFormalized &&
     (match fromJson? (α := ProvedStatus) (toJson unknown) with
      | .ok roundTrip => roundTrip == unknown
      | .error _ => false)
@@ -284,6 +278,85 @@ theorem statusDirectTypeOnly (_h : (by sorry : Prop)) : True := True.intro
       mixed[2]!.isAxiomLike && mixed[3]!.isUnverified &&
       (← analyzeDeclarations #[]).isEmpty
 
+-- This union crosses the recursor's back-links. Count actual inspections and
+-- visits before and after per-root checks and an expectation on a covered member.
+/-- info: true -/
+#guard_msgs in
+#eval
+  show CoreM Bool from do
+    let roots := #[``StatusCompleteRecord, ``StatusCompleteRecord.rec, ``StatusCompleteRecord.rec]
+    let (union, _) ← (inspectSorryDependencies roots).run {}
+    let edgeCount := union.declarations.toList.foldl
+      (fun count (_, inspected) => count + inspected.dependencies.size) 0
+    let (first, _) ← (inspectSorryDependencies #[``StatusCompleteRecord]).run {}
+    let (second, _) ← (inspectSorryDependencies #[``StatusCompleteRecord.rec]).run {}
+    let overlapping := first.declarations.size + second.declarations.size > union.declarations.size
+    for order in #[roots, roots.reverse] do
+      let session ← newSorryInspectionSession
+      session.prepare order
+      unless (← order.mapM session.analyzeDeclaration).all (·.isProved) do return false
+      unless ← session.checkDependencies #[``StatusCompleteRecord.mk] do return false
+      let work ← session.work
+      unless work.declarationInspections == union.declarations.size &&
+          work.edgeVisits == edgeCount && work.certificateScans == 1 do return false
+    return overlapping
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show CoreM Bool from do
+    let roots := #[``StatusCompleteRecord, ``StatusRecord, ``statusAdmittedHelper, ``statusUsesProofInType,
+      ``external_axiom_decl, `unknownBatchRoot, ``StatusCompleteRecord]
+    for order in #[roots, roots.reverse] do
+      let session ← newSorryInspectionSession
+      session.prepare order
+      unless (← order.mapM session.analyzeDeclaration) == (← order.mapM analyzeDeclaration) do
+        return false
+      let statementOnly ← session.analyzeDeclaration ``statusUsesProofInType
+      unless statementOnly.hasTypeGap && !statementOnly.hasProofGap do return false
+      let work ← session.work
+      discard <| order.mapM session.analyzeDeclaration
+      let replay ← session.work
+      unless work.certificateScans > 1 && work.certificateScans == replay.certificateScans &&
+          work.edgeVisits == replay.edgeVisits && work.declarationInspections == replay.declarationInspections do
+        return false
+    return true
+
+-- An interrupted preparation publishes no inspections or coverage. A session
+-- also refuses a different environment, even when its selected name still exists.
+/-- info: true -/
+#guard_msgs in
+#eval
+  show CoreM Bool from do
+    let session ← newSorryInspectionSession
+    let token ← IO.CancelToken.new
+    token.set
+    let context : Core.Context ← read
+    let state : Core.State ← get
+    let attempted ← liftM <| ((session.prepare #[``StatusCompleteRecord]).run'
+      { context with cancelTk? := some token } state).toBaseIO
+    let interrupted := match attempted with
+      | .error exception => exception.isInterrupt
+      | .ok _ => false
+    let started ← IO.getNumHeartbeats
+    let attempted ← liftM <| ((session.prepare #[``StatusCompleteRecord.rec]).run'
+      { context with initHeartbeats := started, maxHeartbeats := 100 } state).toBaseIO
+    let exhausted := match attempted with
+      | .error exception => exception.isMaxHeartbeat
+      | .ok _ => false
+    let stopped ← session.work
+    session.prepare #[``StatusCompleteRecord]
+    let env ← getEnv
+    let rejected ← withEnv (env.setMainModule `OtherInspectionEnvironment) do
+      try
+        discard <| session.analyzeDeclaration ``StatusCompleteRecord
+        pure false
+      catch _ =>
+        pure true
+    return interrupted && exhausted && stopped.declarationInspections == 0 && stopped.edgeVisits == 0 &&
+      stopped.certificateScans == 0 && rejected &&
+      (← session.analyzeDeclaration ``StatusCompleteRecord).isProved
+
 -- Closed cycles are legitimate. Open boundaries, hidden bodies, missing roots,
 -- and holes anywhere in a cycle must all prevent production completion.
 /-- info: true -/
@@ -312,40 +385,35 @@ theorem statusDirectTypeOnly (_h : (by sorry : Prop)) : True := True.intro
   let empty : ProvedStatus := .incomplete {}
   let inherited : ProvedStatus := .incomplete { knownSorry := #[{ location := .proof, origin := .dependency }] }
   let mixed := empty.mergeConservative inherited
-  let emptyCode : Node := { kind := .theorem, literateCodes := #[{ stx := .missing }] }
+  let unassessed : NodeAssessment := {}
+  let blockedProof : NodeAssessment := {
+    hasNativeDeclarations := true
+    hasNativeBodyRequirement := true
+    nativeStatementComplete := true
+    nativeBodyComplete := false
+    statementDependenciesComplete := true
+    proofDependenciesComplete := false
+  }
+  let readyProof := { blockedProof with proofDependenciesComplete := true }
   defaultStatus.isUnverified && !defaultStatus.hasKnownSorry &&
     empty.sorryRefCounts == (0, 0) && !empty.isProved &&
     empty.blocksStatementCompletion .theorem && empty.blocksProofCompletion &&
     mixed.hasKnownSorry && mixed.hasUnverifiedCoverage &&
     mixed.mergeConservative .proved == mixed &&
-    !Graph.nodeLocalStatementFormalized {} emptyCode && !Graph.nodeLocalProofFormalized {} emptyCode
+    Graph.statusesForAssessment unassessed == (.unassessed, .unassessed) &&
+    Graph.actionableStageForAssessment? blockedProof == none &&
+    Graph.actionableStageForAssessment? readyProof == some "proof"
 
--- Canonical counting preserves every captured blocker and live external
--- observation even when an inline declaration is selected for display.
+-- Provider status aggregation preserves independent blocker observations.
 /-- info: true -/
 #guard_msgs in
 #eval
   let gap : ProvedStatus := .incomplete { knownSorry := #[{
     location := .proof, origin := .dependency }] }
-  let clean : ExternalRef := { (ExternalRef.ofName `shared) with provedStatus := .proved }
-  let blocked := { clean with provedStatus := gap }
-  let sources : Array BlockCodeData := #[
-    { externalDecls := #[clean, blocked] },
-    { literateDeclarations := { definedTheorems := #[{ name := `shared, provedStatus := .proved }] } }]
-  let health := codeHealthOfBlockSources .theorem {} sources
-  let missing := codeHealthOfBlockSources .theorem { isMissing := (· == `shared) } sources
-  let uncertain := codeHealthOfBlockSources .theorem { provedStatus := fun _ => .incomplete {} } sources
-  let empty := codeHealthOfBlockSources .theorem {} #[{}]
-  let uncaptured : CodeHealth := { totalDecls := 1 }
-  health.totalDecls == 1 && health.presentDecls == 1 && health.anyGapCount == 1 &&
-    health.provedStatus == gap && health.localStatementFormalized && !health.localProofFormalized &&
-    missing.totalDecls == 1 && missing.missingDecls == 1 && missing.presentDecls == 0 &&
-    missing.verdict == "missing" && !missing.localStatementFormalized && !missing.localProofFormalized &&
-    uncertain.provedStatus.hasKnownSorry && uncertain.provedStatus.hasUnverifiedCoverage &&
-    !uncertain.localStatementFormalized && !uncertain.localProofFormalized &&
-    empty.verdict == "unassociated" && !empty.hasAssociatedCode &&
-    !empty.localStatementFormalized && !empty.localProofFormalized &&
-    !uncaptured.localStatementFormalized && !uncaptured.localProofFormalized
+  let uncertainty : ProvedStatus := .incomplete {}
+  let combined := gap.mergeConservative uncertainty
+  combined.hasProofGap && combined.hasKnownSorry && combined.hasUnverifiedCoverage &&
+    combined.dependsOnSorry && combined.mergeConservative .proved == combined
 
 /-- info: 'Informal.Data.ProvedStatus.mergeConservative_proved_left' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in

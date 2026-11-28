@@ -5,7 +5,9 @@ Author: Emilio J. Gallego Arias
 -/
 
 import VersoBlueprint.ExternalRefSnapshot
+import VersoBlueprint.Docstring.Compiled
 import VersoBlueprint.Informal.ExternalCode
+import VersoBlueprintTests.SorryImport.Provider
 
 namespace Verso.VersoBlueprintTests.ExternalDeclRender
 
@@ -211,7 +213,7 @@ private def htmlTestContext :
 #eval
   show Lean.CoreM Bool from do
     let opts ← Lean.getOptions
-    let ref ← Informal.externalRefSnapshotAtCurrentDir opts (Informal.Data.ExternalRef.ofName `Nat.add)
+    let ref ← Informal.registerExternalRefAtCurrentDir opts (Informal.Data.ExternalRef.ofName `Nat.add)
     let some payloadCount :=
       (match ref.render with
       | .ok rendered =>
@@ -242,6 +244,8 @@ private def htmlTestContext :
       (Informal.Data.ExternalRef.ofName `Ext.external.strategy_render_fail) with
         present := true
         kind := .theorem
+        provedStatus := some .proved
+        sourceHref? := some "https://example.invalid/Lean.lean#L7"
         render := .error (.exception `Ext.external.strategy_render_fail "synthetic render failure")
     }
     let expectedError :=
@@ -254,6 +258,7 @@ private def htmlTestContext :
     let (pageErrorHtml, _) :=
       Id.run <| (renderPage #[failedRef] htmlTestContext).run {}
     let pageErrorHtml := pageErrorHtml.asString
+    let errorFooter := "bp_external_decl_footer_status bp_external_decl_error\">render failed"
     pure <|
       payloadCount > 0 &&
       hoverState.dedup.contentId.size == payloadCount &&
@@ -263,37 +268,35 @@ private def htmlTestContext :
       !pageHtml.contains "data-bp-external-hover-local=\"" &&
       !pageHtml.contains "data-bp-external-hover-inline-local=\"" &&
       !pageHtml.contains "class=\"hover-info\"" &&
+      !pageHtml.contains "bp_external_decl_footer_status" &&
       !cacheHtml.contains "data-bp-external-hover-local=\"" &&
       !cacheHtml.contains "data-bp-external-hover-inline-local=\"" &&
       !cacheHtml.contains "class=\"hover-info\"" &&
       previewHtml.contains "class=\"hover-info\"" &&
       !previewHtml.contains "data-bp-external-hover-local=\"" &&
       !previewHtml.contains "data-bp-external-hover-inline-local=\"" &&
-      previewErrorHtml.contains "bp_external_decl_render_error" &&
-      previewErrorHtml.contains expectedError &&
-      cacheErrorHtml.contains "bp_external_decl_render_error" &&
-      cacheErrorHtml.contains expectedError &&
-      pageErrorHtml.contains "bp_external_decl_render_error" &&
-      pageErrorHtml.contains expectedError
+      #[previewErrorHtml, cacheErrorHtml, pageErrorHtml].all (fun errorHtml =>
+        errorHtml.contains "bp_external_decl_render_error" && errorHtml.contains expectedError &&
+          errorHtml.contains errorFooter && errorHtml.contains "https://example.invalid/Lean.lean#L7")
 
 /-- info: true -/
 #guard_msgs in
 #eval
   show Lean.CoreM Bool from do
     let opts ← Lean.getOptions
-    let sameDef ← Informal.externalRefSnapshotAtCurrentDir opts
+    let sameDef ← Informal.registerExternalRefAtCurrentDir opts
       (Informal.Data.ExternalRef.ofName `Verso.VersoBlueprintTests.ExternalDeclRender.sameModuleRenderDef)
-    let sameAbbrev ← Informal.externalRefSnapshotAtCurrentDir opts
+    let sameAbbrev ← Informal.registerExternalRefAtCurrentDir opts
       (Informal.Data.ExternalRef.ofName `Verso.VersoBlueprintTests.ExternalDeclRender.sameModuleRenderAbbrev)
-    let sameUnsafeDef ← Informal.externalRefSnapshotAtCurrentDir opts
+    let sameUnsafeDef ← Informal.registerExternalRefAtCurrentDir opts
       (Informal.Data.ExternalRef.ofName `Verso.VersoBlueprintTests.ExternalDeclRender.sameModuleRenderUnsafeDef)
-    let sameUnsafeAbbrev ← Informal.externalRefSnapshotAtCurrentDir opts
+    let sameUnsafeAbbrev ← Informal.registerExternalRefAtCurrentDir opts
       (Informal.Data.ExternalRef.ofName `Verso.VersoBlueprintTests.ExternalDeclRender.sameModuleRenderUnsafeAbbrev)
-    let importedDef ← Informal.externalRefSnapshotAtCurrentDir opts
+    let importedDef ← Informal.registerExternalRefAtCurrentDir opts
       (Informal.Data.ExternalRef.ofName `Nat.add)
-    let importedThm ← Informal.externalRefSnapshotAtCurrentDir opts
+    let importedThm ← Informal.registerExternalRefAtCurrentDir opts
       ({ (Informal.Data.ExternalRef.ofName `Nat.add_assoc) with kind := .theorem })
-    let missing ← Informal.externalRefSnapshotAtCurrentDir opts
+    let missing ← Informal.registerExternalRefAtCurrentDir opts
       (Informal.Data.ExternalRef.ofName `No.Such.Declaration)
     pure <|
       sameDef.present &&
@@ -315,5 +318,23 @@ private def htmlTestContext :
       (match missing.render with
       | .error _ => true
       | .ok _ => false)
+
+/-- Presentation links resolve through the workspace without Lake trace inputs. -/
+private def importedSourceLinkControl : CoreM Bool := do
+  let workspace ← Informal.workspaceRoot
+  let relative := "tests/VersoBlueprintTests/SorryImport/Provider.lean"
+  let source ← IO.FS.realPath (workspace / relative)
+  let reference := Informal.Data.ExternalRef.ofName `sorryImportCompleteDef
+  let template := "https://source.example.invalid/{repoRelpath}#L{line}"
+  let options := ({} : Options).set `verso.blueprint.externalCode.sourceLinkTemplate template
+  let custom ← Informal.registerExternalRef options workspace reference
+  let some range := custom.range? | return false
+  let expected := s!"https://source.example.invalid/{relative}#L{range.pos.line}"
+  return custom.provenance == .inWorkspace `VersoBlueprintTests.SorryImport.Provider source.toString &&
+    custom.selectionRange?.isSome && custom.sourceHref? == some expected
+
+/-- info: true -/
+#guard_msgs in
+#eval importedSourceLinkControl
 
 end Verso.VersoBlueprintTests.ExternalDeclRender

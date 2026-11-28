@@ -32,15 +32,16 @@ theorem inline_main_complete : True := by
 /-- info: true -/
 #guard_msgs in
 #eval
-  show CoreM Bool from do
+  show Elab.Term.TermElabM Bool from do
     let label := Name.mkSimple "inline.theorem.helper"
     let state := Informal.Environment.informalExt.getState (← getEnv)
-    match state.data.get? label with
+    match state.inventory.get? label with
     | none => pure false
     | some node =>
-      let external : ExternalCodeStatus := {}
+      let .ok snapshot ← Realizations.Capture.capture | pure false
+      let assessment := snapshot.assessmentFor label
       let helperProofGapOnly :=
-        node.literateCodes.any fun code =>
+        node.inlineCodes.any fun code =>
           code.definedDefs.any fun decl =>
             let (typeRefs, proofRefs) := decl.provedStatus.sorryRefCounts
             decl.provedStatus.hasProofGap &&
@@ -49,8 +50,11 @@ theorem inline_main_complete : True := by
             proofRefs > 0
       pure <|
         node.kind == .theorem &&
-        nodeLocalStatementFormalized external node &&
-        !nodeLocalProofFormalized external node &&
+        -- Checked proposition-valued definitions have separate statement and
+        -- proof selections, just like theorems. The complete sibling cannot
+        -- lend this helper a successful proof check.
+        assessment.nativeStatementComplete &&
+        !assessment.nativeBodyComplete && !assessment.requiredComplete &&
         helperProofGapOnly
 
 #docs (Manual) inlineGeneratedDeclsDoc "Inline Generated Decls" :=
@@ -72,11 +76,11 @@ inductive SourceFilteredStage where
 
 private def literateDeclNamesFor? (label : Name) : CoreM (Option (Array String)) := do
   let state := Informal.Environment.informalExt.getState (← getEnv)
-  match state.data.get? label with
+  match state.inventory.get? label with
   | none => pure none
   | some node =>
     let names :=
-      node.literateCodes.foldl (init := #[]) fun acc code =>
+      node.inlineCodes.foldl (init := #[]) fun acc code =>
         acc ++ (code.definedDefs.map (·.name.toString)) ++
           (code.definedTheorems.map (·.name.toString))
     pure <| if names.isEmpty then none else some names

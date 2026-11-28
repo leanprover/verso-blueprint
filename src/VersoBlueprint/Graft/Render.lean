@@ -14,6 +14,13 @@ namespace Informal.Graft
 open Verso.Output
 open Verso.Output.Html
 
+/-- The facet owns the captured checks for declarations in its rendered panel. -/
+def withFacetExternalChecks (facts : Informal.BlockCodeData)
+    (facet : Option Informal.BlockCodeData) : Informal.BlockCodeData :=
+  let checks := (facet.getD {}).externalChecks.filter fun (name, _) =>
+    facts.externalDecls.any (·.canonical == name)
+  { facts with externalChecks := checks }
+
 public structure RenderContext where
   manifestIndex? : Option Informal.PreviewManifest.Index := none
   htmlCacheIndex : Informal.PreviewManifest.HtmlCache.Index := {}
@@ -51,9 +58,10 @@ public def renderedContent?
         let data := ctx.manifestIndex?.bind (·.findEntry? key) |>.bind (·.codeData)
         facts.append (data.getD {})
       pure <| some {
+        assessment := ctx.manifestIndex?.bind (·.nodesByLabel.get? entry.label) |>.bind (·.assessment)
         body := Informal.PreviewManifest.BlockRender.htmlFragment bodyHtml
         codeBodies := codeEntries.map fun (_, html) => Informal.PreviewManifest.BlockRender.htmlFragment html
-        codeData
+        codeData := withFacetExternalChecks codeData entry.codeData
       }
 
 end RenderContext

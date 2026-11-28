@@ -94,8 +94,14 @@ def finishData
     (state : TraverseState)
     (key : String)
     (model : Informal.Graph.GraphModel)
-    (options : Informal.Graph.GraphOptions) : Informal.Graph.GraphData :=
-  (finalModel state model).finish key options
+    (options : Informal.Graph.GraphOptions)
+    (previewFor? : Option (Name → Option PreviewKey) := none) : Informal.Graph.GraphData :=
+  let model := finalModel state model
+  let model : Informal.Graph.GraphModel := match previewFor? with
+    | none => model
+    | some previewFor => { model with
+        nodes := model.nodes.map fun node => { node with previewKey := previewFor node.label } }
+  model.finish key options
 
 /-- Finish one rendered graph block using its stable traversal key. -/
 def finishDataForBlock
@@ -131,7 +137,7 @@ Call this only with the completed traversal state for the document/site being
 emitted. The consumer owns error reporting because it defines the generation
 boundary and its diagnostic context.
 -/
-def cachedEntries (state : TraverseState) :
+def cachedEntries (state : TraverseState) (previewFor? : Option (Name → Option PreviewKey) := none) :
     Array (Except Informal.TraversalIndex.DecodeError
       (Informal.TraversalIndex.StoredEntry Informal.Graph.GraphData)) :=
   Informal.TraversalIndex.Graphs.entries state |>.map fun
@@ -141,7 +147,7 @@ def cachedEntries (state : TraverseState) :
         | .error message => .error { canonicalName := stored.canonicalName, message }
         | .ok model => .ok {
             canonicalName := stored.canonicalName
-            data := finishData state stored.canonicalName model stored.data.options
+            data := finishData state stored.canonicalName model stored.data.options previewFor?
           }
 
 end Informal.GraphApi

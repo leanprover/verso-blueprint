@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
+import VersoBlueprintTests.BlueprintNativeFixture
 import VersoBlueprintTests.BlueprintAutoDeps.HelperProvider
 import VersoBlueprintTests.BlueprintAutoDeps.Support
 import VersoBlueprintTests.Blueprint.Support
@@ -119,7 +120,7 @@ theorem afterAssociation : lateHelper := True.intro
     (#["auto.frontier.attribute", "auto.frontier.external", "auto.frontier.inline",
         "auto.frontier.persisted"]).map fun labelText =>
       { labelText, statement := #[useRef "auto.type.source" .automatic],
-        proof := #[useRef "auto.proof.source" .automatic] }
+        proof := #[useRef "auto.proof.source" .automatic, useRef "auto.type.source" .automatic] }
   let failures ← expectedUsesFailures <| common ++ #[
     { labelText := "auto.frontier.diamond", proof := #[useRef "auto.def.source" .automatic] },
     { labelText := "auto.frontier.stopped", proof := #[useRef "auto.frontier.boundary" .automatic] },
@@ -128,12 +129,14 @@ theorem afterAssociation : lateHelper := True.intro
       proof := #[useRef "auto.proof.source" .automatic, useRef "auto.type.source" .automatic] },
     { labelText := "auto.frontier.axiom_leaf" },
     { labelText := "auto.frontier.opaque", proof := #[useRef "auto.def.source" .automatic] },
-    { labelText := "auto.frontier.inductive", statement := #[useRef "auto.type.source" .automatic] },
+    { labelText := "auto.frontier.inductive", statement := #[useRef "auto.type.source" .automatic],
+      proof := #[useRef "auto.type.source" .automatic] },
     { labelText := "auto.frontier.recursive", proof := #[useRef "auto.def.source" .automatic] },
     { labelText := "auto.frontier.shared",
       statement := #[useRef "auto.shared.source.primary" .automatic,
         useRef "auto.shared.source.secondary" .automatic] },
-    { labelText := "auto.frontier.manual", statement := #[useRef "auto.type.source"] },
+    { labelText := "auto.frontier.manual", statement := #[useRef "auto.type.source"],
+      proof := #[useRef "auto.type.source" .automatic] },
     { labelText := "auto.frontier.disabled" },
     { labelText := "auto.frontier.from_plain",
       statement := #[useRef "auto.frontier.plain_source" .automatic] },
@@ -156,15 +159,15 @@ theorem afterAssociation : lateHelper := True.intro
       value := mkConst previous, hints := .abbrev, safety := .safe }
     previous := name
   let deps ← DependencyAnalysis.inferDecl? previous
-  unless deps.statement.isEmpty && deps.proof == #[label "auto.def.source"] do
+  unless deps.type.isEmpty && deps.body == #[label "auto.def.source"] do
     throwError "Long helper chain lost its frontier"
   -- Missing names are terminal, not fabricated nodes.
   let missing ← DependencyAnalysis.inferDecl? `blueprintMissingHelper
-  unless missing.statement.isEmpty && missing.proof.isEmpty do
+  unless missing.type.isEmpty && missing.body.isEmpty do
     throwError "Unknown declaration created a dependency"
   -- A tagged root is analyzed, not returned as its own frontier.
   let root ← DependencyAnalysis.inferDecl? ``HelperProvider.boundary
-  unless root.statement.isEmpty && root.proof == #[label "auto.def.source"] do
+  unless root.type.isEmpty && root.body == #[label "auto.def.source"] do
     throwError "The root's association hid its dependencies"
   -- Exercise a programmatically supplied constructor association. The standard
   -- authoring syntax does not currently accept constructor attachments.
@@ -177,14 +180,14 @@ theorem afterAssociation : lateHelper := True.intro
         site := 1
         slot := 0 }
       label := label "auto.frontier.constructor"
-      references := #[ref]
+      nativeAssociations := BlueprintNativeFixture.associations (label "auto.frontier.constructor") `statement #[ref]
       priority := none
       source := none } {}
     | throwError "Could not register the collector's constructor boundary"
   -- Inductive bodies walk constructor names, respecting their associations.
   let inductiveDeps ← DependencyAnalysis.inferDecl? ``HelperProvider.HiddenBox
-  unless inductiveDeps.statement.isEmpty &&
-      inductiveDeps.proof == #[label "auto.frontier.constructor"] do
+  unless inductiveDeps.type.isEmpty &&
+      inductiveDeps.body == #[label "auto.frontier.constructor"] do
     throwError "Inductive expansion bypassed an associated constructor"
 
 private def impls : Genre.Manual.ExtensionImpls := extension_impls%
@@ -198,7 +201,7 @@ private def impls : Genre.Manual.ExtensionImpls := extension_impls%
         entry.label == Name.mkSimple text && entry.facet == .statement)
       | throw <| IO.userError s!"Missing exported statement: {text}"
     unless entry.statementUses == #[{ label := label "auto.type.source", origin := .automatic }] &&
-        entry.proofUses == #[{ label := label "auto.proof.source", origin := .automatic }] do
+        entry.proofUses == #[dataUseRef "auto.proof.source" .automatic, dataUseRef "auto.type.source" .automatic] do
       throw <| IO.userError s!"Export lost inferred dependency axes: {text}"
 
 end Verso.VersoBlueprintTests.BlueprintAutoDeps.HelperFrontier

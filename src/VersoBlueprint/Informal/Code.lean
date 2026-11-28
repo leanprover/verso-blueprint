@@ -127,7 +127,6 @@ structure CodeConfig where
   label : Data.Label
   leanLabel : Name
   autoDeps : Option Bool := none
-  labelSyntax : Syntax := Syntax.missing
 
 section
 variable [Monad m] [MonadInfoTree m] [MonadResolveName m] [MonadLiftT CoreM m] [MonadEnv m]
@@ -141,7 +140,6 @@ def CodeConfig.parse : ArgParse m CodeConfig :=
       label
       leanLabel
       autoDeps
-      labelSyntax := labelArg.syntax
     }) <$> .positional `label (.withSyntax .string)
       <*> .named' `autoDeps true
       <*> .lift "current elaboration options" getOptions
@@ -303,52 +301,42 @@ block_extension Block.externalMarkup (data : ExternalMarkupBlockData) where
         | .summary => ExternalMarkupView.summaryHtml (ExternalMarkupView.displaySummary cdata.markup)
         | .source => ExternalMarkupView.sourceDetailsHtml cdata.markup
 
-private def inlineDeclSourceLocation (declName : Name) (stx : Syntax) : DocElabM Data.SourceLocationResult := do
-  match ← Data.SourceLocation.ofSyntax? stx with
-  | some location => pure <| Data.SourceLocationResult.found location
-  | none =>
-      pure <| Data.SourceLocationResult.unavailable
-        s!"inline Lean declaration source location unavailable for {declName}"
-
 /-- Interpreting Embedded Lean Code blocks -/
 private def leanImpl : CodeBlockExpanderOf CodeConfig
   | cfg, contents => do
     let codeRef ← getRef
     let some position := codeRef.getPos?
       | throwError "Blueprint code blocks require a source position"
-    let blockId := Name.num (Name.str (← getEnv).mainModule "blueprintCode") position.byteIdx
+    let moduleName ← getMainModule
+    let blockId := Name.num (Name.str moduleName "blueprintCode") position.byteIdx
     let leanCfg : Lean.LeanBlockConfig := { Lean.defaultConfig with name := some cfg.leanLabel }
-    let res ← Lean.elabCommands leanCfg contents
-    let codeBlock := res.block
-    let definedDefs ← res.definedDefs.mapM fun decl => do
-      let sourceLocation ← inlineDeclSourceLocation decl.name decl.commandStx
-      pure <| CodeDeclData.ofLiterateDef decl sourceLocation
-    let definedTheorems ← res.definedTheorems.mapM fun decl => do
-      let sourceLocation ← inlineDeclSourceLocation decl.name decl.commandStx
-      pure <| CodeDeclData.ofLiterateThm decl sourceLocation
-    let inferredUseRefs ←
-      if DependencyAnalysis.enabled (← getOptions) cfg.autoDeps then
-        let decls := (res.definedDefs.map (·.name)) ++ (res.definedTheorems.map (·.name))
-        let deps ← liftM <| DependencyAnalysis.inferDecls decls
-        pure <| deps.toUseRefs (currentLabel? := some cfg.label)
-      else pure ({} : DependencyAnalysis.InferredUseRefs)
-    let some _ ← Environment.contribute cfg.label {
-      literateCodes := #[{
-        stx := codeRef
+    let some block ← Environment.withCodeRegistration (Lean.elabCommands leanCfg contents) fun res => do
+      let codeBlock := res.block
+      let definedDefs := res.definedDefs.map fun decl => CodeDeclData.ofLiterateDef decl decl.sourceLocation
+      let definedTheorems := res.definedTheorems.map fun decl => CodeDeclData.ofLiterateThm decl decl.sourceLocation
+      let inferredUses ←
+        if DependencyAnalysis.enabled (← getOptions) cfg.autoDeps then
+          let decls := (res.definedDefs.map (·.name)) ++ (res.definedTheorems.map (·.name))
+          liftM <| DependencyAnalysis.inferDeclUses cfg.label decls
+        else pure #[]
+      let code : Data.Code := {
+        moduleName
         definedDefs := res.definedDefs
-        definedTheorems := res.definedTheorems }]
-      statementUses := inferredUseRefs.statement
-      proofUses := inferredUseRefs.proof }
+        definedTheorems := res.definedTheorems }
+      let source ← liftM <| Environment.sourceAt cfg.label `lean none `lean (.leanInline code) codeRef
+      let some _ ← Environment.contribute cfg.label { sources := #[source], uses := inferredUses }
+        | return none
+      let data : InlineCodeData := {
+        blockId
+        label := cfg.label
+        definedDefs
+        definedTheorems
+        foldCodeBlock := verso.blueprint.foldCodeBlocks.get (← getOptions)
+        foldProofs := verso.blueprint.foldProofs.get (← getOptions)
+      }
+      return some (← ``(Block.other (Block.informalCode $(quote data)) #[$codeBlock]))
       | ``(Block.concat #[])
-    let data : InlineCodeData := {
-      blockId
-      label := cfg.label
-      definedDefs
-      definedTheorems
-      foldCodeBlock := verso.blueprint.foldCodeBlocks.get (← getOptions)
-      foldProofs := verso.blueprint.foldProofs.get (← getOptions)
-    }
-    ``(Block.other (Block.informalCode $(quote data)) #[$codeBlock])
+    pure block
 
 @[code_block]
 def lean : CodeBlockExpanderOf CodeConfig
@@ -410,8 +398,12 @@ private def externalMarkupImpl
     }
     match cfg.label? with
     | some label =>
-      let some _ ← Environment.contribute label {
-        externalMarkup := ({} : Data.ExternalMarkupSet).insert markup }
+      let fenceRef ← getRef
+      let sourceText := SourceData.originalSourceText? contents.raw
+      let source ← liftM <| Environment.sourceAt label
+        (Name.str (Name.mkSimple language.key) cfg.slot) (some `statement) (Name.mkSimple language.key)
+        (.markup markup sourceText) fenceRef
+      let some _ ← Environment.contribute label { sources := #[source] }
         | ``(Block.concat #[])
       let display := cfg.display.getD <| ExternalMarkupDisplayMode.fromOptions (← getOptions)
       let data : ExternalMarkupBlockData := {

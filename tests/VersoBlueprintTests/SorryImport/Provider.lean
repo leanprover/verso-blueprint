@@ -29,6 +29,13 @@ public theorem sorryImportStandardAxioms {α : Sort u} (h : Nonempty α) : Nonem
 -- proof-side gap after an ordinary import.
 public def sorryImportSpec : Prop := let _n := sorryImportNumber; True
 
+public def sorryImportCompleteSpec : Prop := True
+public def sorryImportAdmittedSpec : Prop := by sorry
+
+-- The capture control needs an inspectable proof body in the ordinary view.
+set_option linter.defProp false in
+@[expose] public def sorryImportExposedProof : True := True.intro
+
 public theorem sorryImportTypeOnly : sorryImportSpec := True.intro
 
 public theorem sorryImportHypothesis (_h : sorryImportSpec) : True := True.intro

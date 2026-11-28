@@ -16,7 +16,8 @@ open Lean Informal.Data Informal.Contributions
 
 private abbrev MergeM := StateM (Array String)
 
-private def conflict (message : String) : MergeM Unit := modify (·.push message)
+private def conflict (message : String) : MergeM Unit :=
+  modify fun messages => if messages.contains message then messages else messages.push message
 
 private def mergeMetadata [BEq α] [ToString α] (label : Label) (field : String)
     (current incoming : Option α) : MergeM (Option α) := do
@@ -28,52 +29,46 @@ private def mergeMetadata [BEq α] [ToString α] (label : Label) (field : String
       conflict s!"Label {label} declares conflicting {field}: existing '{existing}', new '{value}'"
     return current
 
-private def mergeUses (label : Label) (side : String)
-    (current incoming : Array UseRef) : MergeM (Array UseRef) := do
-  let mut uses := current
-  for ref in incoming do
-    if let some previous := uses.find? (fun previous =>
-        previous.label == ref.label && previous.origin == ref.origin) then
-      if previous.intent != ref.intent then
-        conflict s!"Label {label} declares conflicting {side} dependency intents for '{ref.label}' ({ref.origin}): existing '{previous.intent}', new '{ref.intent}'"
-    else uses := uses.push ref
-  return uses
-
-private def mergePayload (label : Label) (side : String)
-    (current : Option InformalData) (body : Option InformalBody)
-    (incomingUses : Array UseRef) : MergeM (Option InformalData) := do
-  let useDeclarations ← mergeUses label side (current.map (·.useDeclarations) |>.getD #[]) incomingUses
-  let currentBody := current.map (·.toInformalBody)
-  if (currentBody.any (·.hasBody)) && (body.any (·.hasBody)) then
-    conflict s!"Label {label} already has a {side}"
-  let selected := if body.any (·.hasBody) then body else currentBody <|> body
-  match selected with
-  | some body => return some { toInformalBody := body, useDeclarations }
-  | none => return if useDeclarations.isEmpty then none else some { stx := .missing, useDeclarations }
-
 private def inferredNodeKind (external : Array ExternalRef) (literate : Array Code) : NodeKind :=
   if external.any (·.kind.isTheoremLike) || literate.any (! ·.definedTheorems.isEmpty) then .theorem
   else if !external.isEmpty || literate.any (! ·.definedDefs.isEmpty) then .definition else .lemma
 
-private def mergeContribution (label : Label) (node : Node)
-    (incoming : NodeContribution) : MergeM Node := do
-  let statement ← mergePayload label "statement" node.statement incoming.statementBody incoming.statementUses
-  let proof ← mergePayload label "proof" node.proof incoming.proofBody incoming.proofUses
-  let mut rustCode := node.rustCode
-  if let some code := incoming.rustCode then
-    if rustCode.isSome then conflict s!"Label {label} already has associated Rust code" else rustCode := some code
-  let mut externalMarkup := node.externalMarkup
-  for markup in incoming.externalMarkup.toArray do
-    let key := markup.key
-    if externalMarkup.contains key then
-      conflict s!"Label {label} already has associated {key.language} external markup in slot '{key.slot}'"
-    else externalMarkup := externalMarkup.insert markup
+private def mergeContribution (label : Label) (node : NodeInventory)
+    (incoming : SourceData.Registration) : MergeM NodeInventory := do
+  -- Keep every raw source and use; conflicts are scoped to their actual keys.
+  let mut sources := node.sources
+  for source in incoming.sources do
+    for previous in sources do
+      if (previous.adoption.isSome || source.adoption.isSome) &&
+          previous.destination.role == some `statement && source.destination.role == some `statement then
+        let claimsDefault (selection : SourceData.SourceSelection) :=
+          selection.adoption.isSome || match selection.payload with | .prose body _ => body.hasBody | _ => false
+        if claimsDefault previous && claimsDefault source then
+          conflict s!"Label {label}: duplicate-source: adopted docstring competes for the default statement body"
+      if previous.destination == source.destination then
+        let occupied := match previous.payload, source.payload with
+          | .prose first _, .prose second _ => first.hasBody && second.hasBody
+          | .text .., .text .. => true
+          | .prose body _, .text .. | .text .., .prose body _ => body.hasBody
+          | .markup first _, .markup second _ => first.key == second.key
+          | _, _ => false
+        if occupied then
+          let role := source.destination.role.map toString |>.getD "compiled Lean"
+          let article := if "aeiou".contains role.front then "an" else "a"
+          conflict s!"Label {label}: duplicate-source: realization '{source.destination.realization.name}' already has {article} {role} source"
+    sources := sources.push source
+  let mut uses := node.uses
+  for use in incoming.uses do
+    for previous in uses do
+      if previous.reference.label == use.reference.label && previous.reference.origin == use.reference.origin &&
+          previous.reference.intent != use.reference.intent && previous.scopesOverlap use then
+        conflict s!"Label {label} declares conflicting {use.role} dependency intents for '{use.reference.label}' ({use.reference.origin}): existing '{previous.reference.intent}', new '{use.reference.intent}'"
+    uses := uses.push use
   let parent ← mergeMetadata label "parents" node.parent incoming.parent
   let owner ← mergeMetadata label "owners" node.owner incoming.owner
   let effort ← mergeMetadata label "effort values" node.effort incoming.effort
   let prUrl ← mergeMetadata label "PR URLs" node.prUrl incoming.prUrl
   let issueUrl ← mergeMetadata label "issue URLs" node.issueUrl incoming.issueUrl
-  let literateCodes := node.literateCodes ++ incoming.literateCodes
   let kindIsExplicit := node.kindIsExplicit || incoming.kind.isSome
   let kind ← match incoming.kind with
     | some kind =>
@@ -81,18 +76,30 @@ private def mergeContribution (label : Label) (node : Node)
         conflict s!"Label {label} declares conflicting statement kinds: existing '{node.kind}', new '{kind}'"
       pure kind
     | none => pure <| if node.kindIsExplicit then node.kind else
-        inferredNodeKind (ExternalRef.mergeSnapshots node.externalRefs node.proofExternalRefs) literateCodes
+        inferredNodeKind node.externalAssociationSnapshots ({ node with sources }.inlineCodes)
   return { node with
     kind, kindIsExplicit
     count := if node.count == 0 then incoming.count else node.count
-    statement, proof, rustCode, externalMarkup, parent, owner, effort, prUrl, issueUrl
-    literateCodes
-    tags := incoming.tags.foldl (fun tags tag => if tags.contains tag then tags else tags.push tag) node.tags }
+    sources, uses, parent, owner, effort, prUrl, issueUrl
+    tags := incoming.tags.foldl pushUnique node.tags }
+
+/-- Raw well-formedness only. Destination membership is checked after complete
+realization composition; no fixed language-slot representability gate remains. -/
+private def registrationIssues (label : Label) (incoming : SourceData.Registration) : Array String := Id.run do
+  let mut errors := incoming.sources.flatMap fun source =>
+    (source.rawIssues label).map fun issue => s!"Label {label}: {issue.code}: {issue.message}"
+  for use in incoming.uses do
+    if use.node != label || use.reference.label.isAnonymous || use.role.isAnonymous ||
+        use.realization.any (·.isAnonymous) ||
+        (use.realization.isNone && use.role != `statement && use.role != `proof) then
+      errors := errors.push s!"Label {label}: invalid-use-destination: Use must preserve its concept, scope and explicit role"
+  return errors
 
 /-- Payload reducer for body, kind, markup, dependency, and literate payloads. -/
-private def applyPayloads (label : Label) (node : Node)
-    (contributions : Array NodeContribution) : Except (Array String) Node :=
-  let (node, errors) := (contributions.foldlM (mergeContribution label) node).run #[]
+private def applyPayloads (label : Label) (node : NodeInventory)
+    (contributions : Array SourceData.Registration) : Except (Array String) NodeInventory :=
+  let sourceErrors := contributions.flatMap (registrationIssues label)
+  let (node, errors) := (contributions.foldlM (mergeContribution label) node).run sourceErrors
   if errors.isEmpty then .ok node else .error errors
 
 end Informal.NodeAssembly
@@ -102,8 +109,8 @@ namespace Informal.Data
 /-- Apply body, kind, markup, dependency, and literate payloads to a node.
 Selected associations and priority are supplied separately through identified
 records. This reducer preserves those fields on an already assembled node. -/
-def Node.applyContributions (label : Label) (node : Node)
-    (contributions : Array NodeContribution) : Except (Array String) Node :=
+def NodeInventory.applyRegistrations (label : Label) (node : NodeInventory)
+    (contributions : Array SourceData.Registration) : Except (Array String) NodeInventory :=
   Informal.NodeAssembly.applyPayloads label node contributions
 
 end Informal.Data
@@ -112,14 +119,12 @@ namespace Informal.NodeAssembly
 
 open Lean Informal.Data Informal.Contributions
 
-/-- Capability projection for consumers that need every accepted attribute association. -/
-def supportsHaveBlueprintAttributeAttachments (supports : List Record) : Bool :=
-  supports.any fun record => record.allReferences.any fun ref => ref.origin == .blueprintAttr
-
 private def recordMessage (record : Record) : String :=
-  let refs := String.intercalate ", " (record.references.toList.map fun ref => ref.canonical.toString)
-  let proofRefs := if record.proofReferences.isEmpty then "" else
-    s!" proofRefs=[{String.intercalate ", " (record.proofReferences.toList.map fun ref => ref.canonical.toString)}]"
+  let statement := (record.nativeAssociations.filter (·.placement == `statement)).map (·.reference)
+  let proof := (record.nativeAssociations.filter (·.placement == `proof)).map (·.reference)
+  let refs := String.intercalate ", " (statement.toList.map fun ref => ref.canonical.toString)
+  let proofRefs := if proof.isEmpty then "" else
+    s!" proofRefs=[{String.intercalate ", " (proof.toList.map fun ref => ref.canonical.toString)}]"
   s!"{record.id.moduleName}.{record.id.producer}:{record.id.subject}@{record.id.site}/{record.id.slot} label={record.label} refs=[{refs}]{proofRefs} priority={record.priority}"
 
 private def externalOriginMessage : ExternalOrigin → String
@@ -132,6 +137,9 @@ private def provedStatusMessage : ProvedStatus → String
   | .axiomLike => "axiom-like"
   | .incomplete info =>
     s!"incomplete(known-sorry={info.knownSorry.size}, unverified={info.unverified.size})"
+
+private def snapshotStatusMessage (ref : ExternalRef) : String :=
+  (ref.provedStatus.map provedStatusMessage).getD "awaiting capture"
 
 private def externalSourceMessage (ref : ExternalRef) : String :=
   let provenance := match ref.provenance with
@@ -163,9 +171,11 @@ private def collisionDifferenceMessage (first record : Record) : String := Id.ru
   if first.source != record.source then
     differences := differences.push
       s!"registration source ({registrationSourceMessage first.source} → {registrationSourceMessage record.source})"
-  if first.references.map (·.canonical) != record.references.map (·.canonical) ||
-      first.proofReferences.map (·.canonical) != record.proofReferences.map (·.canonical) then
-    differences := differences.push "facet associations"
+  if first.nativeAssociations.map (fun association => (association.realization, association.context, association.placement)) !=
+      record.nativeAssociations.map (fun association => (association.realization, association.context, association.placement)) then
+    differences := differences.push "native destinations"
+  if first.allReferences.map (·.canonical) != record.allReferences.map (·.canonical) then
+    differences := differences.push "native associations"
   if first.allReferences.map (·.origin) != record.allReferences.map (·.origin) then
     let origins := referenceFieldMessage first.allReferences (externalOriginMessage ·.origin)
     let recordOrigins := referenceFieldMessage record.allReferences (externalOriginMessage ·.origin)
@@ -180,8 +190,8 @@ private def collisionDifferenceMessage (first record : Record) : String := Id.ru
     let recordSources := referenceFieldMessage record.allReferences externalSourceMessage
     differences := differences.push s!"source metadata ({sources} → {recordSources})"
   if first.allReferences.map (·.provedStatus) != record.allReferences.map (·.provedStatus) then
-    let statuses := referenceFieldMessage first.allReferences (provedStatusMessage ·.provedStatus)
-    let recordStatuses := referenceFieldMessage record.allReferences (provedStatusMessage ·.provedStatus)
+    let statuses := referenceFieldMessage first.allReferences snapshotStatusMessage
+    let recordStatuses := referenceFieldMessage record.allReferences snapshotStatusMessage
     differences := differences.push s!"status ({statuses} → {recordStatuses})"
   if first.allReferences.map (·.render) != record.allReferences.map (·.render) then
     differences := differences.push s!"render differs ({referenceFieldMessage first.allReferences (renderStateMessage ·.render)} → {referenceFieldMessage record.allReferences (renderStateMessage ·.render)})"
@@ -196,7 +206,7 @@ private def diagnosticMessages (label : Label) (diagnostics : Diagnostics) : Arr
   let priorities := diagnostics.priorityConflict.toArray.qsort fun a b => a.1 < b.1
   let supportKey := fun record : Record =>
     s!"{idKey record.id}/{record.label.toString}/" ++
-      String.intercalate "," (record.references.toList.map fun ref => ref.canonical.toString) ++
+      String.intercalate "," (record.allReferences.toList.map fun ref => ref.canonical.toString) ++
       s!"/{record.priority}"
   let keyedSupports := fun (supports : List Record) => supports.toArray.map fun record =>
     (supportKey record, reprStr record, record)
@@ -214,37 +224,68 @@ private def diagnosticMessages (label : Label) (diagnostics : Diagnostics) : Arr
       ((keyedSupports supports |>.qsort supportOrder).map fun support => recordMessage support.2.2)
   collisionMessages ++ priorityMessages
 
-/--
-Assemble one complete node atomically. Selected records are resolved exactly once;
-their accepted projection supplies external references and priority, while the
-payload reducer retains body, kind, markup, dependency, and literate policies.
-On success, the node exposes the resolved priority and an attribute capability
-projected from every accepted support. It does not choose a general snapshot or
-claim confluence for unrelated payload policies.
--/
+/-- Assemble one complete source inventory atomically. The accepted resolver
+view supplies all keyed native associations and agreed priority. Source/use
+payloads retain their original destinations and scopes; no completion is inferred.
+Metadata display defaults are independent of validation. -/
 structure Assembly where
-  node : Node
+  node : NodeInventory
   view : View
 
-private def project (node : Node) (view : View) : Assembly :=
-  let externalRefs := view.supports.foldl (fun refs record => ExternalRef.mergeSnapshots refs record.references) #[]
-  let proofExternalRefs := view.supports.foldl (fun refs record => ExternalRef.mergeSnapshots refs record.proofReferences) #[]
-  let blueprintAttributeAttachments := supportsHaveBlueprintAttributeAttachments view.supports
+private def project (node : NodeInventory) (view : View) : Assembly :=
+  let nativeAssociations := view.supports.toArray.flatMap (·.nativeAssociations)
   let kind := if node.kindIsExplicit then node.kind else
-    inferredNodeKind (ExternalRef.mergeSnapshots externalRefs proofExternalRefs) node.literateCodes
-  { node := { node with
-    externalRefs := externalRefs
-    proofExternalRefs := proofExternalRefs
-    blueprintAttributeAttachments := blueprintAttributeAttachments
-    priority := view.priority
-    kind := kind }, view }
+    inferredNodeKind (nativeAssociations.map (·.reference)) node.inlineCodes
+  { node := { node with nativeAssociations, priority := view.priority, kind }, view }
 
-def assemble (label : Label) (payloads : Array NodeContribution) (records : List Record) :
+/-- Raw keyed destination checks shared by local planning and complete import
+reassembly. They do not establish composed membership or native-name stability. -/
+def sourceDestinationIssues (label : Label) (payloads : Array SourceData.Registration) (records : List Record) : Array String := Id.run do
+  let records := (recordsFor label records).toArray
+  let mut issues := records.flatMap fun record =>
+    record.nativeAssociations.flatMap fun association =>
+      (association.rawIssues label).map fun issue =>
+        s!"Label {label}: {issue.code}: {issue.message} ({issue.subject})"
+  let mut contexts : Std.HashMap Realizations.RealizationKey Realizations.Context := {}
+  for source in payloads.flatMap (·.sources) do
+    let key := source.destination.realization
+    match contexts[key]? with
+    | some context =>
+      if context != source.context then
+        issues := issues.push s!"Label {label}: source-context-mismatch: Realization '{key.name}' has conflicting source contexts"
+    | none => contexts := contexts.insert key source.context
+  for record in records do
+    for association in record.nativeAssociations do
+      match contexts[association.realization]? with
+      | some context =>
+        if context != association.context then
+          let message := s!"Label {label}: source-context-mismatch: Native realization '{association.realization.name}' has conflicting source contexts"
+          unless issues.contains message do issues := issues.push message
+      | none => contexts := contexts.insert association.realization association.context
+  return issues
+
+/-- Check every selected name without rewriting retained source evidence.
+A second erasure must not move the declaration key normalized by display/indexing. -/
+def referenceNameErrors (label : Label) (records : List Record) : Array String :=
+  ((recordsFor label records).flatMap fun record =>
+    record.allReferences.toList.filterMap fun ref =>
+      if ref.canonical.eraseMacroScopes.eraseMacroScopes == ref.canonical.eraseMacroScopes then none
+      else some s!"Label {label} has external Lean reference '{ref.written}' with unstable canonical name '{ref.canonical}': erasing macro scopes again changes the declaration key").toArray
+
+/-- Both structural and selected-name errors remain visible, in that order.
+Payload and resolver conflicts still precede this final admission check. -/
+def admissionErrors (label : Label) (payloads : Array SourceData.Registration)
+    (records : List Record) : Array String :=
+  sourceDestinationIssues label payloads records ++ referenceNameErrors label records
+
+def assemble (label : Label) (payloads : Array SourceData.Registration) (records : List Record) :
     Except (Array String) Assembly :=
-  match Node.applyContributions label {} payloads with
+  match NodeInventory.applyRegistrations label {} payloads with
   | .error errors => .error errors
   | .ok node => match resolve label records with
     | .error result => .error (diagnosticMessages label result)
-    | .ok view => .ok (project node view)
+    | .ok view =>
+      let issues := admissionErrors label payloads records
+      if issues.isEmpty then .ok (project node view) else .error issues
 
 end Informal.NodeAssembly

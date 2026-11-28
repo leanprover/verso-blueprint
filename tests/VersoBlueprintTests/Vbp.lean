@@ -43,7 +43,18 @@ private def relatedWithoutPreview (value title : String) : RelatedEntry :=
 private def finishedGraph (key : String) (nodes : Array NodeData) : GraphData :=
   ({ nodes } : GraphModel).finish key {}
 
-private def sampleManifest : ManifestFile := {
+private def withNodeRows (file : ManifestFile)
+    (assessmentFor : Name → Option Informal.Realizations.NodeAssessment := fun _ => none) : ManifestFile :=
+  { file with nodes := Informal.PreviewManifest.collectNodeRows file.previews assessmentFor }
+
+private def metadataAssessment (name : Name) : Option Informal.Realizations.NodeAssessment :=
+  if name == label "zeta_statement" then some { hasNativeDeclarations := true, statementDependenciesComplete := true }
+  else if name == label "proof_statement" then some {
+    hasNativeDeclarations := true, nativeStatementComplete := true, hasNativeBodyRequirement := true
+    proofRoleComplete := some false, proofDependenciesComplete := true }
+  else none
+
+private def sampleManifest : ManifestFile := withNodeRows {
   previews := #[
     {
       key := "informal:addition_spec:statement"
@@ -80,7 +91,7 @@ private def sampleManifest : ManifestFile := {
   ]
 }
 
-private def sampleExternalManifest : ManifestFile := {
+private def sampleExternalManifest : ManifestFile := withNodeRows {
   previews := sampleManifest.previews.push {
     key := Informal.PreviewManifest.externalMarkupEntryKey (label "external_bodyless")
     targetKind := .externalMarkup
@@ -97,7 +108,7 @@ private def sampleExternalManifest : ManifestFile := {
   }
 }
 
-private def sampleInlineCodeManifest : ManifestFile := {
+private def sampleInlineCodeManifest : ManifestFile := withNodeRows {
   previews := sampleManifest.previews.push {
     key := "informal:inline_code_label:statement"
     targetKind := .block
@@ -114,7 +125,7 @@ private def sampleInlineCodeManifest : ManifestFile := {
   }
 }
 
-private def sampleEmptyRelationManifest : ManifestFile := {
+private def sampleEmptyRelationManifest : ManifestFile := withNodeRows {
   previews := #[
     {
       key := "informal:relation_source:statement"
@@ -134,7 +145,7 @@ private def sampleEmptyRelationCache : HtmlCacheFile := {
   ]
 }
 
-private def sampleGroupManifest : ManifestFile := {
+private def sampleGroupManifest : ManifestFile := withNodeRows {
   previews := #[
     {
       key := "informal:group_member:statement"
@@ -175,7 +186,7 @@ private def sampleGroupCache : HtmlCacheFile := {
   ]
 }
 
-private def sampleExternalGroupManifest : ManifestFile := {
+private def sampleExternalGroupManifest : ManifestFile := withNodeRows {
   sampleGroupManifest with
     previews := sampleGroupManifest.previews.map fun entry =>
       if entry.label == label "group_member" then
@@ -194,7 +205,7 @@ private def sampleExternalGroupCache : HtmlCacheFile := {
   ]
 }
 
-private def sampleSemanticOnlyExternalManifest : ManifestFile := {
+private def sampleSemanticOnlyExternalManifest : ManifestFile := withNodeRows {
   previews := #[
     {
       key := Informal.PreviewManifest.externalMarkupEntryKey (label "semantic_only_external")
@@ -211,7 +222,7 @@ private def sampleSemanticOnlyExternalCache : HtmlCacheFile := {
   entries := #[]
 }
 
-private def sampleCacheOnlyRelationManifest : ManifestFile := {
+private def sampleCacheOnlyRelationManifest : ManifestFile := withNodeRows {
   previews := #[
     {
       key := "informal:relation_source:statement"
@@ -232,7 +243,7 @@ private def sampleCacheOnlyRelationCache : HtmlCacheFile := {
   ]
 }
 
-private def sampleGraphReferenceManifest : ManifestFile := {
+private def sampleGraphReferenceManifest : ManifestFile := withNodeRows {
   previews := #[
     {
       key := Informal.PreviewManifest.externalMarkupEntryKey (label "semantic_graph_target")
@@ -269,7 +280,7 @@ private def sampleGraphReferenceCache : HtmlCacheFile := {
   ]
 }
 
-private def sampleUnfinalizedReferenceManifest : ManifestFile := {
+private def sampleUnfinalizedReferenceManifest : ManifestFile := withNodeRows {
   previews := #[
     {
       key := "informal:reference_source:statement"
@@ -379,7 +390,7 @@ private def sampleCache : HtmlCacheFile := {
   ]
 }
 
-private def sampleMetadataManifest : ManifestFile := {
+private def sampleMetadataManifest : ManifestFile := withNodeRows {
   previews := #[
     {
       key := "informal:zeta_statement:statement"
@@ -414,8 +425,9 @@ private def sampleMetadataManifest : ManifestFile := {
         title := "Zeta"
         displayLabel := "Zeta"
         kind := some .definition
+        actionableStage := some "statement"
         statementStatus := .ready
-        proofStatus := .ready
+        proofStatus := .none
         visual := { fillcolor := "#ffffff" }
       },
       {
@@ -431,12 +443,13 @@ private def sampleMetadataManifest : ManifestFile := {
         title := "Proof statement"
         displayLabel := "Proof statement"
         kind := some .theorem
+        actionableStage := some "proof"
         statementStatus := .formalized
         proofStatus := .incomplete
         visual := { fillcolor := "#ffffff" }
       }
     ]]
-}
+} metadataAssessment
 
 private def jsonField? (json : Json) (field : String) : Option Json :=
   match json.getObjVal? field with
@@ -485,67 +498,92 @@ private def jsonArrayHasNullField (values : Array Json) (field : String) : Bool 
 /-- info: true -/
 #guard_msgs in
 #eval
-  let check (statement proof : Informal.Data.ProvedStatus) (verdict : String)
-      (statementComplete proofComplete : Bool) (kind : Informal.Data.NodeKind := .theorem) : Bool :=
+  -- MOCK transport fixture only: these values do not report provider or kernel success.
+  let check (statement proof : Informal.Data.ProvedStatus)
+      (nativeStatementComplete nativeBodyComplete requiredComplete : Bool)
+      (kind : Informal.Data.NodeKind := .theorem) : Bool :=
     let statementSource : Informal.BlockCodeData := { externalDecls := #[{
-      (Informal.Data.ExternalRef.ofName `truthDecl) with kind, provedStatus := statement }] }
+      (Informal.Data.ExternalRef.ofName `truthDecl) with kind, provedStatus := some statement }] }
     let proofSource : Informal.BlockCodeData := { literateDeclarations := { definedTheorems := #[{
       name := `truthDecl, provedStatus := proof }] } }
     let source := statementSource.append proofSource
-    let node : Informal.Data.Node := {
-      kind, externalRefs := statementSource.externalDecls,
-      literateCodes := #[{ stx := .missing, definedTheorems := #[{
-        name := `truthDecl, provedStatus := proof }] }] }
-    let health := nodeCodeHealth {} node
+    let assessment : Informal.Realizations.NodeAssessment := {
+      hasNativeDeclarations := true
+      hasNativeBodyRequirement := true
+      nativeStatementComplete
+      nativeBodyComplete
+      requiredComplete
+      hasAxiomLike := false
+      selectedLeanUseCount := 1
+      statementDependenciesComplete := true
+      proofDependenciesComplete := false
+      details := Json.mkObj [
+        ("fixture", Json.str "MOCK: transport only; not provider success"),
+        ("assessment", Json.mkObj [("fixture", Json.str "MOCK")]),
+        ("uses", Json.arr #[]),
+        ("sourceDiagnostics", Json.arr #[])] }
     let heading := Informal.CodeSummary.renderParts {
-      kind, label := label "truth", count := 1, codeData := some source }
+      kind, label := label "truth", count := 1, codeData := some source, assessment := some assessment }
       { source := some source } (fun _ => none)
-    let manifest : ManifestFile := { previews := #[
+    let manifest : ManifestFile := withNodeRows { previews := #[
       { key := "informal:truth:statement", targetKind := .block, label := label "truth",
         facet := .statement, kind := some kind, title := "Truth", codeData := some statementSource },
       { key := "informal:truth:proof", targetKind := .block, label := label "truth",
         facet := .proof, kind := some kind, title := "Proof", codeData := some proofSource }
-    ] }
+    ] } (fun _ => some assessment)
     match executeQuery manifest ["status", "truth"] with
     | .error _ => false
     | .ok json =>
-      jsonStringField? json "verdict" == some verdict &&
-      jsonStringField? json "asOf" == some "generated-snapshot" &&
-      jsonBoolField? json "statementComplete" == some statementComplete &&
-      jsonBoolField? json "proofComplete" == some proofComplete &&
-      jsonBoolField? json "complete" == some proofComplete &&
-      health.totalDecls == 1 && health.verdict == verdict &&
-      health.localStatementFormalized == statementComplete &&
-      health.localProofFormalized == proofComplete &&
-      (match heading.statusMark with
-       | some mark => mark.status == health.provedStatus &&
-           mark.title.contains "Statement: completed" == statementComplete &&
-           mark.title.contains "Proof: completed" == proofComplete
-       | none => false) &&
-      (match jsonArrayField? json "declarations" with
-       | some rows => rows.size == 2 && jsonArrayHasStringField rows "facet" "statement" &&
-           jsonArrayHasStringField rows "facet" "proof" &&
-           rows.all (fun row => (jsonField? row "status").isSome)
-       | none => false)
-  let hidden : Informal.Data.ProvedStatus := .incomplete { unverified := #[{
-    location := .proof, declaration := `hiddenHelper, reason := .bodyUnavailable }] }
-  let gap : Informal.Data.ProvedStatus := .incomplete { knownSorry := #[{
-    location := .proof, origin := .dependency }] }
-  check .proved .proved "complete" true true &&
-    check .proved hidden "unverified" true false &&
-    check hidden .proved "unverified" true false &&
-    check .proved (.incomplete {}) "unverified" false false &&
-    check hidden gap "incomplete" true false &&
-    check .proved .missing "missing" false false &&
-    check .proved .axiomLike "axiom-like" false false &&
-    check .proved gap "incomplete" false false .definition &&
-    check .proved hidden "unverified" false false .definition &&
-    check (.incomplete { knownSorry := #[{ location := .statement }] }) .proved
-      "incomplete" false false &&
+      match jsonField? json "validation", jsonArrayField? json "sourceDeclarationSnapshots" with
+      | some validation, some rows =>
+        match jsonField? validation "details" with
+        | some details =>
+          let checks := #[
+            jsonStringField? json "asOf" == some "captured-build",
+            jsonBoolField? validation "captured" == some true,
+            jsonBoolField? validation "hasNativeDeclarations" == some true,
+            jsonBoolField? validation "hasAxiomLike" == some false,
+            jsonBoolField? validation "nativeStatementComplete" == some nativeStatementComplete,
+            jsonBoolField? validation "nativeBodyComplete" == some nativeBodyComplete,
+            jsonBoolField? validation "requiredComplete" == some requiredComplete,
+            (jsonField? validation "selectedLeanUseCount") == some (toJson (1 : Nat)),
+            (jsonField? details "assessment").isSome,
+            jsonStringField? details "fixture" == some "MOCK: transport only; not provider success",
+            (jsonField? details "uses").isSome,
+            (jsonField? details "sourceDiagnostics").isSome,
+            rows.size == 2, rows.all (fun row =>
+              (jsonField? row "sourceSnapshotStatus").isSome && (jsonField? row "status").isNone),
+            (match heading.statusMark with
+             | some mark => mark.title.contains "Selected Lean prerequisites unfinished" &&
+                 mark.status == (if (if kind.isTheoremLike then nativeBodyComplete else nativeStatementComplete) && requiredComplete then .proved else .incomplete {})
+             | none => false),
+            (match heading.statusMark with
+             | some mark => mark.title.contains "Native statement: passed" == nativeStatementComplete
+             | none => false),
+            (match heading.statusMark with
+             | some mark => mark.title.contains "Native body: passed" == nativeBodyComplete
+             | none => false),
+            (match heading.statusMark with
+             | some mark => mark.title.contains "Native Lean requirements: complete" == requiredComplete
+             | none => false),
+            jsonArrayHasStringField rows "facet" "statement",
+            jsonArrayHasStringField rows "facet" "proof"]
+          checks.all id
+        | none => false
+      | _, _ => false
+  let sourceSaysComplete := check .proved .proved true true false
+  let nativeProofUnfinished := check .proved .proved true false false
+  let nativeProofOnly := check .proved .proved false true false
+  let validationComplete := check .proved .proved true true true
+  let definitionUsesStatementCheck := check .proved .proved true true false .definition
+  sourceSaysComplete && nativeProofUnfinished && nativeProofOnly && validationComplete &&
+    definitionUsesStatementCheck &&
     (match executeQuery sampleManifest ["status", "addition_assoc"] with
-     | .ok json => jsonStringField? json "verdict" == some "unassociated" &&
-         jsonBoolField? json "complete" == some false &&
-         jsonBoolField? json "statementComplete" == some false
+     | .ok json =>
+         match jsonField? json "validation" with
+         | some validation => jsonStringField? json "asOf" == some "uncaptured" &&
+             jsonBoolField? validation "captured" == some false
+         | none => false
      | .error _ => false)
 
 private def previewKeyValue? (key? : Option Informal.PreviewKey) : Option String :=
@@ -657,7 +695,7 @@ private def graphNodePreviewKeys
       sampleManifest.findPrimaryQueryableEntry? "addition_assoc" with
     | some externalEntry, some blockEntry =>
         sampleManifest.blockStatementEntries.size == 2 &&
-          sampleExternalManifest.queryableStatementEntries.size == 3 &&
+          sampleExternalManifest.nodeEntries.size == 3 &&
           (sampleManifest.findPrimaryBlockEntry? "addition_assoc").map (·.key) ==
             some "informal:addition_assoc:statement" &&
           externalEntry.key ==
@@ -667,7 +705,8 @@ private def graphNodePreviewKeys
           blockEntry.requiresRenderedBody &&
           sampleMetadataManifest.ownerValues == #["Alpha", "Zed"] &&
           sampleMetadataManifest.tagValues == #["alpha", "beta", "zeta"] &&
-          sampleMetadataManifest.metadataEntries.map (·.authoredLabel) ==
+          ((sampleMetadataManifest.nodes.filterMap sampleMetadataManifest.index.nodeMetadata?).filter
+            (·.hasTriageMetadata)).map (·.authoredLabel) ==
             #["zeta_statement", "alpha_statement"]
     | _, _ => false
 
@@ -676,23 +715,21 @@ private def graphNodePreviewKeys
 #eval
   show Bool from
     let items := sampleMetadataManifest.workQueueItems
-    items.map (fun item => (item.entry.authoredLabel, item.nextStep)) ==
-        #[("zeta_statement", "statement"), ("proof_statement", "proof")] &&
-      items.all fun item =>
-        item.graphNode.label == item.entry.label &&
-          item.graphNode.actionableStage? == some item.nextStep
+    items.map (fun item => (item.node.label, item.nextStep)) ==
+        #[(label "zeta_statement", "statement"), (label "proof_statement", "proof")]
 
 /-- info: true -/
 #guard_msgs in
 #eval
   show Bool from
-    match
-      sampleMetadataManifest.actionableGraphNode? (label "proof_statement"),
-      sampleMetadataManifest.actionableGraphNode? (label "alpha_statement") with
-    | some proofNode, none =>
-        proofNode.label == label "proof_statement" &&
-          proofNode.actionableStage? == some "proof"
-    | _, _ => false
+    let fixture := sampleMetadataManifest
+    let noGraph := { fixture with graphs := #[] }
+    let duplicate := { fixture.previews[0]! with key := "external:zeta", targetKind := .externalMarkup }
+    let duplicateResource := withNodeRows { noGraph with previews := noGraph.previews.push duplicate } metadataAssessment
+    let result (file : ManifestFile) := file.workQueueItems.map fun item => (item.node.label, item.nextStep)
+    result fixture == result noGraph && result noGraph == result duplicateResource &&
+      duplicateResource.nodeEntries.size == noGraph.nodeEntries.size &&
+      result noGraph == #[(label "zeta_statement", "statement"), (label "proof_statement", "proof")]
 
 /-- info: true -/
 #guard_msgs in
@@ -784,33 +821,33 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
     (dataDir / Informal.PreviewManifest.manifestFilename)
     manifestJson.compress
 
-private def queryReadModeExamples : List (String × List String × Bool) := [
-  ("selectors", ["selectors"], false),
-  ("labels", ["labels"], false),
-  ("node <label>", ["node", "addition_assoc"], false),
-  ("status <label>", ["status", "addition_assoc"], false),
-  ("uses <label>", ["uses", "addition_assoc"], false),
-  ("used-by <label>", ["used-by", "addition_assoc"], false),
-  ("group <label>", ["group", "addition_assoc"], false),
-  ("owners", ["owners"], false),
-  ("tags", ["tags"], false),
-  ("work-queue", ["work-queue"], true),
-  ("metadata", ["metadata"], false),
-  ("search <text>", ["search", "addition"], false),
-  ("code <decl>", ["code", "Nat.add"], false),
-  ("stats", ["stats"], false)
+private def queryExamples : List (String × List String) := [
+  ("selectors", ["selectors"]),
+  ("labels", ["labels"]),
+  ("node <label>", ["node", "addition_assoc"]),
+  ("status <label>", ["status", "addition_assoc"]),
+  ("uses <label>", ["uses", "addition_assoc"]),
+  ("used-by <label>", ["used-by", "addition_assoc"]),
+  ("group <label>", ["group", "addition_assoc"]),
+  ("owners", ["owners"]),
+  ("tags", ["tags"]),
+  ("work-queue", ["work-queue"]),
+  ("metadata", ["metadata"]),
+  ("search <text>", ["search", "addition"]),
+  ("code <decl>", ["code", "Nat.add"]),
+  ("stats", ["stats"])
 ]
 
 /-- info: true -/
 #guard_msgs in
 #eval
   show Bool from
-    queryReadModeExamples.map (fun (selector, _, _) => selector) ==
+    queryExamples.map (·.1) ==
         VersoBlueprint.Vbp.querySelectorLines &&
-      (queryReadModeExamples.all fun (_, args, needsGraphData) =>
+      (queryExamples.all fun (_, args) =>
         match VersoBlueprint.Vbp.parseQueryPlan args with
-        | .ok none => !needsGraphData
-        | .ok (some plan) => plan.needsGraphData == needsGraphData
+        | .ok none => args == ["selectors"]
+        | .ok (some _) => args != ["selectors"]
         | .error _ => false) &&
       (match VersoBlueprint.Vbp.parseQueryPlan ["future-selector"] with
        | .error err => err == "unknown query selector 'future-selector'"
@@ -873,7 +910,7 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
                   jsonHasApiStability json &&
                   jsonStringField? statementEntry "nextStep" == some "statement" &&
                   jsonStringField? statementEntry "statementStatus" == some "ready to formalize" &&
-                  jsonStringField? statementEntry "proofStatus" == some "ready to formalize" &&
+                  jsonStringField? statementEntry "proofStatus" == some "no proof status" &&
                   jsonStringField? proofEntry "nextStep" == some "proof" &&
                   jsonStringField? proofEntry "statementStatus" == some "formalized" &&
                   jsonStringField? proofEntry "proofStatus" == some "Lean code incomplete"
@@ -1172,11 +1209,12 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
           group with entries := group.entries.filter (·.label != label "group_member")
         }]
     }
-    let bodylessMemberManifest := {
+    let omittedPeerManifest := {
       sampleGroupManifest with
         previews := sampleGroupManifest.previews.filter (·.label != label "group_peer")
+        nodes := sampleGroupManifest.nodes.filter (·.label != label "group_peer")
     }
-    let orphanMemberManifest := { bodylessMemberManifest with
+    let orphanMemberManifest := { omittedPeerManifest with
       groups := #[{ group with entries := group.entries.map fun member =>
         if member.label == label "group_peer" then
           { member with previewKey := Informal.PreviewKey.ofString? "informal:group_peer:statement" }
@@ -1248,8 +1286,8 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
     let missingMemberErrors := checkGroups missingMemberManifest
     let bodylessCache : HtmlCacheFile := { sampleGroupCache with
       entries := sampleGroupCache.entries.filter (·.key != "informal:group_peer:statement") }
-    let bodylessErrors := VersoBlueprint.Vbp.checkGeneratedData
-      (persistedFiles bodylessMemberManifest bodylessCache)
+    let omittedPeerErrors := VersoBlueprint.Vbp.checkGeneratedData
+      (persistedFiles omittedPeerManifest bodylessCache)
     let orphanMemberErrors := checkGroups orphanMemberManifest
     let mismatchedParentErrors := checkGroups mismatchedParentManifest
     let mismatchedTitleErrors := checkGroups mismatchedTitleManifest
@@ -1259,7 +1297,8 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
     let emptyMemberLabelErrors := checkGroups emptyMemberLabelManifest
     let emptyEntryLabelErrors := checkGroups emptyEntryLabelManifest
     let invalidParentErrors := checkGroups invalidParentManifest
-    bodylessErrors.isEmpty && orphanErrors.any (fun err =>
+    omittedPeerErrors.contains "manifest group sample_group member group_peer has no matching manifest entry" &&
+      orphanErrors.any (fun err =>
       err == "entry informal:group_member:statement references missing manifest group: sample_group") &&
       duplicateGroupErrors.any (fun err =>
         err == "duplicate manifest group label: sample_group") &&
@@ -1286,6 +1325,47 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
       emptyMemberLabelErrors.any (· == "manifest group sample_group has member with empty label") &&
       emptyEntryLabelErrors.any (· == "entry informal:group_member:statement is missing label") &&
       invalidParentErrors.any (· == "entry informal:group_member:statement has invalid parent")
+
+/- Bodyless rows have the same parent and group membership checks as facets. -/
+/-- info: true -/
+#guard_msgs in
+#eval show Bool from Id.run do
+  let some peer := sampleGroupManifest.previews.find? (·.label == label "group_peer") | return false
+  let some group := sampleGroupManifest.groups[0]? | return false
+  let bodyless := peer.nodeMetadata
+  let manifest := { sampleGroupManifest with
+    previews := sampleGroupManifest.previews.filter (·.key != peer.key) }
+  let cache := { sampleGroupCache with entries := sampleGroupCache.entries.filter (·.key != peer.key) }
+  let check (manifest : ManifestFile) (node : Informal.PreviewManifest.NodeOccurrenceMetadata) :=
+    let manifest := { manifest with nodes := manifest.nodes.map fun row =>
+      if row.label == node.label then { row with primaryKey := none, bodyless := some node } else row }
+    VersoBlueprint.Vbp.checkGeneratedData (persistedFiles manifest cache)
+  let missingMember := { manifest with
+    groups := #[{ group with entries := group.entries.filter (·.label != peer.label) }] }
+  return (check manifest bodyless).isEmpty &&
+    (check manifest { bodyless with parent := none }).contains
+      "bodyless node group_peer has parentTitle without parent" &&
+    (check manifest { bodyless with parent := none }).contains
+      "bodyless node group_peer has no parent but is listed in manifest group: sample_group" &&
+    (check manifest { bodyless with parentTitle := some "Stale group" }).contains
+      "bodyless node group_peer has inconsistent parentTitle for manifest group: sample_group" &&
+    (check { manifest with groups := #[] } bodyless).contains
+      "bodyless node group_peer references missing manifest group: sample_group" &&
+    (check missingMember bodyless).contains "bodyless node group_peer is missing from manifest group: sample_group"
+
+/- An unadvertised inert code-only shell is valid with no code keys. -/
+/-- info: true -/
+#guard_msgs in
+#eval
+  let key := "informal:code_shell:statement"
+  let entry : Informal.PreviewManifest.Entry := {
+    key, targetKind := .block, label := label "code_shell", facet := .statement
+    title := "Code shell", codeOnlyPreview := true }
+  let cache : HtmlCacheFile := { entries := #[{ key, html := "<span></span>" }] }
+  let check (keys : Array String) := VersoBlueprint.Vbp.checkGeneratedData <|
+    persistedFiles (withNodeRows { previews := #[{ entry with leanCodePreviewKeys := keys }] }) cache
+  (check #[]).isEmpty &&
+    check #[key] == #[s!"self-referential Lean preview key on {key}"]
 
 /-- info: true -/
 #guard_msgs in
@@ -1329,6 +1409,37 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
       !errors.any (fun err =>
         err.contains "missing HTML cache entry for graph graph-fixture node cache_only_graph" &&
           err.contains "informal:cache_only_graph:statement")
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let entry := sampleManifest.previews[0]!
+    let cacheEntry := sampleCache.entries[0]!
+    -- Even byte-identical duplicates violate the unique-key artifact contract.
+    let manifestCopies := #[entry, { entry with title := "conflicting title" }]
+    let cacheCopies := #[cacheEntry, { cacheEntry with html := "<p>conflicting body</p>" }]
+    manifestCopies.all (fun copy =>
+      VersoBlueprint.Vbp.checkGeneratedData (persistedFiles
+        { sampleManifest with previews := sampleManifest.previews.push copy } sampleCache) ==
+          #[s!"duplicate manifest preview key: {entry.key}"]) &&
+    cacheCopies.all (fun copy =>
+      VersoBlueprint.Vbp.checkGeneratedData (persistedFiles sampleManifest
+        { sampleCache with entries := sampleCache.entries.push copy }) ==
+          #[s!"duplicate HTML cache key: {cacheEntry.key}"])
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let entry := sampleManifest.previews[0]!
+    let cacheEntry := sampleCache.entries[0]!
+    let errors := VersoBlueprint.Vbp.checkGeneratedData (persistedFiles
+      { sampleManifest with previews := sampleManifest.previews.push entry }
+      { sampleCache with entries := sampleCache.entries.push { cacheEntry with html := " " } })
+    errors.contains s!"duplicate manifest preview key: {entry.key}" &&
+      errors.contains s!"duplicate HTML cache key: {cacheEntry.key}" &&
+      errors.contains s!"empty HTML cache body for key {cacheEntry.key}"
 
 /-- info: true -/
 #guard_msgs in
@@ -1388,29 +1499,13 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
   let site ← freshVbpFixtureRoot
   writeRawManifestOnlySite site (toJson sampleGraphReferenceManifest)
   let strictManifest ← VersoBlueprint.Vbp.readManifestForSite site
-  let queryManifests ← queryReadModeExamples.filterMapM
-      (fun (queryMode : String × List String × Bool) => do
-        let args := queryMode.2.1
-        let needsGraphData := queryMode.2.2
-        match VersoBlueprint.Vbp.parseQueryPlan args with
-        | .ok none => pure none
-        | .ok (some plan) =>
-            let manifest ← VersoBlueprint.Vbp.readManifestForQuery site plan
-            pure (some (manifest, needsGraphData))
-        | .error err => throw <| IO.userError err)
-  let unknownRejectedBeforeRead :=
-    match VersoBlueprint.Vbp.parseQueryPlan ["future-selector"] with
-    | .error _ => true
-    | .ok _ => false
+  let queryManifest ← VersoBlueprint.Vbp.readManifestForQuery site
   pure <|
-    strictManifest.graphs.size == 1 &&
-      queryManifests.all (fun (manifest, needsGraphData) =>
-        manifest.graphs.isEmpty == !needsGraphData &&
-          manifest.previews.map
-              (fun entry : Informal.PreviewManifest.Entry => entry.key) ==
-            sampleGraphReferenceManifest.previews.map
-              (fun entry : Informal.PreviewManifest.Entry => entry.key)) &&
-      unknownRejectedBeforeRead
+    strictManifest.graphs.size == 1 && queryManifest.graphs.isEmpty &&
+      queryManifest.nodes.map Informal.PreviewManifest.NodeRow.label ==
+        strictManifest.nodes.map Informal.PreviewManifest.NodeRow.label &&
+      queryManifest.previews.map Informal.PreviewManifest.Entry.key ==
+        strictManifest.previews.map Informal.PreviewManifest.Entry.key
 
 /-- info: true -/
 #guard_msgs in
@@ -1419,43 +1514,16 @@ private def queryReadModeExamples : List (String × List String × Bool) := [
   let malformedGraphManifest :=
     (toJson sampleManifest).setObjVal! "graphs" (Json.arr #[Json.str "malformed"])
   writeRawManifestOnlySite site malformedGraphManifest
-  let graphFreeManifests ← queryReadModeExamples.filterMapM
-      (fun (queryMode : String × List String × Bool) =>
-        let args := queryMode.2.1
-        let needsGraphData := queryMode.2.2
-        if needsGraphData then
-          pure none
-        else
-          match VersoBlueprint.Vbp.parseQueryPlan args with
-          | .ok none => pure none
-          | .ok (some plan) =>
-              some <$> VersoBlueprint.Vbp.readManifestForQuery site plan
-          | .error err => throw <| IO.userError err)
+  let manifest ← VersoBlueprint.Vbp.readManifestForQuery site
   let strictRejected ←
     try
       let _ ← VersoBlueprint.Vbp.readManifestForSite site
       pure false
     catch _ =>
       pure true
-  let workQueueRejected ←
-    match VersoBlueprint.Vbp.parseQueryPlan ["work-queue"] with
-    | .ok (some plan) =>
-        try
-          let _ ← VersoBlueprint.Vbp.readManifestForQuery site plan
-          pure false
-        catch _ =>
-          pure true
-    | _ => pure false
-  let unknownRejectedBeforeRead :=
-    match VersoBlueprint.Vbp.parseQueryPlan ["future-selector"] with
-    | .error _ => true
-    | .ok _ => false
   pure <|
-    graphFreeManifests.all (fun manifest =>
-      manifest.previews.size == sampleManifest.previews.size && manifest.graphs.isEmpty) &&
-      strictRejected &&
-      workQueueRejected &&
-      unknownRejectedBeforeRead
+    manifest.previews.size == sampleManifest.previews.size && manifest.graphs.isEmpty &&
+      strictRejected && (executeQuery manifest ["work-queue"]).isOk
 
 /-- info: true -/
 #guard_msgs in
@@ -1604,5 +1672,170 @@ info: true -/
 #eval do
   let code ← VersoBlueprint.Vbp.Main.main ["discover", "extra"]
   pure (code == 2)
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let invalid := ["", "  ", "--serve", "-h"]
+    invalid.all (fun path =>
+      !(VersoBlueprint.Vbp.Main.parseBuildOptions ["--output", path] {}).isOk &&
+      !(VersoBlueprint.Vbp.Main.parseSiteOptions ["--site", path] {}).isOk) &&
+    ["./-site", " output with spaces "].all (fun path =>
+      match VersoBlueprint.Vbp.Main.parseBuildOptions ["--output", path] {},
+          VersoBlueprint.Vbp.Main.parseSiteOptions ["labels", "--site", path] {} with
+      | .ok build, .ok query =>
+          build.output.toString == path && query.site.toString == path && query.rest == ["labels"]
+      | _, _ => false)
+
+/-- info: unexpected check argument '--typo'; check accepts only --site <dir>
+---
+info: true -/
+#guard_msgs in
+#eval do
+  -- No generated site is needed to reject malformed arguments.
+  let site ← freshVbpFixtureRoot
+  let code ← VersoBlueprint.Vbp.Main.main ["check", "--site", site.toString, "--typo"]
+  pure (code == 2)
+
+open Verso Genre Manual in
+#docs (Manual) originalRouteDoc "Route audit" :=
+:::::::
+# Old Chapter
+
+An original chapter.
+
+## Old Section
+
+A section under the original chapter.
+
+# Removed Chapter
+
+A chapter that is removed on rebuild.
+:::::::
+
+open Verso Genre Manual in
+#docs (Manual) rebuiltRouteDoc "Route audit" :=
+:::::::
+# Renamed Chapter
+
+The current chapter.
+:::::::
+
+-- Generate two revisions into the same output, then exercise the CLI on the
+-- actual xrefs and pages. These chapters carry no Blueprint previews.
+open Verso Genre Manual in
+#eval show IO Unit from do
+  let site ← freshVbpFixtureRoot
+  let html := site / "html-multi"
+  let config : Verso.Genre.Manual.RenderConfig := {
+    destination := site, htmlDepth := 2, emitHtmlSingle := .no, features := {} }
+  let generate text := Informal.PreviewManifest.blueprintMainWithPreviewData text []
+    (by exact extension_impls%) (config := config)
+  let (_, code) ← IO.FS.withIsolatedStreams <|
+    generate originalRouteDoc.toPart
+  unless code == 0 do throw <| IO.userError "Initial route fixture failed to render"
+  let custom := html / "custom" / "index.html"
+  IO.FS.createDirAll (html / "custom")
+  let userHtml := "<!DOCTYPE html><html><title>Unmanaged page</title></html>"
+  IO.FS.writeFile custom userHtml
+  let embedded := html / "embedded" / "chapter" / "index.html"
+  let embeddedHtml ← IO.FS.readFile (html / "Old-Chapter" / "index.html")
+  IO.FS.createDirAll (html / "embedded" / "chapter")
+  IO.FS.writeFile embedded embeddedHtml
+  let check := fun path => IO.FS.withIsolatedStreams <|
+    VersoBlueprint.Vbp.Main.main ["check", "--site", path.toString]
+  let (initial, code) ← check site
+  unless code == 0 do throw <| IO.userError s!"Current generated routes failed the CLI audit: {initial}"
+  let (_, code) ← IO.FS.withIsolatedStreams <|
+    generate rebuiltRouteDoc.toPart
+  unless code == 0 && (← (html / "Renamed-Chapter" / "index.html").pathExists) do
+    throw <| IO.userError "Renamed route fixture failed to render"
+  for path in #[site, html] do
+    let (result, code) ← check path
+    let reports := Json.parse result >>= (·.getObjValAs? (Array String) "errors")
+    unless code == 1 && reports.toOption == some #[
+        "stale generated HTML route: /Old-Chapter/",
+        "stale generated HTML route: /Old-Chapter/Old-Section/",
+        "stale generated HTML route: /Removed-Chapter/"] do
+      throw <| IO.userError s!"Wrong stale-route CLI result: {result}"
+  unless (← IO.FS.readFile custom) == userHtml && (← IO.FS.readFile embedded) == embeddedHtml &&
+      (← (html / "Old-Chapter" / "index.html").pathExists) &&
+      (← (html / "Removed-Chapter" / "index.html").pathExists) do
+    throw <| IO.userError "Route audit modified site content"
+
+open Verso Genre Manual Informal in
+#docs (Manual) resourceFreeDoc "Included node catalog" :=
+:::::::
+:::theorem "query-bodyless"
+:::
+
+:::theorem "query-actionable" (lean := "MissingQueryWitness")
+This theorem needs a native statement.
+:::
+:::::::
+
+open Verso Genre Manual Informal in
+#docs (Manual) catalogGraphDoc "Graph occurrence" :=
+:::::::
+{blueprint_graph}
+:::::::
+
+-- Query the persisted output of actual Manual traversal, with the exact same
+-- included nodes in documents with and without a graph block.
+open Verso Genre Manual in
+#eval show IO Unit from do
+  let plain := resourceFreeDoc.toPart
+  let graphed := { plain with subParts := plain.subParts ++ catalogGraphDoc.toPart.subParts }
+  let mut queues := #[]
+  for (doc, hasGraph) in #[(plain, false), (graphed, true)] do
+    let site ← freshVbpFixtureRoot
+    let config : Verso.Genre.Manual.RenderConfig := {
+      destination := site, emitHtmlSingle := .no, features := {} }
+    let (output, code) ← IO.FS.withIsolatedStreams <|
+      Informal.PreviewManifest.blueprintMainWithPreviewData doc [] (by exact extension_impls%) (config := config)
+    unless code == 0 do throw <| IO.userError s!"Could not generate included node fixture: {output}"
+    let manifest ← VersoBlueprint.Vbp.readManifestForSite site
+    let cache ← VersoBlueprint.Vbp.readHtmlCacheForSite site
+    let some row := manifest.findNodeRow? "query-bodyless"
+      | throw <| IO.userError "Missing included occurrence without a preview resource"
+    unless row.primaryKey.isNone && row.bodyless.any (fun node => !node.title.isEmpty && node.href.isSome) &&
+        row.assessment.isSome && (manifest.findQueryableEntriesByLabel "query-bodyless").isEmpty &&
+        manifest.graphs.any (fun graph => graph.nodes.any (·.label == row.label)) == hasGraph &&
+        (VersoBlueprint.Vbp.checkGeneratedData (persistedFiles manifest cache)).isEmpty do
+      throw <| IO.userError "A resource-free occurrence lost its semantic row or acquired a preview"
+    let query (args : List String) :=
+      match executeQuery manifest args with
+      | .ok json => pure json
+      | .error error => throw (IO.userError error)
+    let labels ← query ["labels"]
+    let stats ← query ["stats"]
+    let node ← query ["node", "query-bodyless"]
+    let status ← query ["status", "query-bodyless"]
+    let queue ← query ["work-queue"]
+    let items := (jsonArrayField? queue "entries").getD #[]
+    unless jsonArrayField? labels "labels" |>.any (fun rows => rows.size == 2 &&
+        jsonArrayHasStringField rows "label" "query-bodyless") do
+      throw <| IO.userError s!"Included occurrence is missing from labels: {labels}"
+    unless jsonNatField? stats "statements" == some 2 && jsonField? node "key" == some .null &&
+        jsonField? node "facet" == some .null && jsonStringField? node "href" == row.bodyless.bind (·.href) &&
+        (jsonField? status "validation").any (fun validation => jsonBoolField? validation "captured" == some true) do
+      throw <| IO.userError s!"Included occurrence is missing from stats, node details, or captured status: {stats} {node} {status}"
+    unless items.any (fun item => jsonStringField? item "label" == some "query-actionable" &&
+        jsonStringField? item "nextStep" == some "statement" &&
+        jsonStringField? item "proofStatus" == some "no proof status") do
+      throw <| IO.userError s!"Captured statement work is absent from the queue: {queue}"
+    queues := queues.push queue
+    let corrupted := { manifest with nodes := manifest.nodes.map fun (current : Informal.PreviewManifest.NodeRow) =>
+      if current.label == row.label then { current with primaryKey := some "not-a-resource" } else current }
+    writeRawManifestOnlySite site (toJson corrupted)
+    let rejected ← try
+      discard <| VersoBlueprint.Vbp.readManifestForSite site
+      pure false
+    catch _ => pure true
+    unless rejected do
+      throw <| IO.userError "Persisted row accepted both an occurrence and a purported resource key"
+  unless queues[0]? == queues[1]? do
+    throw <| IO.userError "Adding a graph changed the included nodes' next steps"
 
 end Verso.VersoBlueprintTests.Vbp

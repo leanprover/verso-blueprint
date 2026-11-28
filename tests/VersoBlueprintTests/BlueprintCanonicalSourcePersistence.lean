@@ -1,0 +1,142 @@
+/-
+Copyright (c) 2026 Lean FRO LLC. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Author: Emilio J. Gallego Arias
+-/
+import VersoBlueprintTests.BlueprintCanonicalSourcePersistence.Owner
+import VersoBlueprintTests.BlueprintCanonicalSourcePersistence.Attachment
+import VersoBlueprintTests.BlueprintCanonicalNativePersistence.Harness
+
+open Lean Informal SourceData
+
+-- Old source/dependency constructor slots really are gone; these are not aliases.
+#check_failure (fun (input : Data.NodeContribution) => input.statementBody)
+#check_failure (fun (input : Data.NodeContribution) => input.literateCodes)
+#check_failure (fun (input : Registration) => input.proofUses)
+#check_failure (fun (input : Registration) => input.rustCode)
+
+run_cmd Lean.Elab.Command.liftCoreM do
+  let label := Name.mkSimple "storage.source"
+  let state := Environment.informalExt.getState (← getEnv)
+  let registrations := (state.nodeRegistrations.getD label {}).registrations
+  let sources := registrations.flatMap (·.sources)
+  let uses := registrations.flatMap (·.uses)
+  unless sources.size == 8 && state.importedConflicts.isEmpty &&
+      state.nodeRegistrations.all (fun _ pending => pending.localRegistrations.isEmpty) do
+    throwError "Diamond import duplicated a source or re-exported imported registrations"
+  unless sources.all (fun source => source.context.project == `blueprintFixtures &&
+      source.destination.realization.node == label &&
+      source.source.ok && source.source.location.any (·.path.endsWith ".lean") &&
+      source.document.path.startsWith "module:") do
+    throwError "Owning document, project, destination or UTF-16 source location was lost"
+  let ownerPath := SourceData.modulePath `VersoBlueprintTests.BlueprintCanonicalSourcePersistence.Owner
+  let attachmentPath := SourceData.modulePath `VersoBlueprintTests.BlueprintCanonicalSourcePersistence.Attachment
+  unless sources.all (fun source => source.document.path == ownerPath || source.document.path == attachmentPath) do
+    throwError "Consumer module replaced the owning source path"
+  unless sources.any (fun source => source.destination == ⟨⟨label, `verso⟩, some `statement⟩) &&
+      sources.any (fun source => source.destination == ⟨⟨label, `verso⟩, some `proof⟩) &&
+      sources.any (fun source => source.destination == ⟨⟨label, `lean⟩, none⟩) do
+    throwError "Realization and facet identities were flattened"
+  unless sources.any (fun source =>
+      source.destination == ⟨⟨label, `rocqTranslation⟩, some `implementation⟩ &&
+      source.context.language == `rocq && source.document.path == attachmentPath &&
+      (match source.payload with
+      | .text raw _ => raw == "Definition flag_identity (b : bool) := b."
+      | _ => false)) do
+    throwError "Imported Rocq source bytes or their named destination were lost"
+  unless uses.any (fun use => use.reference.label == Name.mkSimple "storage.forward" &&
+      use.role == `statement && use.realization.isNone && use.reference.origin == .manual) &&
+      uses.any (fun use => use.reference.label == Name.mkSimple "storage.native" &&
+      use.role == `proof && use.realization == some ((Realizations.RealizationKey.mk label `lean).forRole `implementation).name && use.reference.origin == .automatic) &&
+      uses.any (fun use => use.reference.label == Name.mkSimple "storage.native" &&
+      use.role == `proof && use.realization.isNone && use.reference.intent == .technical) &&
+      uses.any (fun use => use.reference.label == Name.mkSimple "storage.tagged" &&
+      use.realization.isNone && use.reference.origin == .automatic && use.reference.intent == .auxiliary) do
+    throwError "Shared forward references, scoped inference or proof intent were lost"
+  let inline := nativeNames #[] sources
+  unless inline == #[`storedInline] && (← Environment.labelsForLeanDecl `storedInline) == #[label] do
+    throwError "Inline declaration membership/index was lost"
+  let rust := sources.filterMap fun source =>
+    if source.context.language != `rust then none
+    else match source.payload with | .text raw _ => some raw | _ => none
+  unless rust == #["fn example() -> &'static str { \"𝒫::bad»name\" }\n"] do
+    throwError "Original Rust text changed: {repr rust}"
+  let markup := sources.filterMap fun source => match source.payload with | .markup value _ => some value | _ => none
+  unless markup.size == 3 && markup[0]!.raw == "\\forall x,\\;𝒫(x)\n" &&
+      markup[1]!.raw == "**𝒫** and `foreign::name.with.dot»tail`\n" &&
+      markup[0]!.slot == "body.with.dot" && markup[1]!.slot == "body.with.dot" &&
+      markup[2]!.slot == "indented" && markup[2]!.raw == "A second TeX source in the same file.\n" &&
+      markup[0]!.location == some { path := "paper.tex", range := {
+        start := ⟨2, 3⟩, «end» := ⟨2, 12⟩ } } && markup[1]!.location.isNone do
+    throwError "Raw markup or authored external location changed: {repr markup}"
+  let oldEnv ← getEnv
+  try
+    withOptions (fun opts => opts.set `verso.blueprint.project "differentQueryProject") do
+      unless reprStr state == reprStr (Environment.informalExt.getState (← getEnv)) do
+        throwError "Query-site project option relabeled stored sources"
+    let source := sources[0]!
+
+    -- Distinct language realizations/facets coexist without collapsing into
+    -- old Rust/Lean slots. Keep both source documents and the scoped use, and
+    -- ensure adding them does not drop the existing Lean index.
+    let beforeForeignSource ← getEnv
+    try
+      let rustContext : Realizations.Context := ⟨`rust, `blueprintFixtures⟩
+      let rustKey : Realizations.RealizationKey := ⟨label, `rustTranslation⟩
+      let rustSource : SourceData.SourceSelection := {
+        destination := ⟨rustKey, some `implementation⟩
+        document := ⟨rustContext, "src/lib.rs"⟩
+        source := .unavailable "Foreign fixture bytes are present without a provider range"
+        payload := .text "pub fn value() -> u8 { 1 }" }
+      let rocqContext : Realizations.Context := ⟨`rocq, `blueprintFixtures⟩
+      let rocqKey : Realizations.RealizationKey := ⟨label, `rocqTranslation⟩
+      let rocqSource : SourceData.SourceSelection := {
+        destination := ⟨rocqKey, some `proof⟩
+        document := ⟨rocqContext, "theories/Flag.v"⟩
+        source := .unavailable "Foreign fixture bytes are present without a provider range"
+        payload := .text "Theorem flag_involutive : forall x, flag (flag x) = x." }
+      let scopedUse : SourceData.UseDeclaration := {
+        node := label, realization := some `rustTranslation, role := `implementation
+        reference := { label := `storage.native, origin := .automatic, intent := .technical } }
+      let some foreignNode ← Environment.contribute label {
+        sources := #[rustSource, rocqSource]
+        uses := #[scopedUse] }
+          | throwError "Distinct language realization/facet sources were rejected"
+      let retainedSources := foreignNode.sources.filterMap fun stored =>
+        match stored.payload with
+        | .text raw _ => some (stored.destination, stored.document, raw)
+        | _ => none
+      unless retainedSources.contains (rustSource.destination, rustSource.document, "pub fn value() -> u8 { 1 }") &&
+          retainedSources.contains (rocqSource.destination, rocqSource.document, "Theorem flag_involutive : forall x, flag (flag x) = x.") &&
+          foreignNode.uses.contains scopedUse && foreignNode.leanDecls.contains `storedInline &&
+          (← Environment.labelsForLeanDecl `storedInline) == #[label] do
+        throwError "A keyed foreign source or scoped use was lost, or the existing Lean declaration index changed"
+    finally
+      setEnv beforeForeignSource
+
+    CanonicalNativePersistence.rejected "source-destination-mismatch" <|
+      Environment.contribute label { sources := #[{ source with
+        destination := ⟨⟨`sibling, `verso⟩, some `statement⟩ }] }
+    -- Empty source payload avoids a duplicate-body failure, reaching context validation.
+    CanonicalNativePersistence.rejected "source-context-mismatch" <|
+      Environment.contribute label { sources := #[{ source with
+        document := ⟨⟨`verso, `otherProject⟩, source.document.path⟩
+        payload := .prose default }] }
+    CanonicalNativePersistence.rejected "source-document-context" <|
+      Environment.contribute label { sources := #[{ source with
+        document := ⟨⟨`verso, .anonymous⟩, source.document.path⟩
+        payload := .prose default }] }
+    CanonicalNativePersistence.rejected "invalid-use-destination" <|
+      Environment.contribute label { uses := #[{
+        node := `sibling, role := `proof, reference := { label := `target } }] }
+    -- A source/native context mismatch also rejects when each group is valid alone.
+    let leanSource := (sources.find? (·.context.language == `lean)).get!
+    CanonicalNativePersistence.rejected "source-context-mismatch" <|
+      Environment.contributeRecord {
+        id := ⟨← getMainModule, `test, label, 1, 0⟩, label, priority := none, source := none
+        nativeAssociations := #[{
+          realization := ⟨label, `lean⟩, context := ⟨`lean, `otherProject⟩, placement := `statement
+          reference := Data.ExternalRef.ofName `storedInline }] } {}
+    unless leanSource.destination.role == none do throwError "Control missed inline input"
+  finally
+    setEnv oldEnv

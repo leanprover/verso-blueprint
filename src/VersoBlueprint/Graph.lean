@@ -4,64 +4,25 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoBlueprint.Environment
-import VersoBlueprint.Informal.Block.Model
+import VersoBlueprint.Data
 import VersoBlueprint.Lib.HtmlId
 import VersoBlueprint.Lib.PreviewKey
 import VersoBlueprint.PreviewCache
-import VersoBlueprint.CodeHealth
+import VersoBlueprint.Realizations.Capture
+import VersoBlueprint.Realizations.Projection
 
 namespace Informal.Graph
 
 open Lean
-open Informal Data Environment
+open Informal Data
 
 /-!
 See `doc/DESIGN_RATIONALE.md` for the human-readable graph
 status/completion and warning/color mapping rationale.
 -/
 
-/-- Upstream-aligned statement-track status (node border). -/
-inductive StatementStatus where
-  | blocked
-  | ready
-  | formalized
-  | mathlib
-deriving Inhabited, Repr, DecidableEq, ToJson, FromJson, Quote
-
-/-- Upstream-aligned background status (proof-track for theorem-like nodes). -/
-inductive ProofStatus where
-  | none
-  | ready
-  | incomplete
-  | formalized
-  | formalizedWithAncestors
-deriving Inhabited, Repr, DecidableEq, ToJson, FromJson, Quote
-
-/--
-The formalization track whose next step is currently actionable.
-
-For theorem-like nodes, ready or incomplete proof work takes precedence over a
-ready statement. Other node kinds expose only a ready statement step.
--/
-def actionableStageForStatuses? (kind : Data.NodeKind)
-    (statementStatus : StatementStatus) (proofStatus : ProofStatus) : Option String :=
-  if kind.isTheoremLike then
-    if proofStatus == .ready || proofStatus == .incomplete then
-      some "proof"
-    else if statementStatus == .ready then
-      some "statement"
-    else
-      none
-  else if statementStatus == .ready then
-    some "statement"
-  else
-    none
-
 structure WarningFlags where
   unknownRef : Bool := false
-  leanOnlyNoStatement : Bool := false
-  missingExternalDecl : Bool := false
 deriving Inhabited, Repr, DecidableEq, ToJson, FromJson, Quote
 
 structure GraphNode (Ref : Type) where
@@ -273,20 +234,23 @@ structure NodeData where
   href : Option String := none
   /-- Selected manifest/cache-backed preview key for this node, if available. -/
   previewKey : Option PreviewKey := none
-  /-- Authoritative statement-side dependency data for this graph node. -/
+  /-- Deduplicated statement-axis topology; exact captured scopes and selectors are in `assessment.details`. -/
   statementUses : Array Data.UseRef := #[]
-  /-- Authoritative proof-side dependency data for this graph node. -/
+  /-- Deduplicated proof-axis topology; exact captured scopes and selectors are in `assessment.details`. -/
   proofUses : Array Data.UseRef := #[]
-  statementStatus : StatementStatus := .blocked
-  proofStatus : ProofStatus := .none
+  /-- The assessment produced from the same admitted capture as graph topology. -/
+  assessment : Option Realizations.NodeAssessment := none
+  /-- Canonical next step, omitted when a selected prerequisite blocks the relevant work. -/
+  actionableStage : Option String := none
+  statementStatus : StatementStatus := .unassessed
+  proofStatus : ProofStatus := .unassessed
   warnings : WarningFlags := {}
   visual : NodeVisual
 deriving Inhabited, Repr, ToJson, FromJson, Quote
 
 /-- The next actionable formalization stage represented by this finalized graph node. -/
 def NodeData.actionableStage? (node : NodeData) : Option String := do
-  let kind ← node.kind
-  actionableStageForStatuses? kind node.statementStatus node.proofStatus
+  node.actionableStage
 
 /-- Canonicalize duplicate dependency refs on each dependency axis. -/
 private def NodeData.normalizeDependencies (node : NodeData) : NodeData :=
@@ -311,7 +275,34 @@ structure GraphModel where
   groupMetadata : Array GroupMetadata := #[]
 deriving Inhabited, Repr, ToJson, FromJson, Quote
 
-private def graphDataSchemaVersion : Nat := 3
+private def graphDataSchemaVersion : Nat := 8
+
+structure LegendSwatch where
+  background : String := "#ffffff"
+  borderColor : String := "#6b7280"
+  borderWidth : Nat := 1
+  borderStyle : String := "solid"
+  borderRadius : String := "0.2rem"
+deriving Inhabited, Repr, DecidableEq, ToJson, FromJson
+
+structure LegendItem where
+  label : String
+  swatch? : Option LegendSwatch := none
+deriving Inhabited, Repr, DecidableEq, ToJson, FromJson
+
+structure LegendGroup where
+  key : String
+  title : String
+  summary? : Option String := none
+  items : Array LegendItem
+deriving Inhabited, Repr, DecidableEq, ToJson, FromJson
+
+/-- Legend content for a full or grouped graph view. -/
+structure Legend where
+  kind : String
+  note : String
+  groups : Array LegendGroup
+deriving Repr, DecidableEq, ToJson, FromJson
 
 /--
 Finished graph data shared by Lean, generated manifests, and browser clients.
@@ -335,6 +326,8 @@ structure GraphData where
   nodes : Array NodeData := #[]
   edges : Array EdgeData := #[]
   groups : Array GroupData := #[]
+  /-- Lean-selected legend sections for the full graph and, when present, its group view. -/
+  legends : Array Legend := #[]
   /--
   Precomputed DOT render variants for the bundled browser graph renderer.
 
@@ -387,26 +380,6 @@ def GraphData.toModel (data : GraphData) : GraphModel := {
   }
 }
 
-structure LegendSwatch where
-  background : String := "#ffffff"
-  borderColor : String := "#6b7280"
-  borderWidth : Nat := 1
-  borderStyle : String := "solid"
-  borderRadius : String := "0.2rem"
-deriving Inhabited, Repr, ToJson, FromJson
-
-structure LegendItem where
-  label : String
-  swatch? : Option LegendSwatch := none
-deriving Inhabited, Repr, ToJson, FromJson
-
-structure LegendGroup where
-  key : String
-  title : String
-  summary? : Option String := none
-  items : Array LegendItem
-deriving Inhabited, Repr, ToJson, FromJson
-
 def LegendSwatch.inlineStyle (swatch : LegendSwatch) : String :=
   String.intercalate "; " [
     s!"background: {swatch.background}",
@@ -417,12 +390,12 @@ def LegendSwatch.inlineStyle (swatch : LegendSwatch) : String :=
   ]
 
 def statementBorderBlockedColor : String := "#f59e0b"
+def statementBorderUnassessedColor : String := "#6b7280"
 def statementBorderReadyColor : String := "#2563eb"
 def statementBorderFormalizedColor : String := "#16a34a"
 def statementBorderMathlibColor : String := "#14532d"
 
 def proofBackgroundNeutralColor : String := "#f8fafc"
-def proofBackgroundReadyColor : String := "#dbeafe"
 def proofBackgroundIncompleteColor : String := "#fef3c7"
 def proofBackgroundFormalizedColor : String := "#dcfce7"
 def proofBackgroundFormalizedAncColor : String := "#166534"
@@ -434,18 +407,17 @@ def unresolvedBorderColor : String := "#b91c1c"
 def unresolvedFontColor : String := "#7f1d1d"
 
 def statementStatusBlockedText : String := "blocked"
+def statementStatusUnassessedText : String := "unassessed"
 def statementStatusReadyText : String := "ready to formalize"
 def statementStatusFormalizedText : String := "formalized"
 def statementStatusMathlibText : String := "in Mathlib"
 
-def proofStatusNoneText : String := "not ready"
-def proofStatusReadyText : String := "ready to formalize"
+def proofStatusNoneText : String := "no proof status"
+def proofStatusUnassessedText : String := "unassessed"
 def proofStatusIncompleteText : String := "Lean code incomplete"
 def proofStatusFormalizedText : String := "locally formalized"
 def proofStatusFormalizedAncestorsText : String := "locally formalized + dependencies complete"
 
-def warningLeanOnlyText : String := "Lean code present but informal statement is missing"
-def warningMissingExternalText : String := "Associated Lean declaration is missing from the current environment"
 def warningHiddenInGroupViewText : String := "Warning markers are not shown individually in Group View"
 def edgeMixedText : String := "Thicker solid/dashed: statement + proof deps"
 def groupEdgeMixedText : String := "Thicker solid: statement + proof deps"
@@ -458,6 +430,7 @@ private def legendItem (label : String) (swatch? : Option LegendSwatch := none) 
 def graphLegendGroups (includeMathlib : Bool := false) : Array LegendGroup :=
   let statementItems :=
     #[
+      legendItem "Unassessed" (some { borderColor := statementBorderUnassessedColor }),
       legendItem "Blocked" (some { borderColor := statementBorderBlockedColor }),
       legendItem "Ready to formalize" (some { borderColor := statementBorderReadyColor }),
       legendItem "Formalized" (some { borderColor := statementBorderFormalizedColor })
@@ -480,16 +453,16 @@ def graphLegendGroups (includeMathlib : Bool := false) : Array LegendGroup :=
     {
       key := "statement"
       title := "Statement Border"
-      summary? := some "Border color tracks whether the statement is blocked, ready, or already formalized."
+      summary? := some "Border color tracks unassessed, blocked, ready, or natively checked statements."
       items := statementItems
     },
     {
       key := "proof"
       title := "Proof Status"
-      summary? := some "Fill color tracks proof readiness independently from statement progress."
+      summary? := some "Fill color tracks native proof checks and selected prerequisites."
       items := #[
+        legendItem proofStatusUnassessedText (some { background := proofBackgroundNeutralColor }),
         legendItem proofStatusNoneText (some { background := proofBackgroundNeutralColor }),
-        legendItem proofStatusReadyText (some { background := proofBackgroundReadyColor }),
         legendItem proofStatusIncompleteText (some { background := proofBackgroundIncompleteColor }),
         legendItem proofStatusFormalizedText (some { background := proofBackgroundFormalizedColor }),
         legendItem proofStatusFormalizedAncestorsText
@@ -499,20 +472,10 @@ def graphLegendGroups (includeMathlib : Bool := false) : Array LegendGroup :=
     {
       key := "warning"
       title := "Warning Markers"
-      summary? := some "Border treatments flag missing references, missing declarations, or Lean-only nodes without an informal statement."
+      summary? := some "An unresolved Blueprint reference has a red border and fill."
       items := #[
         legendItem "Unknown reference"
-          (some { background := unresolvedFillColor, borderColor := unresolvedBorderColor }),
-        legendItem "Lean code, informal statement missing"
-          (some {
-            background := definitionBackgroundColor
-            borderStyle := "dashed"
-          }),
-        legendItem "Missing external Lean declaration"
-          (some {
-            background := definitionBackgroundColor
-            borderStyle := "dotted"
-          })
+          (some { background := unresolvedFillColor, borderColor := unresolvedBorderColor })
       ]
     },
     {
@@ -555,136 +518,29 @@ def groupGraphLegendGroups : Array LegendGroup :=
     }
   ]
 
-def statementUses (node : Data.Node) : Array Data.UseRef :=
-  (node.statement.map (·.deps)).getD #[]
+/-- The editor and the finalized browser graph select this legend from the
+typed statement status. -/
+def GraphModel.fullLegend (model : GraphModel) : Legend := {
+  kind := "full"
+  note := graphLegendFullViewNote
+  groups := graphLegendGroups (model.nodes.any (·.statementStatus == .mathlib)) }
 
-def proofUses (node : Data.Node) : Array Data.UseRef :=
-  (node.proof.map (·.deps)).getD #[]
-
-def statementDeps (node : Data.Node) : Array Name :=
-  (statementUses node).map (fun useRef => (useRef.label : Name))
-
-def proofDeps (node : Data.Node) : Array Name :=
-  (proofUses node).map (fun useRef => (useRef.label : Name))
-
-def allDeps (node : Data.Node) : Array Name :=
-  statementDeps node ++ proofDeps node
-
-def nodeExternalDecls (node : Data.Node) : Array Data.ExternalRef :=
-  node.summaryExternalRefs
-
-def nodeHasAssociatedCode (node : Data.Node) : Bool :=
-  node.hasAssociatedCode
-
-def nodeHasMissingExternalDecls (external : ExternalCodeStatus) (node : Data.Node) : Bool :=
-  (nodeCodeHealth external node).hasMissingExternalDecls
-
-def nodeHasStatementBlockers (external : ExternalCodeStatus) (node : Data.Node) : Bool :=
-  (nodeCodeHealth external node).hasStatementGaps
-
-def nodeHasProofBlockers (external : ExternalCodeStatus) (node : Data.Node) : Bool :=
-  (nodeCodeHealth external node).hasAnyGaps
-
-def nodeHasIncompleteCode (external : ExternalCodeStatus) (node : Data.Node) : Bool :=
-  (nodeCodeHealth external node).hasAnyGaps
-
-def nodeLocalStatementFormalized (external : ExternalCodeStatus) (node : Data.Node) : Bool :=
-  (nodeCodeHealth external node).localStatementFormalized
-
-def nodeLocalProofFormalized (external : ExternalCodeStatus) (node : Data.Node) : Bool :=
-  (nodeCodeHealth external node).localProofFormalized
-
-def nodeLocalFormalized (external : ExternalCodeStatus) (node : Data.Node) : Bool :=
-  (nodeCodeHealth external node).localFormalized node.kind
-
-def eraseDups (xs : Array Name) : Array Name :=
-  xs.foldl (init := #[]) fun acc x => if acc.contains x then acc else acc.push x
-
-/-- Placeholder branch for future `(lean := "...")` Mathlib integration. -/
-def nodeInMathlib (_state : Environment.State) (_label : Name) (_node : Data.Node) : Bool :=
-  false
-
-inductive DepTraversal where
-  | statement
-  | proof
-  | both
-deriving Inhabited, Repr
-
-def depsForTraversal (mode : DepTraversal) (node : Data.Node) : Array Name :=
-  match mode with
-  | .statement => statementDeps node
-  | .proof => proofDeps node
-  | .both => allDeps node
-
-partial def depsClosureComplete (external : ExternalCodeStatus) (state : Environment.State) (mode : DepTraversal)
-    (roots : Array Name) (visited : NameSet := {}) : Bool :=
-  roots.all fun dep =>
-    if visited.contains dep then
-      true
-    else
-      match state.data.get? dep with
-      | none => false
-      | some node =>
-        if !nodeLocalFormalized external node then
-          false
-        else
-          let visited := visited.insert dep
-          depsClosureComplete external state mode (depsForTraversal mode node) visited
-
-def nodeAncestorsFormalized (external : ExternalCodeStatus) (state : Environment.State) (node : Data.Node) : Bool :=
-  depsClosureComplete external state .both (allDeps node)
-
-def statementStatus (external : ExternalCodeStatus) (state : Environment.State) (label : Name)
-    (node : Data.Node) : StatementStatus :=
-  if nodeInMathlib state label node then
-    .mathlib
-  else if nodeLocalStatementFormalized external node then
-    .formalized
-  else if depsClosureComplete external state .statement (statementDeps node) then
-    .ready
-  else
-    .blocked
-
-def proofStatus (external : ExternalCodeStatus) (state : Environment.State) (_label : Name)
-    (node : Data.Node) : ProofStatus :=
-  let health := nodeCodeHealth external node
-  if !node.kind.isTheoremLike then
-    if health.localStatementFormalized then
-      if nodeAncestorsFormalized external state node then .formalizedWithAncestors else .formalized
-    else if health.incompleteAssociatedCode then
-      .incomplete
-    else if depsClosureComplete external state .statement (statementDeps node) then
-      .ready
-    else
-      .none
-  else if health.localProofFormalized then
-    if nodeAncestorsFormalized external state node then .formalizedWithAncestors else .formalized
-  else if health.incompleteAssociatedCode then
-    .incomplete
-  else
-    let stmtDepsDone := depsClosureComplete external state .statement (statementDeps node)
-    let proofDepsDone := depsClosureComplete external state .proof (proofDeps node)
-    if stmtDepsDone && proofDepsDone then .ready else .none
-
-def nodeWarnings (external : ExternalCodeStatus) (_state : Environment.State) (_label : Name)
-    (node : Data.Node) : WarningFlags :=
-  let health := nodeCodeHealth external node
-  {
-    unknownRef := false
-    leanOnlyNoStatement := health.hasAssociatedCode && node.statement.isNone
-    missingExternalDecl := health.hasAssociatedCode && health.hasMissingExternalDecls
-  }
+private def groupLegend : Legend := {
+  kind := "group"
+  note := graphLegendGroupViewNote
+  groups := groupGraphLegendGroups }
 
 def statementStatusBorderColor : StatementStatus → String
+  | .unassessed => statementBorderUnassessedColor
   | .blocked => statementBorderBlockedColor
   | .ready => statementBorderReadyColor
   | .formalized => statementBorderFormalizedColor
   | .mathlib => statementBorderMathlibColor
 
 def proofStatusFillColor (kind : Data.NodeKind) : ProofStatus → String
+  | .unassessed => proofBackgroundNeutralColor
   | .none =>
     if kind.isTheoremLike then proofBackgroundNeutralColor else definitionBackgroundColor
-  | .ready => proofBackgroundReadyColor
   | .incomplete => proofBackgroundIncompleteColor
   | .formalized => proofBackgroundFormalizedColor
   | .formalizedWithAncestors => proofBackgroundFormalizedAncColor
@@ -697,40 +553,24 @@ def kindShape (kind : Data.NodeKind) : String :=
   if kind.isTheoremLike then "ellipse" else "box"
 
 def StatementStatus.toText : StatementStatus → String
+  | .unassessed => statementStatusUnassessedText
   | .blocked => statementStatusBlockedText
   | .ready => statementStatusReadyText
   | .formalized => statementStatusFormalizedText
   | .mathlib => statementStatusMathlibText
 
 def ProofStatus.toText : ProofStatus → String
+  | .unassessed => proofStatusUnassessedText
   | .none => proofStatusNoneText
-  | .ready => proofStatusReadyText
   | .incomplete => proofStatusIncompleteText
   | .formalized => proofStatusFormalizedText
   | .formalizedWithAncestors => proofStatusFormalizedAncestorsText
 
-def warningTooltipParts (warnings : WarningFlags) : List String :=
-  (if warnings.leanOnlyNoStatement then [warningLeanOnlyText] else []) ++
-  (if warnings.missingExternalDecl then [warningMissingExternalText] else [])
-
-private def styleTokensForWarnings (warnings : WarningFlags) : Array String :=
-  let tokens : Array String := #["filled"]
-  let tokens :=
-    if warnings.leanOnlyNoStatement then tokens.push "dashed" else tokens
-  let tokens :=
-    if warnings.missingExternalDecl then tokens.push "dotted" else tokens
-  tokens
-
-def mkStyledNode (kind : Data.NodeKind) (label : Name) (deps proofDeps : Array Name)
-    (parent? : Option Name)
+private def styledNodeVisual (kind : Data.NodeKind) (label : Name)
     (statement : StatementStatus) (proof : ProofStatus) (warnings : WarningFlags)
-    (ref? : Option Ref) : GraphNode Ref :=
+    (assessment? : Option Realizations.NodeAssessment) : NodeVisual :=
   if warnings.unknownRef then
     {
-      label
-      deps
-      proofDeps
-      parent?
       shape := "box"
       style := "filled"
       fillcolor := unresolvedFillColor
@@ -740,37 +580,37 @@ def mkStyledNode (kind : Data.NodeKind) (label : Name) (deps proofDeps : Array N
       peripheries := 1
       gradientangle? := none
       tooltip? := some s!"Unknown reference: {label}"
-      ref?
     }
   else
-    let shape := kindShape kind
-    let baseFill := proofStatusFillColor kind proof
-    let styleTokens := styleTokensForWarnings warnings
-    let style := String.intercalate "," styleTokens.toList
+    let requirementTooltip := match assessment? with
+      | some assessment => if assessment.hasNativeDeclarations then
+          [assessment.leanRequirementMessage, assessment.leanDependencyMessage]
+        else [assessment.leanRequirementMessage]
+      | none => []
+    let proofText := if proof == .none && assessment?.any (!·.hasNativeBodyRequirement) then
+      "no native body check" else proof.toText
     let tooltipParts :=
-      [s!"Statement: {statement.toText}", s!"Proof: {proof.toText}"] ++ warningTooltipParts warnings
-    let tooltip? :=
-      if tooltipParts.isEmpty then none else some (String.intercalate " | " tooltipParts)
+      [s!"Statement: {statement.toText}", s!"Proof: {proofText}"] ++ requirementTooltip
     {
-      label
-      deps
-      proofDeps
-      parent?
-      shape
-      style
-      fillcolor := baseFill
+      shape := kindShape kind
+      style := "filled"
+      fillcolor := proofStatusFillColor kind proof
       color := statementStatusBorderColor statement
       penwidth := "2.2"
       fontcolor := proofStatusFontColor proof
       peripheries := 1
       gradientangle? := none
-      tooltip?
-      ref?
+      tooltip? := some (String.intercalate " | " tooltipParts)
     }
 
-def expandLabels (state : Environment.State) (roots : Array Name) : Array Name :=
+def capturedUses (snapshot : Realizations.Capture.Snapshot) (label role : Name) :
+    Array Data.UseRef :=
+  Data.UseRef.mergeByLabel #[] <| (snapshot.uses.filter fun use =>
+    use.source == label && use.role == role).map (·.reference)
+
+private def expandLabels (snapshot : Realizations.Capture.Snapshot) (roots : Array Name) : Array Name :=
   Id.run <| do
-    let mut queue : Array Name := eraseDups roots
+    let mut queue : Array Name := uniqueInOrder roots
     let mut enqueued : NameSet := queue.foldl (init := {}) fun acc label => acc.insert label
     let mut seen : NameSet := {}
     let mut idx : Nat := 0
@@ -780,40 +620,13 @@ def expandLabels (state : Environment.State) (roots : Array Name) : Array Name :
       if seen.contains label then
         continue
       seen := seen.insert label
-      match state.data.get? label with
-      | none => pure ()
-      | some node =>
-        for dep in allDeps node do
+      for use in snapshot.uses do
+        if use.source == label then
+          let dep := use.reference.label
           if !enqueued.contains dep then
             queue := queue.push dep
             enqueued := enqueued.insert dep
     return queue
-
-def mkNode (external : ExternalCodeStatus) (state : Environment.State)
-    (resolveRef? : Name → Option Ref) (label : Name) : GraphNode Ref :=
-  match state.data.get? label with
-  | some node =>
-    let deps := statementDeps node
-    let nodeProofDeps := proofDeps node
-    let statement := statementStatus external state label node
-    let proof := proofStatus external state label node
-    let warnings := nodeWarnings external state label node
-    let ref? := resolveRef? label
-    mkStyledNode node.kind label deps nodeProofDeps node.parent statement proof warnings ref?
-  | none =>
-    let unresolvedWarnings : WarningFlags := { unknownRef := true }
-    mkStyledNode Data.NodeKind.definition label #[] #[] none .blocked .none unresolvedWarnings none
-
-def build (state : Environment.State) (roots : Array Name) (resolveRef? : Name → Option Ref := fun _ => none) :
-    Graph Ref :=
-  let labels := expandLabels state roots
-  let external : ExternalCodeStatus := {}
-  labels.map (mkNode external state resolveRef?)
-
-def buildWithExternal (state : Environment.State) (roots : Array Name)
-    (external : ExternalCodeStatus) (resolveRef? : Name → Option Ref := fun _ => none) : Graph Ref :=
-  let labels := expandLabels state roots
-  labels.map (mkNode external state resolveRef?)
 
 private def edgeAxes (isStatement isProof : Bool) : Array EdgeAxis :=
   let axes := #[]
@@ -821,8 +634,8 @@ private def edgeAxes (isStatement isProof : Bool) : Array EdgeAxis :=
   if isProof then axes.push .proof else axes
 
 private def edgesForNode (node : GraphNode Ref) : Array EdgeData :=
-  let stmtDeps := eraseDups node.deps
-  let proofDeps := eraseDups node.proofDeps
+  let stmtDeps := uniqueInOrder node.deps
+  let proofDeps := uniqueInOrder node.proofDeps
   let deps := proofDeps.foldl (init := stmtDeps) fun deps dep =>
     if deps.contains dep then deps else deps.push dep
   deps.map fun dep => {
@@ -865,6 +678,13 @@ private def graphParentChildren (graph : Graph Ref) : Lean.NameMap (Array Name) 
     | some parent =>
       let children := acc.getD parent #[]
       if children.contains node.label then acc else acc.insert parent (children.push node.label)
+
+private def groupViewParents (graph : Graph Ref) : Array Name :=
+  (graphParentChildren graph).toArray.filterMap fun (parent, children) =>
+    if children.size > 1 then some parent else none
+
+private def GraphModel.legendsFor (model : GraphModel) (hasGroupView : Bool) : Array Legend :=
+  if hasGroupView then #[model.fullLegend, groupLegend] else #[model.fullLegend]
 
 private def graphNodeParents (graph : Graph Ref) : Lean.NameMap Name :=
   graph.foldl (init := ({} : Lean.NameMap Name)) fun acc node =>
@@ -928,6 +748,11 @@ def GraphModel.canonicalize (model : GraphModel) : GraphModel := {
   groupMetadata := (groupMetadataMap model.groupMetadata).toArray.map (·.2)
 }
 
+/-- The legends for the available views, without generating their DOT. -/
+def GraphModel.legends (model : GraphModel) : Array Legend :=
+  let model := model.canonicalize
+  model.legendsFor !(groupViewParents model.toGraph).isEmpty
+
 /--
 Merge two semantic graph models, selecting the preferred model's complete node
 record whenever both models contain the same label.
@@ -972,77 +797,73 @@ private def groupDataForGraphFromMetadata (graph : Graph Ref) (groups : Array Gr
     |>.qsort fun a b =>
       a.title < b.title || (a.title == b.title && a.label.toString < b.label.toString)
 
-private def nodeTitle (resolveTitle? : Name → Option String) (label : Name) : String :=
+private def nodeTitle (resolveTitle? : Name → Option String) (label : Name) (fallback : String) : String :=
   match resolveTitle? label with
   | some title =>
     let title := title.trimAscii.toString
-    if title.isEmpty then label.toString else title
-  | none => label.toString
+    if title.isEmpty then fallback else title
+  | none =>
+    let fallback := fallback.trimAscii.toString
+    if fallback.isEmpty then label.toString else fallback
 
-def nodeDataWithExternal
-    (external : ExternalCodeStatus)
-    (state : Environment.State)
+private def capturedNodeData
+    (snapshot : Realizations.Capture.Snapshot)
+    (assessmentFor : Name → Realizations.NodeAssessment)
     (resolveHref? : Name → Option String)
     (resolveTitle? : Name → Option String)
-    (graphNode : GraphNode String) : NodeData :=
-  let label := graphNode.label
-  match state.data.get? label with
+    (label : Name) : NodeData :=
+  match snapshot.registry.nodes.find? (·.label == label) with
   | some node =>
-    let statement := statementStatus external state label node
-    let proof := proofStatus external state label node
-    let warnings := nodeWarnings external state label node
+    let assessment := assessmentFor label
+    let (statement, proof) := statusesForAssessment assessment
+    let title := nodeTitle resolveTitle? label node.title
     {
       label
-      title := nodeTitle resolveTitle? label
-      displayLabel := graphNode.displayLabel
+      title
+      displayLabel := title
       kind := some node.kind
       parent := node.parent
       href := resolveHref? label
       previewKey := PreviewKey.ofString? (PreviewCache.statementKey label)
-      statementUses := statementUses node
-      proofUses := proofUses node
+      statementUses := capturedUses snapshot label `statement
+      proofUses := capturedUses snapshot label `proof
+      assessment := some assessment
+      actionableStage := actionableStageForAssessment? assessment
       statementStatus := statement
       proofStatus := proof
-      warnings
-      visual := NodeVisual.ofGraphNode graphNode
+      warnings := {}
+      visual := styledNodeVisual node.kind label statement proof {} (some assessment)
     }
   | none =>
     {
       label
-      title := nodeTitle resolveTitle? label
-      displayLabel := graphNode.displayLabel
+      title := nodeTitle resolveTitle? label label.toString
+      displayLabel := label.toString
       kind := none
       parent := none
       href := resolveHref? label
       previewKey := PreviewKey.ofString? (PreviewCache.statementKey label)
       statementUses := #[]
       proofUses := #[]
-      statementStatus := .blocked
-      proofStatus := .none
+      assessment := none
+      actionableStage := none
+      statementStatus := .unassessed
+      proofStatus := .unassessed
       warnings := { unknownRef := true }
-      visual := NodeVisual.ofGraphNode graphNode
+      visual := styledNodeVisual .definition label .unassessed .unassessed { unknownRef := true } none
     }
 
-def buildModelWithExternal
-    (state : Environment.State)
+def buildModel
+    (snapshot : Realizations.Capture.Snapshot)
     (roots : Array Name)
-    (external : ExternalCodeStatus)
     (resolveHref? : Name → Option String := fun _ => none)
     (resolveTitle? : Name → Option String := fun _ => none)
-    (groupTitles : Array (Name × String) := #[]) : GraphModel :=
-  let graph := buildWithExternal state roots external resolveHref?
+    (groupTitles : Array (Name × String) := #[])
+    (assessmentFor : Name → Realizations.NodeAssessment := snapshot.assessmentFor) : GraphModel :=
   {
-    nodes := graph.map (nodeDataWithExternal external state resolveHref? resolveTitle?)
+    nodes := (expandLabels snapshot roots).map (capturedNodeData snapshot assessmentFor resolveHref? resolveTitle?)
     groupMetadata := groupMetadataFromTitles groupTitles
   }
-
-def buildModel
-    (state : Environment.State)
-    (roots : Array Name)
-    (resolveHref? : Name → Option String := fun _ => none)
-    (resolveTitle? : Name → Option String := fun _ => none)
-    (groupTitles : Array (Name × String) := #[]) : GraphModel :=
-  buildModelWithExternal state roots {} resolveHref? resolveTitle? groupTitles
 
 def escapeDotString (s : String) : String :=
   let s := s.replace "\\" "\\\\"
@@ -1135,8 +956,8 @@ def Graph.toDot (g : Graph Ref) (header : String)
           | some parent =>
             let members := groupMembers.getD parent #[]
             groupMembers.insert parent (members.push node.label)
-        let stmtDeps := eraseDups node.deps
-        let proofDeps := eraseDups node.proofDeps
+        let stmtDeps := uniqueInOrder node.deps
+        let proofDeps := uniqueInOrder node.proofDeps
         let stmtDepSet : NameSet :=
           stmtDeps.foldl (init := ({} : NameSet)) fun acc dep => acc.insert dep
         let proofDepSet : NameSet :=
@@ -1478,7 +1299,7 @@ Graphs without multi-child groups produce just the full graph variant. Grouped
 graphs additionally produce a synthetic group overview and one focused subgraph
 per parent group.
 -/
-private def mkGraphVariants (graph : Graph String) (options : GraphOptions)
+private def mkGraphVariants (graph : Graph String) (parents : Array Name) (options : GraphOptions)
     (groupTitles : Lean.NameMap String)
     (previewKeyForLabel : Name → Option PreviewKey := fun _ => none) :
     Array GraphRenderVariant :=
@@ -1488,12 +1309,7 @@ private def mkGraphVariants (graph : Graph String) (options : GraphOptions)
         (graphNodeSvgId node.label, toString previewKey)
   let resolveGroupTitle : Name → Option String := fun group =>
     groupTitles.get? group
-  let parentChildren := graphParentChildren graph
-  let parents :=
-    parentChildren.toArray
-      |>.filter (fun (_, children) => children.size > 1)
-      |>.map (·.1)
-      |>.qsort (fun a b => groupTitle groupTitles a < groupTitle groupTitles b)
+  let parents := parents.qsort (fun a b => groupTitle groupTitles a < groupTitle groupTitles b)
   if parents.isEmpty then
     #[{
       key := "full"
@@ -1549,13 +1365,17 @@ def GraphModel.finish (model : GraphModel) (key : String) (options : GraphOption
     match node.previewKey with
     | some key => acc.insert node.label key
     | none => acc
+  let parents := groupViewParents graph
+  let variants := mkGraphVariants graph parents options groupTitles previewKeys.get?
+  let legends := model.legendsFor !parents.isEmpty
   {
     schemaVersion := graphDataSchemaVersion
     key
     nodes := model.nodes
     edges := edgesForGraph graph
     groups
-    variants := mkGraphVariants graph options groupTitles previewKeys.get?
+    legends
+    variants
   }
 
 /--
@@ -1584,12 +1404,18 @@ private structure GraphDataJson where
   nodes : Array NodeData
   edges : Array EdgeData
   groups : Array GroupData
+  legends : Array Legend
   variants : Array GraphRenderVariant
 deriving FromJson
 
 /-- Decode only finalized graph records whose materialized projections agree. -/
 instance : FromJson GraphData where
   fromJson? json := do
+    if let .ok rawNodes := json.getObjValAs? (Array Json) "nodes" then
+      for rawNode in rawNodes do
+        if (rawNode.getObjVal? "assessment").toOption.isNone ||
+            (rawNode.getObjVal? "actionableStage").toOption.isNone then
+          throw "finalized graph node must explicitly include assessment and actionableStage"
     let decoded ← fromJson? (α := GraphDataJson) json
     if decoded.schemaVersion != graphDataSchemaVersion then
       throw s!"unsupported graph schema version {decoded.schemaVersion}; expected {graphDataSchemaVersion}"
@@ -1607,6 +1433,17 @@ instance : FromJson GraphData where
       node.statementUses == normalized.statementUses && node.proofUses == normalized.proofUses
     if !dependenciesAreCanonical then
       throw "finalized graph contains duplicate dependency refs"
+    for node in decoded.nodes do
+      if let some stage := node.actionableStage then
+        unless stage == "statement" || stage == "proof" do
+          throw s!"graph node {node.label}: invalid actionable stage {stage}"
+      if let some assessment := node.assessment then
+        if (node.statementStatus, node.proofStatus) != statusesForAssessment assessment ||
+            node.actionableStage != actionableStageForAssessment? assessment then
+          throw s!"graph node {node.label}: statuses or actionable stage disagree with the captured assessment"
+      else unless node.actionableStage.isNone && node.statementStatus == .unassessed &&
+          node.proofStatus == .unassessed do
+        throw s!"graph node {node.label}: statuses or actionable stage require a captured assessment"
     let some firstVariant := decoded.variants[0]?
       | throw "finalized graph contains no render variants"
     let expected := model.finish decoded.key firstVariant.options
@@ -1614,6 +1451,8 @@ instance : FromJson GraphData where
       throw "finalized graph edges disagree with node dependencies"
     if decoded.groups != expected.groups then
       throw "finalized graph group children disagree with node parents"
+    if decoded.legends != expected.legends then
+      throw "finalized graph legends disagree with its nodes or variants"
     if decoded.variants != expected.variants then
       throw "finalized graph variants disagree with node topology or preview references"
     pure {
@@ -1622,6 +1461,7 @@ instance : FromJson GraphData where
       nodes := decoded.nodes
       edges := decoded.edges
       groups := decoded.groups
+      legends := decoded.legends
       variants := decoded.variants
     }
 

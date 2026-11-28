@@ -48,7 +48,7 @@ private def groupRenderInfo?
 /-- One previewable row in a Blueprint related-entry panel. -/
 structure PanelEntry where
   previewId : String
-  previewKey : Option Informal.PreviewKey := none
+  previewKeys : Array Informal.PreviewKey := #[]
   previewTitle : String
   label : Data.Label
   href : Option String := none
@@ -223,9 +223,6 @@ private def sortUsedByEntries (entries : Array UsedByEntry) : Array UsedByEntry 
   entries.qsort fun a b =>
     BlockData.traversalOrderLess a.source b.source
 
-private def pushUnique [DecidableEq α] (values : Array α) (value : α) : Array α :=
-  if values.contains value then values else values.push value
-
 private def mergeUsedByEntry (existing : UsedByEntry) (useRef : Data.UseRef) (facet : PreviewCache.Facet) :
     UsedByEntry :=
   {
@@ -277,11 +274,11 @@ private def buildGroupMembersCache (blocks : Array BlockData) :
     Data.LabelMap (Array Data.Label) :=
   blocks.foldl
       (init := (Std.TreeMap.empty : Data.LabelMap (Array Data.Label))) fun cache block =>
-    match block.isProof, block.parent with
-    | false, some parent =>
+    match block.parent with
+    | some parent =>
         let members := cache.find? parent |>.getD #[]
-        cache.insert parent (members.push block.label)
-    | _, _ => cache
+        if members.contains block.label then cache else cache.insert parent (members.push block.label)
+    | none => cache
 
 /--
 Cache relation-panel indexes in traversal domains before HTML emission.
@@ -478,7 +475,7 @@ private def mkEntry
     (label : Data.Label) (reference : RenderingResolution.Reference)
     (previewId : String) (dependencies : Array Relation.Dependency) : PanelEntry := {
   previewId
-  previewKey := reference.previewKey
+  previewKeys := reference.previewKeys
   previewTitle := reference.title
   label
   href := reference.href
@@ -505,7 +502,7 @@ private def loadingBody (detail : String) : Output.Html :=
   }}
 
 private def samePanelEntry (a b : PanelEntry) : Bool :=
-  a.previewId == b.previewId && a.previewKey == b.previewKey
+  a.previewId == b.previewId && a.previewKeys == b.previewKeys
 
 private def selectedPanelEntry? (cfg : PanelConfig) (entries : Array PanelEntry) : Option PanelEntry :=
   entries.find? (fun entry => entry.active) <|>
@@ -535,10 +532,8 @@ private def panelEntryDataHtml (renderPreview : PreviewResources.Render)
     (selectedEntry? : Option PanelEntry) (entry : PanelEntry) : Output.Html :=
   jsonArrayHtml #[
     scriptJson (.str entry.previewTitle),
-    match entry.previewKey with
-    | none => scriptJson Json.null
-    | some key => renderPreview key (fun _ => scriptJson (.str key.value))
-        (fun _ => scriptJson Json.null),
+    PreviewResources.select renderPreview entry.previewKeys
+      (fun key => scriptJson (.str key.value)) (fun _ => scriptJson Json.null) (defaultOnly := true),
     scriptJson (.str s!"{entry.label}"),
     scriptJson (optionStringJson entry.href),
     scriptJson (toJson entry.badgeCodes),
@@ -552,7 +547,7 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry)
   open Verso.Output.Html in Id.run do
   let renderChip (chipClass : String) (chipTitle : String) (n : Nat) : Output.Html :=
     {{<span class={{chipClass}} title={{chipTitle}}>{{.text true (cfg.chipText n)}}</span>}}
-  let renderInlinePreview (entry : PanelEntry) : Output.Html :=
+  let renderInlinePreview (entry : PanelEntry) (key : PreviewKey) : Output.Html :=
     let chipNode : Output.Html :=
       if let some href := entry.href then
         {{<a class={{s!"{cfg.chipClass} bp_code_link"}} href={{href}} title={{cfg.singleTitle entry}}>
@@ -565,7 +560,7 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry)
       if html.isEmpty then none else some html
     Informal.HoverRender.inlinePreviewNode
       chipNode entry.previewId entry.previewTitle
-      (previewLookupKey? := entry.previewKey.map (toString ·))
+      (previewLookupKey? := some key.value)
       (previewHeaderLabel? := some s!"{entry.label}")
       (previewHeaderHref? := entry.href)
       (previewFooterHtml? := previewFooterHtml?)
@@ -620,8 +615,8 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry)
     return panelShell
   if let #[entry] := entries then
     if cfg.singleMode == .inlinePreview then
-      if let some key := entry.previewKey then
-        return renderPreview key (fun _ => renderInlinePreview entry) renderPanelShell
+      return PreviewResources.select renderPreview entry.previewKeys (renderInlinePreview entry) renderPanelShell
+        (defaultOnly := true)
   return renderPanelShell ()
 
 

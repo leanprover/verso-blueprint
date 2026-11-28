@@ -1,8 +1,18 @@
 import { createPreview } from "verso-blueprint";
+import { loadGraphs } from "verso-blueprint/graph";
+import type {
+  BlueprintGraphNodeVisual,
+  BlueprintManifestFile,
+  BlueprintManifestNode,
+} from "verso-blueprint/types";
 
 // Consume the generated public declarations through the package export.
 const preview = createPreview();
 const entry = await preview.loadManifestEntry("code-only--statement", undefined);
+if (entry) {
+  // @ts-expect-error The semantic assessment belongs to the manifest node row.
+  void entry.assessment;
+}
 if (entry?.codeOnlyPreview) {
   const composed: boolean = entry.codeOnlyPreview;
   const keys: string[] = entry.leanCodePreviewKeys;
@@ -38,3 +48,21 @@ if (entry?.codeData) {
     }
   }
 }
+
+const visual: BlueprintGraphNodeVisual = {
+  shape: "box", style: "filled", fillcolor: "#fff", color: "#000",
+  penwidth: "1", fontcolor: "#000", peripheries: 1,
+};
+const row: BlueprintManifestNode = {
+  label: "code-only", primaryKey: "code-only--statement", bodyless: null, assessment: null,
+};
+const manifestFile: BlueprintManifestFile = {
+  nodes: [row], previews: [], groups: [], graphs: [], sourceDocuments: [],
+};
+for (const graph of await loadGraphs()) {
+  const schemaVersion: 8 = graph.schemaVersion;
+  const legends: ("full" | "group")[] = graph.legends.map((legend) => legend.kind);
+  const tooltip: string | null | undefined = graph.nodes[0]?.visual.tooltip;
+  void [schemaVersion, legends, tooltip];
+}
+void [visual, row, manifestFile];

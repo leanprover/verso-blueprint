@@ -1,4 +1,5 @@
 import json
+import re
 import subprocess
 import sys
 import urllib.request
@@ -143,8 +144,6 @@ class TestBlueprintSlidesRuntime:
     def test_generated_slides_render_static_shell_and_rewrite_links(
         self, slides_server: str, page: Page
     ):
-        errors = record_runtime_errors(page)
-
         with urllib.request.urlopen(
             f"{slides_server}/-verso-data/blueprint-manifest.json"
         ) as response:
@@ -191,16 +190,22 @@ class TestBlueprintSlidesRuntime:
             for entry in manifest["previews"]
             if entry["key"] == "multiplication_one_right--proof"
         )
-        assert multiplication_entry["title"] == "Theorem 2.2"
-        assert multiplication_proof_entry["title"] == "Proof for Theorem 2.2"
+        multiplication_href = multiplication_entry["href"]
+        page.goto(f"{slides_server}/project-template-blueprint/html-multi/{multiplication_href}")
+        occurrence_id = multiplication_href.rsplit("#", 1)[1]
+        multiplication_label = page.locator(
+            f"[id='{occurrence_id}'] .bp_kind_theorem_heading .bp_heading_title_row > .bp_label"
+        ).inner_text()
+        assert re.fullmatch(r"\d+(?:\.\d+)*", multiplication_label)
+        multiplication_title = f"Theorem {multiplication_label}"
+        multiplication_proof_title = f"Proof for {multiplication_title}"
+        assert multiplication_entry["title"] == multiplication_title
+        assert multiplication_proof_entry["title"] == multiplication_proof_title
         assert len(multiplication_entry["leanCodePreviewKeys"]) == 1
         assert multiplication_entry["leanCodePreviewKeys"][0].startswith(
             "Informal.LeanCodePreview.Inline."
         )
-        assert (
-            multiplication_proof_entry["leanCodePreviewKeys"]
-            == multiplication_entry["leanCodePreviewKeys"]
-        )
+        assert multiplication_proof_entry["leanCodePreviewKeys"] == []
         assert "n * 1 = n" in html_by_key[multiplication_entry["key"]]
         assert "Unfold the definition of multiplication" in html_by_key[
             multiplication_proof_entry["key"]
@@ -217,6 +222,7 @@ class TestBlueprintSlidesRuntime:
         assert all("class=\"hl lean block\"" in html_by_key[entry["key"]] for entry in code_entries)
         assert all("data-verso-hover=" in html_by_key[entry["key"]] for entry in code_entries)
 
+        errors = record_runtime_errors(page)
         page.goto(f"{slides_server}/")
         page.wait_for_function(
             """() => !!(window.VersoBlueprint && window.VersoBlueprint.slides && window.VersoBlueprint.slides.hydrate)"""
@@ -266,7 +272,7 @@ class TestBlueprintSlidesRuntime:
         expect(code_panel).to_be_visible()
         expect(code_panel.locator(".bp_code_summary_preview_title")).to_have_text("collatz_step")
         expect(code_panel.locator(".bp_code_hover_label")).to_have_text(
-            "Associated Lean declarations"
+            "Associated Lean declarations (display only; validation shown in heading)"
         )
         expect(code_panel.locator(".bp_code_decl_item")).to_have_count(2)
         decl_items = code_panel.locator(".bp_code_decl_item").all_inner_texts()
@@ -361,7 +367,7 @@ class TestBlueprintSlidesRuntime:
         ).to_have_text("Theorem")
         expect(
             theorem_node.locator(".bp_kind_theorem_heading .bp_heading_title_row > .bp_label")
-        ).to_have_text("2.2")
+        ).to_have_text(multiplication_label)
         expect(theorem_node).to_contain_text("multiplying by one on the right")
         expect(theorem_node.locator(".bp_content .bp_math.inline")).to_have_count(2)
         expect(theorem_node.locator(".bp_slide_code_body code.hl.lean.block")).to_have_count(
@@ -371,7 +377,7 @@ class TestBlueprintSlidesRuntime:
             "theorem multiplication_one_right"
         )
         expect(theorem_node.locator(".bp_slide_code_body")).to_contain_text("simp")
-        expect(proof_node).to_contain_text("Proof for Theorem 2.2")
+        expect(proof_node).to_contain_text(multiplication_proof_title)
         expect(proof_node).to_contain_text("Unfold the definition of multiplication")
         expect(proof_node.locator(".bp_code_panel_wrapper")).to_have_count(0)
         theorem_code_chip = theorem_node.locator(

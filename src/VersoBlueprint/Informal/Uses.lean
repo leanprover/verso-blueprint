@@ -8,11 +8,11 @@ import VersoManual
 import VersoBlueprint.Commands.Common
 import VersoBlueprint.Data
 import VersoBlueprint.Environment
-import VersoBlueprint.Informal.Block
 import VersoBlueprint.Informal.LabelArg
 import VersoBlueprint.Informal.UseConfig
 import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.Lib.HoverRender
+import VersoBlueprint.Lib.PreviewResources
 import VersoBlueprint.RenderingResolution
 import VersoBlueprint.Profiling
 import VersoBlueprint.TeX
@@ -52,7 +52,6 @@ but deliberately does not accept dependency metadata or register a use edge.
 -/
 structure BprefConfig where
   label : Data.Label
-  labelSyntax : Syntax := Syntax.missing
 
 section
 variable [Monad m] [MonadError m]
@@ -82,7 +81,6 @@ def BprefConfig.parse : ArgParse m BprefConfig :=
     let parsedLabel := LabelArg.parse labelArg
     {
       label := parsedLabel.label
-      labelSyntax := parsedLabel.labelSyntax
     }) <$> .positional `label (.withSyntax .string)
 
 instance : FromArgs BprefConfig m where
@@ -108,14 +106,11 @@ structure InlineData where
 deriving FromJson, ToJson, Quote
 
 private def RenderingResolution.Reference.withPreview
-    (reference : RenderingResolution.Reference) (node : Verso.Output.Html) :
+    (reference : RenderingResolution.Reference) (key : PreviewKey) (node : Verso.Output.Html) :
     Verso.Output.Html :=
-  match reference.previewKey with
-  | none => node
-  | some key =>
-      let id := s!"bp-uses-{HoverRender.previewKey (toString key)}"
-      let target := HoverRender.InlinePreviewTarget.withLookupKey id reference.title (toString key)
-      HoverRender.inlinePreviewTargetNode node target
+  let id := s!"bp-uses-{HoverRender.previewKey (toString key)}"
+  let target := HoverRender.InlinePreviewTarget.withLookupKey id reference.title (toString key)
+  HoverRender.inlinePreviewTargetNode node target
 
 open Verso.Doc.Html Verso.Output.Html in
 /-- Render authored references with checked semantics and the selected output's
@@ -133,9 +128,9 @@ private def informalReferenceToHtml (renderPreview : PreviewResources.Render := 
       let node := match reference.href with
         | some href => {{<a href={{href}} title={{labelText}}>{{content}}</a>}}
         | none => {{<span title={{labelText}}>{{content}}</span>}}
-      let content := match reference.previewKey with
-        | none => node
-        | some key => renderPreview key (fun _ => reference.withPreview node) (fun _ => node)
+      let content := PreviewResources.select renderPreview reference.previewKeys
+        (fun key => reference.withPreview key node) (fun _ => node)
+        (defaultOnly := true)
       return {{<span>{{content}}</span>}}
 
 inline_extension Inline.informal (data : InlineData) where
@@ -180,9 +175,12 @@ def Inline.withPreviewAvailability (impls : ExtensionImpls)
     (available : PreviewKey → Bool) : ExtensionImpls :=
   Inline.withPreviewRendering impls (PreviewResources.immediate available)
 
-def nodeReferenceTerm (label : Data.Label) (contents : Array Term) : CoreM Term := do
-    let data : InlineData := { label }
-    ``(Inline.other (Inline.informal $(quote data)) #[$contents,*])
+def nodeReference (label : Data.Label) (contents : Array (Inline Genre.Manual)) :
+    Inline Genre.Manual :=
+  .other (Inline.informal { label }) contents
+
+def nodeReferenceTerm (label : Data.Label) (contents : Array Term) : CoreM Term :=
+  ``(nodeReference $(quote label) #[$contents,*])
 
 @[role]
 def uses : RoleExpanderOf UsesConfig

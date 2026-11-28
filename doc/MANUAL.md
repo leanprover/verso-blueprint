@@ -422,6 +422,78 @@ work in the same project.
 
 ### Compiled code tagged with `@[blueprint]`
 
+Configure the logical source project in each producing module, after its
+Blueprint import:
+
+```lean
+import VersoBlueprint
+set_option verso.blueprint.project "MyProject"
+```
+
+Use a nonempty canonical Lean name as the project string. You can instead
+share it through your package's existing `leanOptions` in `lakefile.lean`:
+
+```lean
+package MyProject where
+  leanOptions := #[⟨`weak.verso.blueprint.project, "MyProject"⟩]
+```
+
+Lean's `weak` prefix applies this setting where Blueprint is loaded and lets
+independent Lean-only modules ignore the unregistered option. Ordinary Blueprint
+attributes, prose directives, inline code and labeled markup enroll their source
+automatically; they need a logical project context so the recorded identity is
+stable. Changing options in an importing query does not relabel an existing
+source. Metadata-only registrations need no source context.
+
+`Informal.Realizations.Authoring.configureProject` configures the exact module
+that calls the authoring API; it does not enroll importers. Use it when that
+module calls `Authoring.stage` or `Authoring.expectNative` to attach source-authored
+realizations, translation claims, requirements, or an independently written
+expected proposition. It is not required as a separate opt-in for ordinary
+Blueprint attributes or directives.
+
+For Lean consumers, `Informal.Realizations.Capture.capture` collects ordinary
+Blueprint registrations after the owning modules have been built. Capture uses
+the loaded declarations and compiled registrations. It reads files only for
+explicitly authored external documents with project-relative paths. Lean and
+Verso document identities use the owning module and the selected content or
+declaration. Moving a checkout leaves these identities stable. Its successful
+snapshot contains the admitted registry, selected dependency edges and diagnostics;
+consumers do not construct a registry manually. A checked native declaration, an
+independently specified proposition and correspondence with prose are separate
+requirements. Missing source or unresolved dependencies remain explicit. The normal
+`BlueprintDocument` capture supplies the same admitted snapshot to the graph,
+summary, headings and query manifest. A structural/import conflict rejects the
+whole capture; it does not publish a partial project.
+
+`lake exe vbp query status <label>` exposes `validation`: `nativeStatementComplete` and
+`nativeBodyComplete` describe the selected declarations' own native checks.
+`hasNativeBodyRequirement` indicates whether a proof or implementation check applies.
+`proofRoleComplete` is true when every selected declaration has its native contract
+and all selected mathematical proofs pass locally. A missing sibling contract leaves
+a selected proof role unfinished. The graph can show a formalized proof status only
+when all selected native bodies pass, including computational implementations.
+It is null for a node with only computational definitions. A proof-valued Lean
+`def` can therefore contribute to the unfinished-proof count.
+For a statement-only proposition definition, both body flags are false.
+
+`requiredComplete` summarizes the generated native checks for the ordinary Lean
+declarations together with their selected Blueprint prerequisites. A clean proof
+can have unfinished prerequisites. Independent expected propositions and
+correspondence reviews have their own results in `details.assessment`, alongside
+their subjects, requirements, and observations. Prose without an explicit
+assessment requirement remains unassessed. Source-only previews say validation is
+unavailable until captured. Declaration-panel snapshots are display inventory.
+
+The generated manifest (version 15) records one node per included label. A bodyless node can still have an actionable proof. A second rendered view of a label does not increase its count.
+
+The graph payload uses schema version 8. Consumers should use the
+exported `assessment` and `actionableStage`, rather than reconstructing readiness
+from graph colors. The status query's `complete` and `declarations` are
+replaced by `validation` and `sourceDeclarationSnapshots`; the latter
+is display inventory, not current validation evidence. Rebuild existing generated
+sites and update API clients together.
+
 Use the `@[blueprint]` attribute when a compiled definition-like
 declaration or theorem should appear as a compiled-declaration-backed Blueprint
 node. With no string argument, its Blueprint label is the declaration's
@@ -488,7 +560,18 @@ enabled, standard structural content such as paragraphs, emphasis, lists,
 links, code, math, quotations, and section content is converted into Manual
 blocks. The same structural content is rendered inside the attached “Lean code
 for…” declaration panel. If no docstring is available, the node is still
-registered, but there is no imported informal statement body.
+registered, but there is no imported informal statement body. Capture selects the declaration's direct
+compiled documentation. Markdown uses Lean's stored string. Verso uses a
+structural encoding of the elaborated document, including supported extension
+payloads such as Lean name links. Unknown extensions produce a diagnostic and
+leave the native declaration available. Rebuild the owning module to update the
+selected comment, including when the declaration occurs inside a Lean fence.
+
+For authored realization endpoints, use the `markdown` base name with role
+`statement` for a default Markdown docstring. A `doc.verso` docstring uses the
+`verso` base name with role `statement`, and a `:::proof` body uses `verso` with
+role `proof`. Update any Markdown docstring endpoint that used the old `verso`
+base name to `markdown`.
 
 Importing `VersoBlueprint` registers Lean docstring handlers for the same
 `Informal.uses` and `Informal.bpref` names used in Manual prose. Enable
@@ -751,8 +834,13 @@ theorem prop96Inline : True := prop95
 ````
 
 When inference is enabled, Blueprint starts separate walks from the constants in
-the declaration's type and compiled body. The type walk produces statement
-dependencies; the body walk produces proof dependencies. At an unassociated
+the declaration's type and compiled body. A theorem's type contributes statement
+dependencies and its proof contributes proof dependencies. The value of a
+proposition definition such as `def Derived : Prop := S ∧ True` supplies its
+statement, so a reference to `S` contributes a statement dependency. A data
+definition owns both kinds of dependency through its implementation. Blueprint
+assigns these roles per checked declaration, including in blocks that contain
+several declarations. At an unassociated
 definition, theorem, or opaque declaration, when helper expansion is enabled,
 each walk follows both its type and body, keeping the axis of the walk that
 reached it. For example, a helper's type can introduce a proof dependency when
@@ -783,15 +871,13 @@ Adding an association later does not retroactively fill earlier inferred edges.
 Lean associations are many-to-many. One Blueprint label may be associated with
 several Lean code items, and one Lean declaration may be associated with several
 Blueprint labels. Automatic dependency inference emits all associated labels and
-then deduplicates edges by label.
+deduplicates repeated references within each source realization and dependency axis.
 
-Inferred edges are stored with origin `"automatic"` so relationship panels can
-distinguish them from author-written edges. Self-edges are suppressed. If the
-same label is both inferred and explicitly listed on the same axis, the edge is
-emitted once with manual origin. If the same label is inferred on both axes, the
-statement edge wins and the automatic proof edge is suppressed; an explicit `proofUses`
-entry can still put the label on the proof axis when that is what the Blueprint
-should say.
+Inferred edges carry origin `"automatic"`. When a theorem mentions the same
+target theorem in its type and proof, both edges survive. Its statement requires the
+target's statement and its proof requires the target's proof. Self-edges are
+suppressed. When the relationship panel combines references to the same label
+on one axis, an explicit reference takes precedence over an inferred one.
 
 ##### Dependencies through helpers
 
@@ -906,6 +992,32 @@ For all natural numbers $`a`, $`b`, and $`c`, addition is associative.
 This links the Blueprint entry to an existing Lean declaration without copying
 the declaration body into the chapter.
 
+To use an imported declaration’s own docstring as the informal statement, set
+`leanDocstring` to one canonical name from `lean` and leave the statement body empty.
+
+```md
+:::theorem "public_half_plane" (lean := "LFunction_ne_zero_of_half_lt_re") (leanDocstring := "LFunction_ne_zero_of_half_lt_re")
+:::
+```
+
+The chapter owns this selection under its `verso.blueprint.project`. The declaration
+and its source ranges belong to the upstream package. A direct Markdown or Verso
+comment supplies a separate statement realization. Add a normal `:::proof` to
+supply independently authored proof prose. An explicit statement body conflicts
+with adoption. A declaration list still selects exactly one docstring.
+
+Capture selects the direct docstring from the loaded declaration's compiled
+metadata, including server metadata in module-system imports. Rebuild the owner
+and consuming chapter after a docstring edit. Missing, empty, inherited,
+ambiguous, or unsupported comments leave the native declaration available and
+produce a source diagnostic.
+When a declaration's own comment is identical to its `inherit_doc` target in the
+same module, Lean's `.olean` compaction can deduplicate the comment content.
+In that case, adoption can mistake the inherited comment for the declaration's own.
+See [UPC-0022](roadmap/cards/UPC-0022-expose-inherited-docstring-target/README.md).
+Module introductions remain ordinary chapter content. Adopting prose supplies
+no review judgment or proof of correspondence.
+
 Proof blocks can attach Lean declarations to the same Blueprint node:
 
 ```md
@@ -921,9 +1033,9 @@ returns that facet under `proof`.
 
 Statement and proof attachments both contribute to the node's associated
 declarations, declaration lookup, summaries, and progress. A declaration mentioned
-on both facets is counted once; its observed status evidence is merged
-conservatively. An incomplete or missing proof attachment cannot be ignored
-when computing the node's formalization status.
+on both facets is counted once in inventory. Capture checks every selected native
+declaration independently against its own current source and contracts. An
+incomplete or missing proof attachment cannot borrow a sibling's successful check.
 
 With `autoDeps := true`, dependencies inferred from declarations attached to a
 proof contribute to the proof-side dependency track. Authored dependencies can
@@ -1464,25 +1576,58 @@ contract and examples.
 The graph uses two orthogonal status tracks:
 
 - statement border:
-  `Blocked`, `Ready to formalize`, `Formalized`, `In Mathlib`
+  `Unassessed`, `Blocked`, `Ready to formalize`, `Formalized`, `In Mathlib`
 - proof fill:
-  `Not ready`, `Ready to formalize`, `Lean code incomplete`,
+  `Unassessed`, `No proof status`, `Lean code incomplete`,
   `Locally formalized`, `Locally formalized + dependencies complete`
 
-This split is intentional. For theorem-like nodes, the statement can already be
-formalized while the proof still remains unstarted, in progress, or complete.
+For theorem-like nodes, the statement can be formalized while the proof remains
+unfinished. These labels summarize the node's selected native Lean checks and
+dependency axes. The captured assessment details include the results of other
+realizations, correspondence relations, and reviews.
 
 Read the proof fill states as:
 
-- `Not ready`: the proof still depends on unfinished prerequisites
-- `Ready to formalize`: prerequisites are done, but there is no associated Lean
-  proof code yet
-- `Lean code incomplete`: associated Lean code exists, but still has gaps such
-  as `sorry`
-- `Locally formalized`: the node's own Lean code is complete, but some
-  dependency upstream is still not complete
-- `Locally formalized + dependencies complete`: both the node and its full
-  dependency closure are complete
+- `Unassessed`: the node has no ordinary Lean declaration
+- `No proof status`: the fill is neutral, for example for a statement-only
+  proposition definition
+- `Lean code incomplete`: an associated native theorem proof has a gap such as
+  `sorry` or has unfinished verification
+- `Locally formalized`: the local native proof or implementation passes while a
+  selected Blueprint prerequisite remains unfinished
+- `Locally formalized + dependencies complete`: the local native proof or
+  implementation and its selected Blueprint prerequisite closure pass
+
+`actionableStage` reports the next available native formalization step. A theorem
+with `sorry` keeps its `Lean code incomplete` fill when its prerequisites pass
+and the next step becomes `proof`. A prose-only node stays unassessed and has no
+automatic native work item.
+
+Each dependency on a label with Lean declarations requires Lean checks of that
+target. All ordinary Lean declarations associated with the target label form one
+development, and the dependency requires every one of them. The dependency's
+axis decides which check of each declaration it requires:
+
+| Target declaration | Statement dependency (`uses`) | Proof dependency (`proofUses`) |
+| --- | --- | --- |
+| Theorem | Its statement | Its proof |
+| Data definition | Its implementation (body) | Its implementation (body) |
+| Proposition definition | Its statement | Its statement |
+
+A statement that mentions a theorem is meaningful once that theorem is stated,
+so a statement dependency on an admitted (`sorry`) theorem does not block the
+statement, while a proof dependency on it blocks the proof. A statement whose
+Lean type really contains the admitted proof is still caught by its own
+dependency-closure check. A definition's body is part of its meaning, so it
+gates both axes. For a data definition, both `uses` and `proofUses` gate its
+single implementation, and each entry selects by its own axis. An authored
+`proofUses` can belong to a Verso proof added later. If collection finds no
+proof or implementation to own it, the edge reports `missing-use-owner` in
+`validation.details.uses`. A proposition definition on its own has no native
+proof work item. A target with
+no ordinary Lean declaration, or an unresolved label, leaves the dependency
+selection unfinished, which blocks the dependent. Selecting an alternative
+realization of the target explicitly is not supported.
 
 Lean completion independently inspects the full transitive dependency closure of
 associated checked declarations: their types, available values (including opaque
@@ -1551,13 +1696,15 @@ local proof-writing task. Frontier advice remains tracked in
 | Exposed body using a hidden helper with empty cache | None unless other evidence exists | Helper unverified | Blocked |
 | Missing checked declaration or open dependency boundary | None unless other evidence exists | Unverified | Blocked |
 | Directly associated genuine axiom | Axiom-like policy | Body intentionally absent | Blocked |
-| No associated declarations | None | No declaration certificate | Blocked |
+| No associated declarations | None | No declaration certificate | Unassessed |
 
 The statement track for theorem-like nodes requires verified statement coverage
 and no statement or unlocalized hole. A proof-only verification gap can leave
 that statement track complete; the proof track remains blocked. Definitions
 require both axes for statement completion. Whole-declaration `isProved` and
-agent `complete` always require the entire closure.
+captured `nativeBodyComplete` require native closure. `requiredComplete` also
+requires the selected Blueprint prerequisites. Independently authored contracts
+have their own assessment results.
 
 `ProvedStatus.incomplete` carries `IncompletenessInfo` with `knownSorry` and
 `unverified` arrays. Empty incomplete payloads and default declaration statuses
@@ -1568,8 +1715,9 @@ Use completion predicates for decisions instead of testing zero source counts.
 
 Duplicate snapshots retain each axis/origin pair and the maximum known source
 count, plus every verification gap. `proved` remains a neutral merge element;
-missing and axiom-like declarations retain their blocking dominance. Summary
-headings use stored evidence. Summary API fields are `incompleteDecls`,
+missing and axiom-like declarations retain their blocking dominance in display
+inventory. Summary completion and headings use fresh captured realization
+assessments. Summary API fields are `incompleteDecls`,
 `incompleteDetails`, and `withIncompleteCode`, since blockers include uncertainty.
 
 Lean callers use `Informal.Data.analyzeDeclaration name` in the environment
@@ -1583,11 +1731,10 @@ checked-environment API form the trusted boundary of that theorem.
 For agents, use `lake exe vbp query status <label>` after building the current
 sources; see [API](API.md#lean-completeness-evidence).
 
-Warning markers are reserved for structural or resolution issues such as:
-
-- unresolved Blueprint references
-- missing external Lean declarations
-- Lean-owned entries that have code but no informal statement body
+Red graph warning markers identify unresolved Blueprint references. Missing native
+declarations and unavailable sources remain detailed assessment diagnostics.
+Missing informal coverage is informational; it does not create a prose
+proofreading requirement.
 
 ### Progress summary
 
@@ -1618,13 +1765,16 @@ For routine project work, read the summary from top to bottom:
 
 Some summary sections use deliberately practical project-management terms:
 
-- **Actionable** entries are not locally formalized yet, and their statement or
-  proof status says there is work that can start now.
+- **Actionable** entries have an unfinished native statement or body check whose
+  selected prerequisites allow work to start now.
 - **Actionable priorities** are the actionable entries that also unlock
   downstream work. The broader **Ready now** count, quick wins, and owner/tag
   rollups still include actionable leaf entries with no dependents.
 - **Quick wins** are actionable entries marked with high priority and small
   effort metadata.
+- **Lean requirements complete** counts entries whose generated native checks and
+  selected Blueprint prerequisites pass. Local native checks can pass while
+  selected prerequisites remain unfinished.
 - **Direct uses** count immediate statement or proof dependency edges into an
   entry. **Downstream unlocks** count entries that depend on it transitively,
   with cycles ignored.
@@ -1910,7 +2060,12 @@ lake exe vbp build
 lake exe vbp build --serve
 ```
 
-It discovers the generator, then uses Lake to build its imports and execute it;
+Use `build --output <dir>` to choose a destination and `query --site <dir>` or
+`check --site <dir>` to read one. Paths must be nonempty; prefix a path beginning
+with `-` with `./`. Argument errors exit with code 2 before loading the project
+or generated data. `check` accepts only `--site <dir>` and rejects extra arguments.
+
+`build` discovers the generator, then uses Lake to build its imports and execute it;
 VBP can optionally serve the result. When a maintainer harness or advanced CI
 job cannot use `vbp`, the equivalent lower-level command is:
 
@@ -2032,7 +2187,12 @@ prefixes with document-order block counts.
   - default: `""` (automatic GitHub links when the source file belongs to a
     Git checkout with a GitHub `origin` remote)
   - builds source links for external declarations using `{path}`, `{relpath}`,
-    `{module}`, `{line}`, `{column}`, `{endLine}`, and `{endColumn}`
+    `{repoRelpath}`, `{module}`, `{line}`, `{column}`, `{endLine}`, and `{endColumn}`
+  - Imported source links are resolved from the Lean source search path or the
+    workspace. They use compiled declaration ranges and serve as presentation metadata.
+  - `{relpath}` is relative to the Blueprint workspace when available.
+    `{repoRelpath}` is relative to the source file's own Git checkout when
+    available, and otherwise has the same value as `{relpath}`.
 - `verso.blueprint.summary.debugDiagnostics`
   - default: `false`
   - keeps maintainer diagnostics hidden from `blueprint_summary` by default

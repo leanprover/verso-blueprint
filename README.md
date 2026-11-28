@@ -63,6 +63,13 @@ Today a Blueprint project usually owns three things:
 - a generator entry point that resolves forward references, computes metadata,
   and writes the generated output under `_out/`
 
+Every module that registers Blueprint sources needs a stable logical project
+name. Add `set_option verso.blueprint.project "MyProject"` after importing
+Blueprint. To share the setting across producing modules, put
+`weak.verso.blueprint.project` in the package's `leanOptions`. Use the same
+canonical Lean name throughout the project. See the
+[source project configuration](doc/MANUAL.md#compiled-code-tagged-with-blueprint).
+
 `verso-blueprint` provides the Blueprint directives, rendering commands, preview
 runtime, and support library code. The starter layout in
 [project_template/](./project_template/) shows the recommended shape.
@@ -75,28 +82,27 @@ By default, `lake exe vbp build` writes the HTML site under
 write `_out/site/pdf/main.pdf`; use `--pdf-engine <cmd>` for another
 lualatex-compatible command.
 
-## Three-Level Blueprint Model
+## Nodes and realizations
 
-Blueprint keeps three related layers separate:
+A Blueprint node names one mathematical concept. It can have several named
+realizations: for example, its original Verso statement, a Rocq development,
+and a Lean formalization. Each realization keeps its own sources and language
+context and one role, such as statement or proof; a translation is an explicit
+relationship between realizations.
 
-1. **Original sources and provenance.** These are the papers, PDFs, imported
-   files, page references, and source spans that explain where the mathematical
-   content came from.
-2. **Informal Blueprint content.** This is the labeled mathematical statement,
-   proof, or definition as Blueprint understands it. Native Verso bodies are
-   the normal representation. Raw Markdown or TeX external markup can also be
-   attached to a labeled node as a compatibility representation while porting an
-   existing document.
-3. **Formal Lean content.** This is the Lean code or declarations associated
-   with a Blueprint label. It drives progress state, declaration panels, and
-   links between the informal document and the formalization.
+Source provenance, such as a paper citation or source span, remains distinct
+from a realization. Rendered HTML and code previews are views, not additional
+realizations. The current automatic checker validates Lean declarations. Other
+languages can be represented as source or correspondence inputs, but Blueprint
+does not yet claim to check their proofs or infer that they correspond to Lean.
 
-A single Blueprint node can have data from all three layers at once. For
-example, a theorem can cite a source span in a PDF, keep a Markdown witness or
-native Verso statement as its informal content, and link to one or more Lean
-declarations. External Markdown and TeX attachments should be read as Level 2
-informal content unless they are separately referenced by Level 1 source
-provenance metadata.
+Validation results also answer different questions. A Lean theorem can have a
+complete native proof while its relationship to prose is unassessed or an
+explicit prerequisite is unfinished. Blueprint reports only requirements that
+were authored or selected; prose proofreading is optional unless a project
+adds an assessment requirement. See the
+[realization model](doc/design/REALIZATIONS_AND_TRANSLATIONS.md) and
+[manual](doc/MANUAL.md) for the current authoring and query behavior.
 
 ## Core Features
 

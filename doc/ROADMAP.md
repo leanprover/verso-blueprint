@@ -26,6 +26,19 @@ architecture narrative. Those live in
 
 ## Active Workstreams
 
+### Realizations and Translation Semantics
+
+The first phase captures canonical source, named realizations, directed
+translations, and typed requirements in one admitted snapshot. Graph and
+query completion use that snapshot's current native checks and explicit
+prerequisites. The [realization design](design/REALIZATIONS_AND_TRANSLATIONS.md)
+describes the implemented model and its trust boundary.
+
+Remaining work includes richer prerequisite kinds, foreign source and proof
+providers, external artifact imports, and task and Beam integrations. The
+[consumer pilot contracts](design/REALIZATIONS_AND_TRANSLATIONS.md#consumer-pilot-contracts-and-pending-extensions)
+track open design work on source relocation and shared prerequisite queries.
+
 ### Verification of Accepted Blueprint Data
 
 The verification lane owns proofs connecting identified contribution evidence
@@ -62,8 +75,8 @@ Work:
    go through shared helpers; `PreviewSource` owns statement/proof selection,
    traversal store helpers own whole-domain decoding, and
    `PreviewManifest.File` owns client-facing manifest filters and label lookup
-2. merge the traversal preview cache and widget `elabStx` preview path behind a
-   phase-safe representation
+2. keep persisted and traversal preview bodies in the same typed Manual block
+   representation, with each phase deciding which body it can display
 3. keep preview labels and titles on the canonical manifest-backed path; new
    renderers should consume resolved manifest titles instead of mixing raw
    labels, source labels, and local fallbacks
@@ -171,16 +184,16 @@ Work:
    requirements onto `PreviewManifest.Entry`; remaining candidates include
    repeated traversal-store decoding and validation-message assembly patterns
    across preview, source, and status data
-2. keep `Informal.Environment.InProgress` separate from `Data.Node` while it
-   owns directive-stack state and typed preview blocks; attribute docstring term
-   syntax belongs only to persisted `InformalData`
+2. keep `Informal.Environment.DirectiveDraft` separate from `Data.NodeInventory`.
+   The draft holds in-progress directive metadata. Accepted prose keeps a typed
+   Manual body and the original source syntax used for provenance.
 3. keep `Informal.Environment.State` as the persisted semantic store and
    traversal indexes as rendered-site projections; consolidate only if the
    replacement keeps numbering, hrefs, preview ids, and HTML-cache keys
    phase-safe
 4. extend the centralized declaration-level presentation in
    `ProvedStatus.presentation` into a broader node-health record derived from
-   `Data.Node` plus external declaration checks; declaration rows, summary
+   `Data.NodeInventory` plus external declaration checks; declaration rows, summary
    detail rows, heading marks, code-entry icons, and external-code rows already
    share the declaration-status vocabulary
 5. preserve the structural separation between identified external associations

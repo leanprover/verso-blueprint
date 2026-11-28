@@ -4,7 +4,9 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
+import VersoBlueprintTests.BlueprintNativeFixture
 import VersoBlueprintTests.Blueprint.Support
+import VersoBlueprint.Commands.Summary.Collect
 import VersoBlueprint.Vbp
 import VersoBlueprint.PreviewManifest.BlockRender
 import VersoBlueprintTests.BlueprintProofLeanRefs.Provider
@@ -21,19 +23,21 @@ theorem attachedResult : True := inferredDependency
 
 theorem admittedAttachedResult : True := by sorry
 
--- Synthetic status observations exercise the reducer independently of the
--- classifier. Neither facet, input order, batching nor exact replay may discard
--- observed incompleteness before the canonical node projection sees it.
+theorem dependentAttachedResult : True := True.intro
+
+-- Synthetic provider observations exercise replay and deduplication independently
+-- of the classifier. Neither facet, input order, batching nor exact replay may
+-- discard the original provider inventory.
 #eval show IO Unit from do
   let good : Data.ExternalRef := { Data.ExternalRef.ofName `Example.repeated with
-    present := true, kind := .theorem, provedStatus := .proved }
+    present := true, kind := .theorem, provedStatus := some .proved }
   let known : Data.ProvedStatus := .incomplete { knownSorry := #[{
     location := .proof, origin := .dependency, refs? := some 2 }] }
   let unverified : Data.ProvedStatus := .incomplete { unverified := #[{
     location := .proof, declaration := good.canonical, reason := .bodyUnavailable }] }
   for isProof in #[false, true] do
     for status in #[known, unverified] do
-      let gap := { good with provedStatus := status }
+      let gap := { good with provedStatus := some status }
       for refs in #[#[good, gap], #[gap, good]] do
         -- Keep producer identities fixed across batching and exact replay.
         -- Both facets enter the identified slice and retain their authored side.
@@ -42,8 +46,7 @@ theorem admittedAttachedResult : True := by sorry
             ({ id := { moduleName := `Repeated, producer := `test, subject := `repeated,
                        site := index, slot := 0 },
                label := `repeated,
-               references := if isProof then #[] else #[refs[index]!],
-               proofReferences := if isProof then #[refs[index]!] else #[],
+               nativeAssociations := BlueprintNativeFixture.associations `repeated (if isProof then `proof else `statement) #[refs[index]!],
                priority := none, source := none }
               : Contributions.Record)
           (NodeAssembly.assemble `repeated #[] records).map (·.node)
@@ -51,51 +54,54 @@ theorem admittedAttachedResult : True := by sorry
         let .ok batched := assemble indices
           | throw <| IO.userError "Repeated associations were rejected"
         let .ok (_, incremental) := indices.foldlM
-            (fun (state : Array Nat × Data.Node) index => do
+            (fun (state : Array Nat × Data.NodeInventory) index => do
               let accumulated := state.1.push index
-              return (accumulated, ← assemble accumulated)) (#[], ({} : Data.Node))
+              return (accumulated, ← assemble accumulated)) (#[], ({} : Data.NodeInventory))
           | throw <| IO.userError "Incremental associations were rejected"
         let .ok replayed := assemble (indices ++ indices)
           | throw <| IO.userError "Replayed associations were rejected"
         for node in #[batched, incremental, replayed] do
           let refs := node.associatedExternalRefs
-          unless refs.size == 1 && refs[0]!.provedStatus == status &&
-              node.leanDecls == #[good.canonical] &&
-              !(Graph.nodeCodeHealth {} node).localProofFormalized do
+          unless refs.size == 1 && refs[0]!.provedStatus == some status &&
+              node.leanDecls == #[good.canonical] do
             throw <| IO.userError "Same-facet deduplication discarded status evidence"
   for status in #[known, unverified, Data.ProvedStatus.incomplete {}, .missing, .axiomLike] do
-    let ref := { good with provedStatus := status, present := status != .missing }
-    let code : Data.Code := { stx := .missing, definedTheorems := #[{
+    let ref := { good with provedStatus := some status, present := status != .missing }
+    let code : Data.Code := { definedTheorems := #[{
       name := good.canonical, provedStatus := .proved }] }
-    let node : Data.Node := { kind := .theorem, proofExternalRefs := #[ref], literateCodes := #[code] }
-    let health := Graph.nodeCodeHealth {} node
-    unless node.summaryExternalRefs.isEmpty && health.totalDecls == 1 &&
-        health.hasAnyGaps == (!status.isMissing && status.isIncomplete) &&
-        health.hasMissingExternalDecls == status.isMissing &&
-        health.hasAxiomLike == status.isAxiomLike && !health.localProofFormalized &&
-        health.provedStatus.reportJson == status.reportJson &&
-        node.summaryLiterateCodes[0]!.definedTheorems[0]!.provedStatus.reportJson == status.reportJson do
-      throw <| IO.userError "Inline display precedence discarded external status evidence"
-    let source : BlockCodeData := { externalDecls := #[ref], literateDeclarations := {
-      definedTheorems := #[{ name := good.canonical, provedStatus := .proved }] } }
-    let panel := Graph.codeHealthOfBlockSource .theorem {} (some source)
-    unless source.summaryExternalDecls.isEmpty && panel.totalDecls == 1 &&
-        panel.hasAnyGaps == (!status.isMissing && status.isIncomplete) &&
-        panel.hasMissingExternalDecls == status.isMissing &&
-        panel.hasAxiomLike == status.isAxiomLike && !panel.localProofFormalized &&
-        panel.provedStatus.reportJson == status.reportJson do
+    let node : Data.NodeInventory := {
+      kind := .theorem
+      nativeAssociations := BlueprintNativeFixture.associations `providerSnapshot `proof #[ref]
+      sources := #[BlueprintNativeFixture.source `providerSnapshot `lean none `lean (.leanInline code)] }
+    let source : BlockCodeData := {
+      externalDecls := node.associatedExternalRefs
+      literateDeclarations := .ofCodes node.inlineCodes }
+    unless source.summaryExternalDecls.isEmpty && source.externalDecls.size == 1 &&
+        source.externalDecls[0]!.provedStatus == some status &&
+        source.summaryLiterateDeclarations.declarations[0]!.provedStatus.reportJson == status.reportJson do
       throw <| IO.userError "Panel display precedence discarded external status evidence"
     let data : BlockData := { label := `overlap, kind := .theorem, count := 1, codeData := some source }
     let rendered := CodeSummary.renderParts data { source := some source } (fun _ => none)
-    unless !hasSubstr rendered.codeEntry.asString "bp_code_decl_status_ok" do
-      throw <| IO.userError "Summary preview presented the selected inline declaration as complete"
-  let code : Data.Code := { stx := .missing, definedTheorems := #[{
+    unless rendered.statusMark.any (fun mark =>
+        mark.title.contains "Validation unavailable" && mark.symbolOverride? == some "?") do
+      throw <| IO.userError "Provider display status supplied a missing realization assessment"
+  let code : Data.Code := { definedTheorems := #[{
     name := good.canonical, provedStatus := .proved }] }
-  let node : Data.Node := { kind := .theorem, proofExternalRefs := #[good], literateCodes := #[code] }
-  let external : Graph.ExternalCodeStatus := { provedStatus := fun _ => unverified }
-  unless !(Graph.nodeCodeHealth external node).localProofFormalized do
-    throw <| IO.userError "Inline display precedence discarded external lookup evidence"
+  let node : Data.NodeInventory := {
+    kind := .theorem
+    nativeAssociations := BlueprintNativeFixture.associations `providerSnapshot `proof #[good]
+    sources := #[BlueprintNativeFixture.source `providerSnapshot `lean none `lean (.leanInline code)] }
+  let external := { good with provedStatus := some unverified }
+  let observed := { node with
+    nativeAssociations := BlueprintNativeFixture.associations `providerSnapshot `proof #[external] }
+  unless observed.associatedExternalRefs[0]!.provedStatus == some unverified do
+    throw <| IO.userError "Inline provider inventory discarded external lookup evidence"
 
+/--
+warning: Label «proof.attachments.mixed»: external Lean name 'No.Such.AttachedResult' could not be resolved in current namespace/open declarations; keeping parsed name
+-/
+#guard_msgs in
+set_option verso.blueprint.externalCode.strictResolve false in
 #docs (Manual) proofReferencesDoc "Proof references" :=
 :::::::
 :::lemma_ "proof.helper.owner" (lean := "Nat.add_comm")
@@ -117,7 +123,16 @@ The attached theorem contributes to this node and infers its proof dependency.
 A statement with an incomplete associated proof.
 :::
 :::proof "proof.attachments.admitted" (lean := "admittedAttachedResult") (autoDeps := false)
-The attached proof hole must remain visible in progress and summaries.
+The attached proof hole remains visible after capture.
+:::
+:::lemma_ "proof.attachments.mixed"
+A proof with a resolved declaration and a missing association.
+:::
+:::proof "proof.attachments.mixed" (lean := "attachedResult, admittedAttachedResult, No.Such.AttachedResult") (autoDeps := false)
+The proof panel retains a complete declaration, an admitted sibling, and a missing reference.
+:::
+:::lemma_ "proof.attachments.mixedDependent" (lean := "dependentAttachedResult") (uses := "proof.attachments.mixed") (autoDeps := false)
+A dependent statement needs the full target's statement contract.
 :::
 :::lemma_ "proof.attachments.both" (lean := "attachedResult")
 The same declaration can be mentioned on both facets.
@@ -136,73 +151,93 @@ This imported statement association also has a proof-facet occurrence.
 :::
 :::::::
 
-/- Both facets contribute to node membership, inference, and conservative status. -/
+/- Both facets contribute to node membership, dependency inference, and source inventory. -/
 #eval show CoreM Unit from do
   let state := Environment.informalExt.getState (← getEnv)
-  let some node := state.data.get? (Name.mkSimple "proof.references")
+  let some node := state.inventory.get? (Name.mkSimple "proof.references")
     | throwError "Missing proof-reference node"
-  unless node.externalRefs.map (·.canonical) == #[`Nat.add_assoc] &&
-      node.proofExternalRefs.map (·.canonical) == #[`Nat.add_comm, `Nat.add_left_comm] do
+  unless (node.nativeRefsOn `statement).map (·.canonical) == #[`Nat.add_assoc] &&
+      (node.nativeRefsOn `proof).map (·.canonical) == #[`Nat.add_comm, `Nat.add_left_comm] do
     throwError "A declaration lost its authored facet"
   unless node.leanDecls == #[`Nat.add_assoc, `Nat.add_comm, `Nat.add_left_comm] do
     throwError "Proof declarations were excluded from node membership"
-  unless node.proof.any (·.dependencyLabels == #[Name.mkSimple "proof.helper.owner"]) &&
-      node.statement.any (·.dependencyLabels.isEmpty) do
+  unless (node.usesOn `proof).map (·.label) == #[Name.mkSimple "proof.helper.owner"] &&
+      (node.usesOn `statement).isEmpty do
     throwError "Proof attachments changed authored dependency axes"
   unless state.leanNameLabels.getD `Nat.add_comm #[] ==
       #[Name.mkSimple "proof.helper.owner", Name.mkSimple "proof.references"] do
     throwError "Proof declarations were excluded from the accepted index"
-  let some proofOnly := state.data.get? (Name.mkSimple "proof.attachments.only")
+  let some proofOnly := state.inventory.get? (Name.mkSimple "proof.attachments.only")
     | throwError "Missing proof-only association node"
   unless proofOnly.hasAssociatedCode && proofOnly.leanDecls == #[``attachedResult] &&
-      (Graph.nodeCodeHealth {} proofOnly).localProofFormalized &&
-      proofOnly.proof.any (·.dependencyLabels == #[Name.mkSimple "proof.inferred.dep"]) &&
-      proofOnly.statement.any (·.dependencyLabels.isEmpty) do
-    throwError "Proof association did not contribute membership, status, or inferred proof dependencies"
-  let some admitted := state.data.get? (Name.mkSimple "proof.attachments.admitted")
+      (proofOnly.nativeRefsOn `proof).map (·.canonical) == #[``attachedResult] &&
+      (proofOnly.usesOn `proof).map (·.label) == #[Name.mkSimple "proof.inferred.dep"] &&
+      (proofOnly.usesOn `statement).isEmpty do
+    throwError "Proof association did not contribute membership or inferred proof dependencies"
+  let some admitted := state.inventory.get? (Name.mkSimple "proof.attachments.admitted")
     | throwError "Missing admitted proof association"
-  unless Graph.proofStatus {} state (Name.mkSimple "proof.attachments.admitted") admitted == .incomplete do
-    throwError "An admitted proof association appeared complete"
-  let some both := state.data.get? (Name.mkSimple "proof.attachments.both")
+  unless (admitted.nativeRefsOn `proof).size == 1 && (admitted.nativeRefsOn `proof)[0]!.provedStatus.isNone do
+    throwError "Ordinary proof association checked its proof during registration"
+  let some mixed := state.inventory.get? (Name.mkSimple "proof.attachments.mixed")
+    | throwError "Missing mixed proof associations"
+  let refs := mixed.nativeRefsOn `proof
+  unless refs.map (·.provedStatus) == #[none, none, some .missing] &&
+      (refs.extract 0 2).all (fun ref => ref.present && ref.kind == .theorem &&
+        ref.range?.isSome && ref.selectionRange?.isSome && ref.render.isOk) do
+    throwError "Registration lost source facts or inspected a proof body"
+  let preview := (ExternalCode.renderPreviewHtml refs).asString
+  unless countSubstr preview "awaiting capture" == 2 &&
+      hasSubstr preview "declaration not found" && !hasSubstr preview "unverified" do
+    throwError "Uncaptured display confused waiting, missing and unverified declarations"
+  let name := ``attachedResult
+  let some association := mixed.nativeAssociations.find? (fun association =>
+    association.placement == `proof && association.reference.canonical == name)
+    | throwError "Missing proof association for the project isolation control"
+  let checks : Std.HashMap (Realizations.RealizationKey × Realizations.ObjectKey) Data.ProvedStatus := {}
+  let checks := checks.insert (association.realization.forRole `proof, ⟨⟨`lean, `otherProject⟩, name.toString⟩) .proved
+  let model := RenderNode.ofNode (Name.mkSimple "proof.attachments.mixed") mixed (nativeChecks := some checks)
+  unless (model.proofExternalChecks.find? (·.1 == name)) == some (name, none) do
+    throwError "A declaration in another project supplied the display status"
+  let some both := state.inventory.get? (Name.mkSimple "proof.attachments.both")
     | throwError "Missing shared-facet association"
-  unless both.leanDecls == #[``attachedResult] &&
-      (Graph.nodeCodeHealth {} both).totalDecls == 1 do
+  unless both.leanDecls == #[``attachedResult] && both.associatedExternalRefs.size == 1 do
     throwError "The same declaration on two facets was counted twice"
   let proofGap : Data.ProvedStatus := .incomplete {
     knownSorry := #[{ location := .proof, origin := .dependency }] }
-  let crossFacetGap := { both.toNode with
-    proofExternalRefs := both.proofExternalRefs.map fun ref => { ref with provedStatus := proofGap } }
-  unless (Graph.nodeCodeHealth {} crossFacetGap).hasAnyGaps &&
-      !(Graph.nodeCodeHealth {} crossFacetGap).localProofFormalized do
-    throwError "Canonical deduplication erased proof-facet status evidence"
+  let crossFacetGap : Data.NodeInventory := { both with
+    nativeAssociations := both.nativeAssociations.map fun association =>
+      if association.placement == `proof then
+        { association with reference := { association.reference with provedStatus := some proofGap } }
+      else association }
+  unless (crossFacetGap.nativeRefsOn `proof)[0]!.provedStatus == some proofGap do
+    throwError "Canonical deduplication erased proof-facet provider evidence"
   for status in #[Data.ProvedStatus.proved, .axiomLike, .missing,
       proofGap, .incomplete { knownSorry := #[{ location := .unknown, origin := .unknown }] },
       .incomplete { unverified := #[{ location := .proof, reason := .bodyUnavailable }] }] do
-    let refs := proofOnly.proofExternalRefs.map fun ref =>
-      { ref with provedStatus := status, present := status != .missing }
-    let changed := { proofOnly.toNode with proofExternalRefs := refs }
-    unless (Graph.nodeCodeHealth {} changed).localProofFormalized == status.isProved &&
-        (Graph.nodeWarnings {} state (Name.mkSimple "proof.attachments.only") changed).missingExternalDecl ==
-          (status == .missing) do
-      throwError "Proof association status did not contribute conservatively"
+    let associations := proofOnly.nativeAssociations.map fun association =>
+      { association with reference := { association.reference with provedStatus := some status, present := status != .missing } }
+    let changed := { proofOnly with nativeAssociations := associations }
+    unless (changed.nativeRefsOn `proof)[0]!.provedStatus == some status &&
+        (changed.nativeRefsOn `proof)[0]!.present == (status != .missing) do
+      throwError "Proof association provider facts did not survive projection"
 
 -- Add a second proof association to a compiled imported node. Export only this
 -- local contribution and check both associations again after another import.
 private def contributeProofReferences (label : Data.Label) (references : Array Data.ExternalRef)
-    (payload : Data.NodeContribution := {}) :
-    CoreM (Option Data.Node) := do
+    (payload : SourceData.Registration := {}) :
+    CoreM (Option Data.NodeInventory) := do
   let fact : Contributions.Record := {
     id := ⟨← getMainModule, `test.proofAssociations, label, 0, 0⟩
-    label, proofReferences := references
+    label, nativeAssociations := BlueprintNativeFixture.associations label `proof references
     priority := none, source := none }
   Environment.contributeRecord fact payload
 
 run_meta do
-  let ref ← externalRefSnapshotAtCurrentDir {}
+  let ref ← registerExternalRefAtCurrentDir {}
     (Data.ExternalRef.ofName ``Provider.secondProof)
   let some _ ← contributeProofReferences (Name.mkSimple "proof.imported.associations") #[ref]
     | throwError "Could not extend the imported proof associations"
-  let some node ← Environment.getNode? (Name.mkSimple "proof.imported.associations")
+  let some node ← Environment.getNodeInventory? (Name.mkSimple "proof.imported.associations")
     | throwError "Missing imported proof node"
   unless node.leanDecls == #[``Provider.firstProof, ``Provider.secondProof] do
     throwError "Local proof association discarded imported membership"
@@ -210,39 +245,42 @@ run_meta do
 -- Re-observe a compiled admitted proof with a synthetic neutral snapshot.
 -- This is a projection/replay control, not a claim about classifier output.
 run_meta do
-  let ref ← externalRefSnapshotAtCurrentDir {}
+  let ref ← registerExternalRefAtCurrentDir {}
     (Data.ExternalRef.ofName ``Provider.admittedProof)
-  let neutral := { ref with provedStatus := .proved }
+  let ref := { ref with provedStatus := some (← Data.analyzeDeclaration ref.canonical) }
+  let neutral := { ref with provedStatus := some .proved }
   let some _ ← contributeProofReferences (Name.mkSimple "proof.imported.repeated") #[neutral, ref]
     | throwError "Could not repeat the imported proof association"
-  let some node ← Environment.getNode? (Name.mkSimple "proof.imported.repeated")
+  let some node ← Environment.getNodeInventory? (Name.mkSimple "proof.imported.repeated")
     | throwError "Missing repeated imported proof node"
-  unless node.proofExternalRefs.size == 1 &&
-      node.associatedExternalRefs[0]!.provedStatus.isIncomplete &&
-      !(Graph.nodeCodeHealth {} node).localProofFormalized do
+  unless (node.nativeRefsOn `proof).size == 1 &&
+      node.associatedExternalRefs[0]!.provedStatus.any (·.isIncomplete) &&
+      node.leanDecls == #[``Provider.admittedProof] do
     throwError "Repeated compiled proof association erased incompleteness"
 
 -- Synthetic neutral inline evidence tests display precedence. The external
 -- snapshot supplies the actual admitted proof's classification.
 run_meta do
-  let ref ← externalRefSnapshotAtCurrentDir {}
-    (Data.ExternalRef.ofName ``Provider.admittedProof)
-  let code : Data.Code := { stx := .missing, definedTheorems := #[{
-    name := ``Provider.admittedProof, provedStatus := .proved }] }
-  let some _ ← contributeProofReferences (Name.mkSimple "proof.inline.overlap") #[ref] {
-    kind := some .theorem, literateCodes := #[code] }
-    | throwError "Could not register inline/external overlap"
-
-#eval show CoreM Unit from do
-  let some node ← Environment.getNode? (Name.mkSimple "proof.inline.overlap")
-    | throwError "Missing inline/external overlap"
-  unless (Graph.nodeCodeHealth {} node).totalDecls == 1 &&
-      !(Graph.nodeCodeHealth {} node).localProofFormalized do
-    throwError "Inline/external overlap was counted twice or appeared complete"
-  let summary ← Commands.buildSummary
-  let details := summary.incompleteDetails.filter (·.label == Name.mkSimple "proof.inline.overlap")
-  unless details.length == 1 && details[0]!.status.hasKnownSorry do
-    throwError "Summary discarded the proof association's incompleteness"
+  withEnv (← getEnv) do
+    let ref ← registerExternalRefAtCurrentDir {}
+      (Data.ExternalRef.ofName ``Provider.admittedProof)
+    let ref := { ref with provedStatus := some (← Data.analyzeDeclaration ref.canonical) }
+    let code : Data.Code := { definedTheorems := #[{
+      name := ``Provider.admittedProof, provedStatus := .proved }] }
+    let some _ ← contributeProofReferences (Name.mkSimple "proof.inline.overlap") #[ref] {
+      kind := some .theorem, sources := #[BlueprintNativeFixture.source (Name.mkSimple "proof.inline.overlap") `lean none `lean (.leanInline code)] }
+      | throwError "Could not register inline/external overlap"
+    let some node ← Environment.getNodeInventory? (Name.mkSimple "proof.inline.overlap")
+      | throwError "Missing inline/external overlap"
+    let source : BlockCodeData := {
+      externalDecls := node.associatedExternalRefs
+      literateDeclarations := .ofCodes node.inlineCodes }
+    unless source.externalDecls.size == 1 &&
+        source.externalDecls[0]!.provedStatus.any (·.isIncomplete) &&
+        node.inlineCodes[0]!.definedTheorems[0]!.provedStatus == .proved &&
+        source.summaryExternalDecls.isEmpty &&
+        source.summaryLiterateDeclarations.definedTheorems[0]!.provedStatus.isIncomplete do
+      throwError "Inline/external provider snapshots were not preserved independently"
 
 /- Page HTML, cached proof previews, manifest facets, and node queries retain the same proof refs. -/
 #eval show IO Unit from do
@@ -294,13 +332,84 @@ run_meta do
     let .ok (some statusQuery) := VersoBlueprint.Vbp.parseQueryPlan ["status", label]
       | throw <| IO.userError "Status query failed to parse"
     let status := statusQuery.run files.manifest
-    unless (status.getObjValAs? Bool "complete").toOption == some complete do
-      throw <| IO.userError "Status query ignored the proof association"
-    let .ok declarations := status.getObjValAs? (Array Json) "declarations"
-      | throw <| IO.userError "Status query omitted declarations"
+    let .ok validation := status.getObjVal? "validation"
+      | throw <| IO.userError "Status query omitted captured validation"
+    unless (validation.getObjValAs? Bool "captured").toOption == some true &&
+        (validation.getObjValAs? Bool "nativeBodyComplete").toOption == some complete do
+      throw <| IO.userError "Status query ignored the proof association's native validation"
+    let .ok declarations := status.getObjValAs? (Array Json) "sourceDeclarationSnapshots"
+      | throw <| IO.userError "Status query omitted declaration inventory"
     unless declarations.size == 1 &&
-        (declarations[0]!.getObjValAs? String "facet").toOption == some "proof" do
+        (declarations[0]!.getObjValAs? String "facet").toOption == some "proof" &&
+        (declarations[0]!.getObjValAs? String "association").toOption == some "external" do
       throw <| IO.userError "Status query lost proof association provenance"
+  let mixedLabel := "proof.attachments.mixed"
+  let some mixedProof := files.manifest.findEntry? (PreviewCache.proofKey (Name.mkSimple mixedLabel))
+    | throw <| IO.userError "Missing mixed proof's rendered facet"
+  let mixedChecks := mixedProof.codeData.map (·.displayExternalDecls) |>.getD #[]
+  unless mixedChecks.size == 3 && mixedChecks[0]!.provedStatus == some .proved &&
+      mixedChecks[1]!.provedStatus.any (·.containsExplicitSorry) && !mixedChecks[2]!.present do
+    throw <| IO.userError "The mixed proof panel did not retain distinct captured declaration statuses"
+  unless hasSubstr html "bp_external_decl_header_status bp_external_decl_ok\">complete" &&
+      hasSubstr html "bp_external_decl_header_status bp_external_decl_sorry\">contains sorry" &&
+      hasSubstr html "declaration not found" && !hasSubstr html "awaiting capture" do
+    throw <| IO.userError "Page HTML did not show current per-declaration statuses and source errors"
+  for (decl, badge) in #[( ``attachedResult, "bp_external_decl_ok\">complete"),
+      (``admittedAttachedResult, "bp_external_decl_sorry\">contains sorry")] do
+    let key := TraversalIndex.LeanCodePreviews.lookupKey decl
+    unless (files.htmlCache.findHtml? key).any (·.contains s!"bp_external_decl_header_status {badge}") do
+      throw <| IO.userError s!"Generated Lean code preview lost the checked status of {decl}"
+  let .ok (some mixedQuery) := VersoBlueprint.Vbp.parseQueryPlan ["status", mixedLabel]
+    | throw <| IO.userError "Mixed proof status query failed to parse"
+  let mixed := mixedQuery.run files.manifest
+  let .ok validation := mixed.getObjVal? "validation"
+    | throw <| IO.userError "Mixed proof lost its captured assessment"
+  for (field, value) in #[("captured", true), ("hasNativeDeclarations", true), ("hasNativeBodyRequirement", true),
+      ("nativeStatementComplete", false), ("nativeBodyComplete", false), ("requiredComplete", false)] do
+    unless (validation.getObjValAs? Bool field).toOption == some value do
+      throw <| IO.userError s!"Incorrect mixed proof status for {field}"
+  let .ok diagnostics := validation.getObjVal? "details" >>= (·.getObjValAs? (Array Json) "sourceDiagnostics")
+    | throw <| IO.userError "Mixed proof status omitted capture diagnostics"
+  unless diagnostics.any (fun diagnostic =>
+      (diagnostic.getObjValAs? String "code").toOption == some "missing-declaration" &&
+      (diagnostic.getObjValAs? String "subject").toOption == some "No.Such.AttachedResult") do
+    throw <| IO.userError "Mixed proof status omitted its missing native declaration"
+  let .ok declarations := mixed.getObjValAs? (Array Json) "sourceDeclarationSnapshots"
+    | throw <| IO.userError "Mixed proof status omitted declaration inventory"
+  let verdict (field : String) (row : Json) :=
+    (row.getObjVal? field >>= (·.getObjValAs? String "verdict")).toOption
+  unless declarations.map (verdict "sourceSnapshotStatus") ==
+      #[some "awaiting-capture", some "awaiting-capture", some "missing"] do
+    throw <| IO.userError "Mixed proof query rewrote registration statuses with fresh checks"
+  let .ok currentChecks := validation.getObjValAs? (Array Json) "externalDeclarationChecks"
+    | throw <| IO.userError "Mixed proof query omitted current external checks"
+  let verdictFor (decl : Name) := currentChecks.findSome? fun row =>
+    if (row.getObjValAs? String "name").toOption == some decl.toString then verdict "status" row else none
+  unless verdictFor ``attachedResult == some "complete" && verdictFor ``admittedAttachedResult == some "incomplete" &&
+      verdictFor `No.Such.AttachedResult == some "missing" &&
+      currentChecks.all (fun row => (row.getObjValAs? String "facet").toOption == some "proof") do
+    throw <| IO.userError "Mixed proof query lost the different captured outcomes or their facet"
+
+open Lean Elab Command in
+run_cmd liftTermElabM do
+  let .ok snapshot ← Realizations.Capture.capture
+    | throwError "Mixed proof capture failed"
+  let mixedLabel := Name.mkSimple "proof.attachments.mixed"
+  let dependent := Name.mkSimple "proof.attachments.mixedDependent"
+  let graph := Graph.buildModel snapshot #[dependent]
+  let some mixed := graph.nodes.find? (·.label == mixedLabel)
+    | throwError "Mixed proof is missing from the dependency graph"
+  unless mixed.statementStatus == .ready && mixed.proofStatus == .incomplete &&
+      mixed.actionableStage == some "statement" do
+    throwError "Graph treated the missing mixed member as complete"
+  unless graph.nodes.any (fun node => node.label == dependent &&
+      node.assessment.any (fun assessment => assessment.nativeLocallyComplete &&
+        !assessment.statementDependenciesComplete && !assessment.requiredComplete)) do
+    throwError "Graph lost the dependent statement's failed target selection"
+  let summary ← liftM (m := CoreM) (Commands.buildSummary snapshot)
+  unless summary.missingLeanDecls.countP (·.label == mixedLabel) == 1 &&
+      summary.actionablePriorities.any (fun item => item.label == mixedLabel && item.stage == "statement") do
+    throwError "Summary lost the missing declaration or counted the mixed node as closed"
 
 /--
 error: Label «proof.duplicate» has duplicate external Lean reference 'Nat.add' (canonical 'Nat.add'); previously declared as 'Nat.add'

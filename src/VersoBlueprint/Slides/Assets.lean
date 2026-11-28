@@ -41,9 +41,6 @@ def blueprintSlidesCssFile : VersoSlides.CssFile where
   filename := blueprintSlidesCssFilename
   contents := ⟨blueprintSlidesCss⟩
 
-private def pushIfMissing [BEq α] (values : Array α) (value : α) : Array α :=
-  if values.contains value then values else values.push value
-
 private def blueprintSlideRuntimeHead : Verso.Output.Html :=
   open Verso.Output.Html in
   {{<script type="module" src={{blueprintSlideRuntimeModulePath}}></script>}}
@@ -124,7 +121,7 @@ def writeSlideImages
 /-- Add the Blueprint slide CSS assets to a Verso Slides config. -/
 public def withBlueprintSlidesAssets (config : VersoSlides.Config := {}) : VersoSlides.Config :=
   { config with
-    extraCss := pushIfMissing config.extraCss blueprintSlidesCssFile
+    extraCss := pushUnique config.extraCss blueprintSlidesCssFile
     extraHead := VersoBlueprint.Html.pushIfRenderedMissing config.extraHead
       blueprintSlideRuntimeHead }
 

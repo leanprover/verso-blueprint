@@ -56,7 +56,23 @@ def bodyless : Nat := 7
 @[blueprint "attr.doc.late"]
 def lateBody : Nat := 8
 
-/-- Untagged documentation can use {uses "attr.doc.target"}[] without a directive stack. -/
+/-- Untagged documentation uses {uses "attr.doc.target" (intent := "technical")}[] and links to {bpref "attr.doc.link"}[]. -/
 def untagged : Nat := 9
+
+@[inherit_doc source]
+def inherited : Nat := 10
+
+attribute [blueprint "attr.doc.inherited"] inherited
+
+set_option doc.verso false in
+/--
+Before the Markdown separator.
+
+---
+
+After the Markdown separator.
+-/
+@[blueprint "attr.doc.markdownFallback"]
+def markdownFallback : Nat := 11
 
 end Verso.VersoBlueprintTests.BlueprintAttribute.DocstringProvider

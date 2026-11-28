@@ -67,7 +67,7 @@ def afterNestedTarget : Nat := first
 -- Direct-only inductive roots still inspect their own constructor types.
 #eval show CoreM Unit from do
   let deps ← DependencyAnalysis.inferDecl? ``HelperProvider.HiddenBox
-  unless deps.proof == #[label "auto.type.source"] do
+  unless deps.body == #[label "auto.type.source"] do
     throwError "Direct-only inference lost an inductive root's body"
 end
 

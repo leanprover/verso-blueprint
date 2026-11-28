@@ -128,41 +128,15 @@ private def elabBlueprintConfig (decl : Name) : Syntax → CoreM BlueprintAttrCo
     elabBlueprintOptions { label := defaultLabelForDecl decl } opts
   | _ => throwError "invalid syntax for '[blueprint]' attribute"
 
-private def statementFromDocstring? (decl : Name) (ref : Syntax) :
-    CoreM (Option (Data.InformalBody × Array Data.UseRef)) := do
+private def statementFromDocstring? (decl : Name) :
+    CoreM (Option (Data.InformalBody × Array Data.UseRef × Name)) := do
   let env ← getEnv
-  let internalDoc? ← liftM <| findInternalDocString? env decl
-  let (elabStx, deps) ←
-    match internalDoc? with
-    | none => pure (#[], #[])
-    | some (.inl doc) => do
-      let elabStx ← do
-        let doc := doc.trimAscii.toString
-        if doc.isEmpty then
-          pure #[]
-        else
-          match MD4Lean.parse doc with
-          | some ast =>
-            ast.blocks.mapM (fun b =>
-              Verso.Genre.Manual.Markdown.blockFromMarkdown b
-                (handleHeaders := Verso.Genre.Manual.Markdown.strongEmphHeaders))
-          | none =>
-            pure #[← `(Verso.Doc.Block.para #[Verso.Doc.Inline.text $(quote doc)])]
-      pure (elabStx, #[])
-    | some (.inr doc) =>
-      Informal.Docstring.versoDocstringToManualBlocksStx doc
-  if elabStx.isEmpty then
+  let .ok internalDoc := Informal.Docstring.directCompiled env decl | return none
+  let (blocks, deps, format) ← Informal.Docstring.statementBlocks internalDoc
+  if blocks.isEmpty then
     pure none
   else
-    pure <| some ({
-      stx := ref
-      elabStx := elabStx.map (·.raw)
-    }, deps)
-
-private structure ResolvedAutoDeps where
-  statement : Array Data.UseRef := #[]
-  proof : Array Data.UseRef := #[]
-deriving Inhabited, Repr
+    pure <| some ({ blocks }, deps, format)
 
 private def labelsForManualTarget
     (currentDecl currentLabel : Name) (target : AutoDepTarget) : CoreM (Array Data.Label) := do
@@ -182,41 +156,36 @@ private def resolveManualTargets
     (currentDecl currentLabel : Name) (targets : Array AutoDepTarget) : CoreM (Array Data.Label) := do
   targets.foldlM (init := #[]) fun acc target => do
     let labels ← labelsForManualTarget currentDecl currentLabel target
-    return labels.foldl Data.Label.pushUnique acc
+    return labels.foldl pushUnique acc
 
 private def collectAxisDeps
-    (currentDecl currentLabel : Name) (inferred : Array Data.Label) (manual : AutoDepEntries)
+    (currentDecl currentLabel role : Name) (inferred : Array SourceData.UseDeclaration) (manual : AutoDepEntries)
     (docstringDeps : Array Data.UseRef := #[]) :
-    CoreM (Array Data.UseRef) := do
+    CoreM (Array SourceData.UseDeclaration) := do
   let explicit ← resolveManualTargets currentDecl currentLabel manual.add
   let excluded ← resolveManualTargets currentDecl currentLabel manual.exclude
-  let excluded := Data.Label.pushUnique excluded currentLabel
-  let mut out := #[]
-  for label in DependencyAnalysis.sortLabels inferred do
-    if !excluded.contains label then
-      out := out.push (DependencyAnalysis.automaticUseRef label)
+  let excluded := pushUnique excluded currentLabel
+  let mut out := inferred.filter fun use => use.role == role && !excluded.contains use.reference.label
   for dependency in docstringDeps do
     if !excluded.contains dependency.label then
-      out := out.push dependency
+      out := out.push { node := currentLabel, role, reference := dependency }
   for label in explicit do
     if !excluded.contains label then
-      out := out.push (manualUseRef label)
+      out := out.push { node := currentLabel, role, reference := manualUseRef label }
   return out
 
 private def resolveAutoDeps
-    (decl : Name) (label : Data.Label) (info : ConstantInfo) (cfg : BlueprintAttrConfig)
+    (decl : Name) (label : Data.Label) (cfg : BlueprintAttrConfig)
     (docstringDeps : Array Data.UseRef) :
-    CoreM ResolvedAutoDeps := do
+    CoreM (Array SourceData.UseDeclaration) := do
   let inferred ←
     if DependencyAnalysis.enabled (← getOptions) cfg.autoDeps then
-      DependencyAnalysis.infer decl info
+      DependencyAnalysis.inferDeclUses label #[decl]
     else
-      pure {}
-  let statement ← collectAxisDeps decl label inferred.statement cfg.uses docstringDeps
-  let statementLabels := Data.UseRef.labels statement
-  let proofInferred := inferred.proof.filter fun label => !statementLabels.contains label
-  let proof ← collectAxisDeps decl label proofInferred cfg.proofUses
-  return { statement, proof }
+      pure #[]
+  let statement ← collectAxisDeps decl label `statement inferred cfg.uses docstringDeps
+  let proof ← collectAxisDeps decl label `proof inferred cfg.proofUses
+  return statement ++ proof
 
 private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref : Syntax) : CoreM Unit := do
   let decl := decl.eraseMacroScopes
@@ -226,33 +195,37 @@ private def registerBlueprintDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref
   validateDeclKind decl info
   -- Only the declaration introducing a label owns its implicit statement.
   -- Attachments never compete with or fill an existing node's informal prose.
-  let current? ← Environment.getNode? label
-  let docstring? ← if current?.isNone then statementFromDocstring? decl ref else pure none
-  let deps ← resolveAutoDeps decl label info cfg (docstring?.map Prod.snd |>.getD #[])
+  let current? ← Environment.getNodeInventory? label
+  let docstring? ← if current?.isNone then statementFromDocstring? decl else pure none
+  let deps ← resolveAutoDeps decl label cfg (docstring?.map (fun (_, deps, _) => deps) |>.getD #[])
   let opts ← getOptions
   let extRef ←
-    externalRefSnapshotAtCurrentDir opts (Data.ExternalRef.ofName decl .blueprintAttr)
+    registerExternalRefAtCurrentDir opts (Data.ExternalRef.ofName decl .blueprintAttr)
 
   let some position := ref.getPos?
     | throwError "'[blueprint]' attributes require a stable source position"
   let source ← Data.SourceLocation.ofSyntax? ref
+  let project ← Environment.sourceProject
+  let moduleName ← getMainModule
   let fact : Contributions.Record := {
     id := {
-      moduleName := ← getMainModule
+      moduleName
       producer := `blueprint.attribute
       subject := decl
       site := position.byteIdx
       slot := 0 }
     label
-    references := #[extRef]
+    nativeAssociations := #[{
+      realization := ⟨label, `lean⟩, context := ⟨`lean, project⟩
+      placement := `statement, reference := extRef }]
     priority := none
     source }
-  let accepted ← Environment.contributeRecord fact {
-    statementBody := docstring?.map Prod.fst
-    statementUses := deps.statement
-    proofUses := deps.proof }
-  if accepted.isSome then
-    Environment.registerBlueprintAttributeLabel label
+  let sources ← docstring?.toArray.mapM fun (body, _, format) => do
+    Environment.sourceAt label format (some `statement) format
+      (.prose body (.attribute { moduleName, canonical := decl })) ref
+  discard <| Environment.contributeAttribute fact {
+    sources
+    uses := deps }
 
 open Lean in
 initialize

@@ -15,6 +15,37 @@ open Lean Meta
 
 namespace Informal
 
+namespace Data
+
+/-- Recover a declaration's original `ConstantKind` across exported module
+imports, where body-hidden theorems, definitions, and opaques appear as
+`.axiomInfo`. Non-axiom constants keep `ConstantKind.ofConstantInfo info`;
+exported `.axiomInfo` consults `Lean.getOriginalConstKind? env info.name`. -/
+def ConstantInfo.originalKind (env : Environment) (info : ConstantInfo) : Option ConstantKind :=
+  if info.isAxiom then
+    Lean.getOriginalConstKind? env info.name
+  else
+    some (ConstantKind.ofConstantInfo info)
+
+/-- Shared presentation descriptor for an exported `.axiomInfo` view recovered
+from its original `ConstantKind`. Covers `.thm`, `.defn`, `.opaque`, and genuine
+`.axiom`; returns `none` for missing or non-axiom-exported kinds so callers fall
+back conservatively. -/
+structure ExportedAxiomPresentation where
+  kindClass : String
+  kindMarker : String
+  keywordText : String
+deriving Repr, DecidableEq, Inhabited
+
+def ConstantKind.exportedAxiomPresentation? : ConstantKind → Option ExportedAxiomPresentation
+  | .thm => some { kindClass := "theorem", kindMarker := "theorem", keywordText := "theorem" }
+  | .defn => some { kindClass := "def", kindMarker := "def", keywordText := "def" }
+  | .opaque => some { kindClass := "opaque", kindMarker := "opaque", keywordText := "opaque" }
+  | .axiom => some { kindClass := "axiom", kindMarker := "axiom", keywordText := "axiom" }
+  | _ => none
+
+end Data
+
 abbrev ExternalDeclHtml := Verso.Output.Html
 
 inductive ExternalDeclRenderError where
@@ -349,6 +380,22 @@ structure ExternalDeclHeaderBadge where
   className : String
   text : String
 
+private def externalDeclHeaderBadgeSlot := "<!--bp-external-declaration-status-->"
+
+/-- Fill the declaration header owned by the snippet wrapper. The wrapper's
+slot precedes the signature and any rendered documentation. -/
+def ExternalDeclRenderedHtml.withHeaderBadge (rendered : ExternalDeclRenderedHtml)
+    (badge : ExternalDeclHeaderBadge) : ExternalDeclRenderedHtml :=
+  open Verso.Output.Html in
+  let html := rendered.html
+  match html.startPos.find? externalDeclHeaderBadgeSlot with
+  | none => rendered
+  | some slot =>
+    let status : ExternalDeclHtml :=
+      {{<span class={{s!"bp_external_status_badge bp_external_decl_header_status {badge.className}"}}>{{.text true badge.text}}</span>}}
+    { rendered with html := html.extract html.startPos slot ++ status.asString ++
+        html.extract (slot.nextn externalDeclHeaderBadgeSlot.length) html.endPos }
+
 structure ExternalDeclHeaderSource where
   text : String
   href? : Option String := none
@@ -366,6 +413,7 @@ private def keywordTextOfDefinitionSafety (safety : DefinitionSafety) (base : St
   | .safe => base
 
 private def externalDeclPresentation
+    (env : Environment)
     (declType : Verso.Genre.Manual.Block.Docstring.DeclType) (cinfo : ConstantInfo) :
     ExternalDeclPresentation :=
   let kindMarker := kindMarkerOfDeclType declType
@@ -383,6 +431,14 @@ private def externalDeclPresentation
         kindMarker
         keywordText := keywordTextOfDefinitionSafety defn.safety "def"
       }
+  | .axiomInfo _ =>
+    -- Exported module imports expose body-hidden theorems, definitions, and
+    -- opaques as `.axiomInfo`; recover their original declaration presentation
+    -- while keeping genuine axioms and unrecovered views conservative.
+    match (Data.ConstantInfo.originalKind env cinfo).bind Data.ConstantKind.exportedAxiomPresentation? with
+    | some pres =>
+      { kindClass := pres.kindClass, kindMarker := pres.kindMarker, keywordText := pres.keywordText }
+    | none => { kindClass := kindMarker, kindMarker, keywordText := kindMarker }
   | _ =>
       {
         kindClass := kindMarker
@@ -393,7 +449,7 @@ private def externalDeclPresentation
 private def renderExternalDeclWrapper
     (decl : Name) (kindClass : String) (kindMarker : String)
     (signature : ExternalDeclHtml) (body : ExternalDeclHtml)
-    (headerBadge? : Option ExternalDeclHeaderBadge := none)
+    (hasHeaderBadge : Bool := false)
     (headerMeta : Array String := #[])
     (headerSource? : Option ExternalDeclHeaderSource := none) : ExternalDeclHtml :=
   open Verso.Output.Html in
@@ -426,9 +482,7 @@ private def renderExternalDeclWrapper
           {{headerSourceHtml}}
         </div>
         <div class="bp_external_decl_kicker_status">
-          {{if let some badge := headerBadge? then
-            {{<span class={{s!"bp_external_status_badge bp_external_decl_header_status {badge.className}"}}>{{.text true badge.text}}</span>}}
-          else .empty}}
+          {{if hasHeaderBadge then .text false externalDeclHeaderBadgeSlot else .empty}}
         </div>
       </div>
       {{signature}}
@@ -558,7 +612,7 @@ private def renderExternalDeclHeaderMeta
 
 private def renderDeclHtmlDocstringFromInfoE
     (decl : Name) (cinfo : ConstantInfo)
-    (headerBadge? : Option ExternalDeclHeaderBadge := none)
+    (hasHeaderBadge : Bool := false)
     (headerSource? : Option ExternalDeclHeaderSource := none) : MetaM ExternalDeclRenderResult :=
   open Verso.Output.Html in do
   let env ← getEnv
@@ -617,7 +671,7 @@ private def renderDeclHtmlDocstringFromInfoE
     if let some s := inductiveCtorsSection? then
       sections := sections.push s
 
-    let presentation := externalDeclPresentation declType cinfo
+    let presentation := externalDeclPresentation env declType cinfo
     let signatureHtml ← signatureToHtml presentation.keywordText signature
     let headerMeta := safetyHeaderMeta cinfo ++ renderExternalDeclHeaderMeta declType
 
@@ -628,7 +682,7 @@ private def renderDeclHtmlDocstringFromInfoE
         {{ {{docstring}} {{sections}} }}
     pure <| renderExternalDeclWrapper
       decl presentation.kindClass presentation.kindMarker signatureHtml body
-      (headerBadge? := headerBadge?) (headerMeta := headerMeta) (headerSource? := headerSource?)
+      (hasHeaderBadge := hasHeaderBadge) (headerMeta := headerMeta) (headerSource? := headerSource?)
   pure <| .ok rendered
 
 /--
@@ -637,11 +691,11 @@ Errors represent rendering failures only; declaration lookup is handled by calle
 -/
 def renderDeclHtmlDirectFromInfoE
     (decl : Name) (cinfo : ConstantInfo)
-    (headerBadge? : Option ExternalDeclHeaderBadge := none)
+    (hasHeaderBadge : Bool := false)
     (headerSource? : Option ExternalDeclHeaderSource := none) : MetaM ExternalDeclRenderResult := do
   try
     renderDeclHtmlDocstringFromInfoE decl cinfo
-      (headerBadge? := headerBadge?) (headerSource? := headerSource?)
+      (hasHeaderBadge := hasHeaderBadge) (headerSource? := headerSource?)
   catch ex =>
     return .error (.exception decl (← ex.toMessageData.toString))
 

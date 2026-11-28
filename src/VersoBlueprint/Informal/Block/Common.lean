@@ -61,27 +61,13 @@ def BlockStatusMark.text (s : BlockStatusMark) : String :=
   | some txt => txt
   | none => s.status.presentation.statusMarkSymbol
 
-def BlockStatusMark.toHtml (s : BlockStatusMark) : Output.Html :=
-  open Verso.Output.Html in
-  {{ <span class="bp_status_mark" title={{s.title}}>{{.text true s.text}}</span> }}
-
 def codeHoverListItem (body : Output.Html) : Output.Html :=
   open Verso.Output.Html in
   {{<li>{{body}}</li>}}
 
-def codeHoverTextItem (text : String) : Output.Html :=
-  open Verso.Output.Html in
-  let body : Output.Html := .text true text
-  codeHoverListItem body
-
 def codeHoverEmptyItem (text : String) : Output.Html :=
   open Verso.Output.Html in
   {{<li class="bp_code_hover_none">{{.text true text}}</li>}}
-
-def codeHoverCodeItem (text : String) : Output.Html :=
-  open Verso.Output.Html in
-  let body : Output.Html := {{<code>{{.text true text}}</code>}}
-  codeHoverListItem body
 
 def codeHoverSection (title : String) (items : Array Output.Html) : Output.Html :=
   open Verso.Output.Html in
@@ -134,8 +120,23 @@ register_option verso.blueprint.foldCodeBlocks : Bool := {
   descr := "Render VersoBlueprint Lean, Rust, and external code panels as collapsed details blocks"
 }
 
-def externalDeclHasGap (decl : Data.ExternalRef) : Bool :=
-  decl.present && decl.provedStatus.isIncomplete
+/-- A registration can know the declaration is present before its Lean proof
+status is available. Keep waiting distinct from an inspected coverage gap. -/
+def declarationStatusPresentation (status : Option Data.ProvedStatus) (present : Bool) :
+    Data.ProvedStatusPresentation :=
+  if !present then
+    Data.ProvedStatus.presentation .missing
+  else if let some status := status then
+    status.presentation
+  else {
+    summaryText := "awaiting capture"
+    externalPanelText := "awaiting capture"
+    externalHeaderText := "awaiting capture"
+    codeDeclClass := "bp_code_decl_status_awaiting"
+    externalDeclClass := "bp_external_decl_awaiting"
+    codeEntryClassSuffix := "awaiting"
+    codeEntrySymbol := "…"
+    statusMarkSymbol := "…" }
 
 def externalCodeEntryTitle (found total missing withGaps : Nat) : String :=
   if missing > 0 then

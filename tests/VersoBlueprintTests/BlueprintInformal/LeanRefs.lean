@@ -36,7 +36,7 @@ private def attachedInductiveCtorAndRecursor? : CoreM (Option (Name × Name)) :=
 private def externalRefRejectedWithKind (decl : Name) (expectedKind : String) : CoreM Bool := do
   let opts ← getOptions
   try
-    let _ ← Informal.externalRefSnapshotAtCurrentDir opts (Informal.Data.ExternalRef.ofName decl)
+    let _ ← Informal.registerExternalRefAtCurrentDir opts (Informal.Data.ExternalRef.ofName decl)
     pure false
   catch ex =>
     let msg ← liftM <| ex.toMessageData.toString
@@ -110,19 +110,19 @@ private def hasLabel (labels : Array Informal.Data.Label) (label : String) : Boo
       Environment.labelsForLeanDecl
         `Verso.VersoBlueprintTests.BlueprintInformal.LeanRefs.conflictInlineThenExternalValue
     let state ← currentState
-    let some extInlineNode := state.data.get? (Name.mkSimple "conflict.ext.inline")
+    let some extInlineNode := state.inventory.get? (Name.mkSimple "conflict.ext.inline")
       | pure false
-    let some inlineExtNode := state.data.get? (Name.mkSimple "conflict.inline.ext")
+    let some inlineExtNode := state.inventory.get? (Name.mkSimple "conflict.inline.ext")
       | pure false
     pure <|
       hasLabel natAddLabels "conflict.ext.inline" &&
       hasLabel natAddLabels "conflict.inline.ext" &&
       hasLabel extInlineLabels "conflict.ext.inline" &&
       hasLabel inlineExtLabels "conflict.inline.ext" &&
-      extInlineNode.externalRefs.any (fun ref => ref.canonical == `Nat.add) &&
-      inlineExtNode.externalRefs.any (fun ref => ref.canonical == `Nat.add) &&
-      extInlineNode.literateCodes.size == 1 &&
-      inlineExtNode.literateCodes.size == 1
+      (extInlineNode.nativeRefsOn `statement).any (fun ref => ref.canonical == `Nat.add) &&
+      (inlineExtNode.nativeRefsOn `statement).any (fun ref => ref.canonical == `Nat.add) &&
+      extInlineNode.inlineCodes.size == 1 &&
+      inlineExtNode.inlineCodes.size == 1
 
 /-- info: true -/
 #guard_msgs in
@@ -154,11 +154,11 @@ Simple body.
 #eval
   show CoreM Bool from do
     let state ← currentState
-    let some node := state.data.get? (Name.mkSimple "inductive.external")
+    let some node := state.inventory.get? (Name.mkSimple "inductive.external")
       | pure false
     pure <|
       node.kind == .definition &&
-      match node.externalRefs with
+      match node.nativeRefsOn `statement with
       | #[ref] =>
         ref.present &&
         ref.kind == .definition &&
@@ -197,7 +197,7 @@ Simple body.
 #eval
   show CoreM Bool from do
     let state ← currentState
-    let some node := state.data.get? (Name.mkSimple "trim.external.name")
+    let some node := state.inventory.get? (Name.mkSimple "trim.external.name")
       | pure false
     pure !node.hasAssociatedCode
 

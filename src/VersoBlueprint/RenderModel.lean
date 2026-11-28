@@ -6,12 +6,19 @@ Author: Emilio J. Gallego Arias
 
 import VersoBlueprint.Commands.Graph
 import VersoBlueprint.Commands.Summary
+import VersoBlueprint.Realizations.Capture
+import VersoBlueprint.TraversalIndex
 
 open Lean Verso Doc
 open Verso.Genre (Manual)
 open Verso.Genre.Manual
 
 namespace Informal
+
+/-- Compute the display assessment once for each label in this capture. -/
+def Realizations.Capture.Snapshot.assessmentMap (snapshot : Realizations.Capture.Snapshot) :
+    Lean.NameMap Realizations.NodeAssessment :=
+  snapshot.registry.nodes.foldl (fun map node => map.insert node.label (snapshot.assessmentFor node.label)) {}
 
 /--
 Runtime rendering data captured after project imports. Its nodes become the traversal's
@@ -32,9 +39,19 @@ def RenderModel.fromJsonString! (serialized : String) : RenderModel := Id.run do
 elab "blueprint_render_model%" : term => do
   Environment.reportImportedConflicts
   let state := Environment.informalExt.getState (← getEnv)
-  let nodes := TraversalIndex.Nodes.capture state
-  let graph := Graph.buildModel state (state.data.toArray.map (·.1)) (groupTitles := state.groups.toArray)
-  let summary ← Commands.buildSummary
+  let snapshot ← Realizations.Capture.capture
+  let snapshot ← match snapshot with
+    | .ok snapshot => pure snapshot
+    | .error issues => throwError m!"Cannot capture Blueprint realization state: {repr issues}"
+  let assessments := snapshot.assessmentMap
+  let assessmentFor (label : Name) :=
+    match assessments.get? label with
+    | some assessment => assessment
+    | none => snapshot.assessmentFor label
+  let nodes := TraversalIndex.Nodes.capture state (some snapshot) (fun label => some (assessmentFor label))
+  let graph := Graph.buildModel snapshot (snapshot.registry.nodes.map (·.label))
+    (groupTitles := state.groups.toArray) (assessmentFor := assessmentFor)
+  let summary ← Commands.buildSummary snapshot (assessmentFor := assessmentFor)
   let serialized := (toJson (nodes, graph, summary)).compress
   Lean.Elab.Term.elabTerm (← `(RenderModel.fromJsonString! $(quote serialized))) none
 

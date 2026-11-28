@@ -5,7 +5,6 @@ Author: Emilio J. Gallego Arias
 -/
 
 import Lean
-import VersoBlueprint.CodeHealth
 import VersoBlueprint.PreviewManifest
 
 namespace VersoBlueprint.Vbp
@@ -21,6 +20,9 @@ abbrev GroupRelation := Informal.PreviewManifest.GroupRelation
 abbrev PreviewArtifactIndex := Informal.PreviewManifest.PreviewArtifactIndex
 abbrev PersistedGeneratedData := Informal.PreviewManifest.PersistedFiles
 abbrev WorkQueueItem := Informal.PreviewManifest.WorkQueueItem
+abbrev NodeRow := Informal.PreviewManifest.NodeRow
+abbrev NodeOccurrenceMetadata := Informal.PreviewManifest.NodeOccurrenceMetadata
+abbrev ManifestIndex := Informal.PreviewManifest.Index
 
 def defaultSite : FilePath := "_out" / "site"
 
@@ -88,37 +90,43 @@ private def groupRelationJson (group : GroupRelation) : Json :=
     ("entries", Json.arr (group.entries.map relatedEntryJson))
   ]
 
-private def entrySummaryFields (entry : Entry) : List (String × Json) := [
-    ("key", Json.str entry.key),
-    ("label", nameJson entry.label),
-    ("authoredLabel", Json.str entry.authoredLabel),
-    ("title", Json.str entry.title),
-    ("kind", toJson entry.kind),
-    ("facet", toJson entry.facet),
-    ("href", optionStringJson entry.href),
-    ("parent", optionNameJson entry.parent),
-    ("parentTitle", optionStringJson entry.parentTitle),
-    ("ownerDisplayName", optionStringJson entry.ownerDisplayName),
-    ("tags", stringArrayJson entry.tags),
-    ("priority", optionStringJson entry.priority),
-    ("effort", optionStringJson entry.effort),
-    ("leanCodePreviewKeys", stringArrayJson entry.leanCodePreviewKeys)
+private def nodeSummaryFields (node : NodeOccurrenceMetadata) (entry : Option Entry) :
+    List (String × Json) := [
+    ("key", optionStringJson (entry.map (·.key))),
+    ("label", nameJson node.label),
+    ("authoredLabel", Json.str node.authoredLabel),
+    ("title", Json.str node.title),
+    ("kind", toJson node.kind),
+    ("facet", toJson (entry.map (·.facet))),
+    ("href", optionStringJson node.href),
+    ("parent", optionNameJson node.parent),
+    ("parentTitle", optionStringJson node.parentTitle),
+    ("ownerDisplayName", optionStringJson node.ownerDisplayName),
+    ("tags", stringArrayJson node.tags),
+    ("priority", optionStringJson node.priority),
+    ("effort", optionStringJson node.effort),
+    ("leanCodePreviewKeys", stringArrayJson ((entry.map (·.leanCodePreviewKeys)).getD #[]))
   ]
 
-private def entrySummaryJson (entry : Entry) : Json :=
-  Json.mkObj (entrySummaryFields entry)
+private def nodeSummaries (manifest : ManifestFile)
+    (includeNode : NodeOccurrenceMetadata → Option Entry → Bool := fun _ _ => true) : Array Json :=
+  let index := manifest.index
+  manifest.nodes.filterMap fun row => do
+    let node ← index.nodeMetadata? row
+    let entry := index.primaryEntry? row
+    guard (includeNode node entry)
+    return Json.mkObj (nodeSummaryFields node entry)
 
-private def workQueueItemJson (item : WorkQueueItem) : Json :=
-  Json.mkObj <| entrySummaryFields item.entry ++ [
+private def workQueueItemJson (index : ManifestIndex) (item : WorkQueueItem) : Option Json := do
+  let node ← index.nodeMetadata? item.node
+  return Json.mkObj <| nodeSummaryFields node (index.primaryEntry? item.node) ++ [
     ("nextStep", Json.str item.nextStep),
-    ("statementStatus", Json.str item.graphNode.statementStatus.toText),
-    ("proofStatus", Json.str item.graphNode.proofStatus.toText)
+    ("statementStatus", Json.str item.statementStatus.toText),
+    ("proofStatus", Json.str item.proofStatus.toText)
   ]
 
-private def entryGroupJson (manifest : ManifestFile) (entry : Entry) : Json :=
-  match manifest.groupForEntry? entry with
-  | none => Json.null
-  | some group => groupRelationJson group
+private def nodeGroupJson (manifest : ManifestFile) (node : NodeOccurrenceMetadata) : Json :=
+  ((manifest.index.groupForNode? node).map groupRelationJson).getD Json.null
 
 private def entryDetailFields
     (entry : Entry)
@@ -155,34 +163,59 @@ private def entryResponseJson (manifest : ManifestFile) (entry : Entry) : Json :
     ("proof", proof?.map (fun proof => Json.mkObj (entryDetailFields proof)) |>.getD Json.null)
   ]
 
-/-- Declaration truth over every semantic association, retaining facet provenance.
-This reads the persisted generation snapshot; it does not recheck Lean sources. -/
-private def entryStatusJson (manifest : ManifestFile) (entry : Entry) : Json := Id.run do
-  let facets := manifest.findBlockEntriesByLabel entry.authoredLabel
-  let health := Informal.Graph.codeHealthOfBlockSources (entry.kind.getD .theorem) {}
-    (facets.filterMap (·.codeData))
+private def bodylessResponseJson (manifest : ManifestFile) (node : NodeOccurrenceMetadata) : Json :=
+  responseJson <| nodeSummaryFields node none ++ [
+    ("targetKind", Json.null),
+    ("displayCaption", Json.null),
+    ("displayLabel", Json.null),
+    ("statementUses", Json.arr (node.statementUses.map useRefJson)),
+    ("proofUses", Json.arr (node.proofUses.map useRefJson)),
+    ("codeData", Json.null),
+    ("uses", Json.arr (node.uses.map relatedEntryJson)),
+    ("usedBy", Json.arr (node.usedBy.map relatedEntryJson)),
+    ("group", nodeGroupJson manifest node),
+    ("proof", Json.null)
+  ]
+
+/-- Read captured checks and node assessment alongside the per-facet declaration
+inventory observed at registration. -/
+private def nodeStatusJson (manifest : ManifestFile) (row : NodeRow) : Json := Id.run do
+  let facets := manifest.findQueryableEntriesByLabel (Informal.PreviewManifest.labelString row.label)
+  let assessment? := row.assessment
   let mut declarations : Array Json := #[]
+  let mut nativeDeclarations : Array Json := #[]
   for facet in facets do
     let code := facet.codeData.getD {}
     for decl in code.externalDecls do
-      let status := if decl.present then decl.provedStatus else .missing
+      let status := decl.observedStatus.map Informal.Data.ProvedStatus.reportJson |>.getD
+        (Json.mkObj [("verdict", Json.str "awaiting-capture")])
       declarations := declarations.push <| Json.mkObj [
         ("name", nameJson decl.canonical), ("facet", toJson facet.facet),
         ("association", Json.str "external"), ("kind", toJson decl.kind),
-        ("status", status.reportJson)]
+        ("sourceSnapshotStatus", status)]
+    for (name, status) in code.externalChecks do
+      nativeDeclarations := nativeDeclarations.push <| Json.mkObj [
+        ("name", nameJson name), ("facet", toJson facet.facet),
+        ("status", status.map Informal.Data.ProvedStatus.reportJson |>.getD
+          (Json.mkObj [("verdict", Json.str "unavailable")]))]
     for decl in code.literateDeclarations.declarations do
       declarations := declarations.push <| Json.mkObj [
         ("name", nameJson decl.name), ("facet", toJson facet.facet),
         ("association", Json.str "inline"),
-        ("status", decl.provedStatus.reportJson)]
+        ("sourceSnapshotStatus", decl.provedStatus.reportJson)]
+  let validation := match assessment? with
+    | none => Json.mkObj [("captured", toJson false)]
+    | some assessment =>
+      let assessmentFields := match toJson assessment with
+        | .obj fields => fields.toList
+        | _ => []
+      Json.mkObj ([("captured", toJson true)] ++ assessmentFields ++
+        [("externalDeclarationChecks", Json.arr nativeDeclarations)])
   return responseJson [
-    ("label", nameJson entry.label),
-    ("asOf", Json.str "generated-snapshot"),
-    ("verdict", Json.str health.verdict),
-    ("complete", toJson health.localProofFormalized),
-    ("statementComplete", toJson health.localStatementFormalized),
-    ("proofComplete", toJson health.localProofFormalized),
-    ("declarations", Json.arr declarations)]
+    ("label", nameJson row.label),
+    ("asOf", Json.str (if assessment?.isSome then "captured-build" else "uncaptured")),
+    ("validation", validation),
+    ("sourceDeclarationSnapshots", Json.arr declarations)]
 
 private def incrementCount (counts : Array (String × Nat)) (key : String) : Array (String × Nat) :=
   let rec go (seen : Bool) (acc : Array (String × Nat)) : List (String × Nat) → Array (String × Nat)
@@ -200,7 +233,8 @@ private def countsJson (counts : Array (String × Nat)) : Json :=
   Json.mkObj (counts.toList.map fun (key, count) => (key, Json.num count))
 
 private def statsJson (manifest : ManifestFile) : Json :=
-  let entries := manifest.queryableStatementEntries
+  let index := manifest.index
+  let entries := manifest.nodes.filterMap index.nodeMetadata?
   let byKind := entries.foldl (fun counts entry => incrementCount counts (kindString entry.kind)) #[]
   let byOwner := entries.foldl
     (fun counts entry => entry.ownerDisplayName.map (incrementCount counts ·) |>.getD counts)
@@ -221,33 +255,30 @@ private def missingLabelJson (label : String) : Json :=
     ("label", Json.str label)
   ]
 
-private def withPrimaryEntry
-    (manifest : ManifestFile) (label : String) (mkJson : Entry → Json) : Json :=
-  match manifest.findPrimaryQueryableEntry? label with
-  | some entry => mkJson entry
-  | none => missingLabelJson label
+private def withNode (manifest : ManifestFile) (label : String)
+    (mkJson : NodeRow → NodeOccurrenceMetadata → Option Entry → Json) : Json :=
+  let index := manifest.index
+  (do
+    let row ← manifest.findNodeRow? label
+    let node ← index.nodeMetadata? row
+    return mkJson row node (index.primaryEntry? row)).getD (missingLabelJson label)
 
-/-- A validated query and the manifest projection needed to execute it. -/
+/-- A validated query of the semantic manifest. -/
 structure QueryPlan where
-  /-- Whether execution requires reconstructing strict graph projections. -/
-  needsGraphData : Bool
-  /-- Execute the validated query against the selected manifest projection. -/
   run : ManifestFile → Json
 
 private structure QuerySelector where
   name : String
   argumentName : String
-  needsGraphData : Bool
   run : Sum (ManifestFile → Json) (String → ManifestFile → Json)
 
 private def QuerySelector.noArg
-    (name : String) (needsGraphData : Bool) (run : ManifestFile → Json) : QuerySelector :=
-  { name, argumentName := "", needsGraphData, run := .inl run }
+    (name : String) (run : ManifestFile → Json) : QuerySelector :=
+  { name, argumentName := "", run := .inl run }
 
 private def QuerySelector.oneArg
-    (name argumentName : String) (needsGraphData : Bool)
-    (run : String → ManifestFile → Json) : QuerySelector :=
-  { name, argumentName, needsGraphData, run := .inr run }
+    (name argumentName : String) (run : String → ManifestFile → Json) : QuerySelector :=
+  { name, argumentName, run := .inr run }
 
 private def QuerySelector.line (selector : QuerySelector) : String :=
   match selector.run with
@@ -258,74 +289,73 @@ private def QuerySelector.plan? (selector : QuerySelector) (args : List String) 
   match selector.run, args with
   | .inl run, [name] =>
       if name == selector.name then
-        some { needsGraphData := selector.needsGraphData, run }
+        some { run }
       else
         none
   | .inr run, [name, argument] =>
       if name == selector.name then
-        some {
-          needsGraphData := selector.needsGraphData
-          run := run argument
-        }
+        some { run := run argument }
       else
         none
   | _, _ => none
 
 private def querySelectors : List QuerySelector := [
-  QuerySelector.noArg "labels" false fun manifest =>
+  QuerySelector.noArg "labels" fun manifest =>
     responseJson [
-      ("labels", Json.arr (manifest.queryableStatementEntries.map entrySummaryJson))
+      ("labels", Json.arr (nodeSummaries manifest))
     ],
-  QuerySelector.oneArg "node" "label" false fun label manifest =>
-    withPrimaryEntry manifest label (entryResponseJson manifest),
-  QuerySelector.oneArg "status" "label" false fun label manifest =>
-    withPrimaryEntry manifest label (entryStatusJson manifest),
-  QuerySelector.oneArg "uses" "label" false fun label manifest =>
-    withPrimaryEntry manifest label fun entry =>
+  QuerySelector.oneArg "node" "label" fun label manifest =>
+    withNode manifest label fun _ node entry =>
+      match entry with
+      | some resource => entryResponseJson manifest resource
+      | none => bodylessResponseJson manifest node,
+  QuerySelector.oneArg "status" "label" fun label manifest =>
+    withNode manifest label fun row _ _ => nodeStatusJson manifest row,
+  QuerySelector.oneArg "uses" "label" fun label manifest =>
+    withNode manifest label fun _ node _ =>
       responseJson [
         ("label", Json.str label),
-        ("statementUses", Json.arr (entry.statementUses.map useRefJson)),
-        ("proofUses", Json.arr (entry.proofUses.map useRefJson)),
-        ("uses", Json.arr (entry.uses.map relatedEntryJson))
+        ("statementUses", Json.arr (node.statementUses.map useRefJson)),
+        ("proofUses", Json.arr (node.proofUses.map useRefJson)),
+        ("uses", Json.arr (node.uses.map relatedEntryJson))
       ],
-  QuerySelector.oneArg "used-by" "label" false fun label manifest =>
-    withPrimaryEntry manifest label fun entry =>
+  QuerySelector.oneArg "used-by" "label" fun label manifest =>
+    withNode manifest label fun _ node _ =>
       responseJson [
         ("label", Json.str label),
-        ("usedBy", Json.arr (entry.usedBy.map relatedEntryJson))
+        ("usedBy", Json.arr (node.usedBy.map relatedEntryJson))
       ],
-  QuerySelector.oneArg "group" "label" false fun label manifest =>
-    withPrimaryEntry manifest label fun entry =>
+  QuerySelector.oneArg "group" "label" fun label manifest =>
+    withNode manifest label fun _ node _ =>
       responseJson [
         ("label", Json.str label),
-        ("group", entryGroupJson manifest entry)
+        ("group", nodeGroupJson manifest node)
       ],
-  QuerySelector.noArg "owners" false fun manifest =>
+  QuerySelector.noArg "owners" fun manifest =>
     responseJson [("owners", stringArrayJson manifest.ownerValues)],
-  QuerySelector.noArg "tags" false fun manifest =>
+  QuerySelector.noArg "tags" fun manifest =>
     responseJson [("tags", stringArrayJson manifest.tagValues)],
-  QuerySelector.noArg "work-queue" true fun manifest =>
+  QuerySelector.noArg "work-queue" fun manifest =>
     responseJson [
-      ("entries", Json.arr (manifest.workQueueItems.map workQueueItemJson))
+      ("entries", Json.arr (manifest.workQueueItems.filterMap (workQueueItemJson manifest.index)))
     ],
-  QuerySelector.noArg "metadata" false fun manifest =>
+  QuerySelector.noArg "metadata" fun manifest =>
     responseJson [
-      ("entries", Json.arr (manifest.metadataEntries.map entrySummaryJson))
+      ("entries", Json.arr (nodeSummaries manifest fun node _ => node.hasTriageMetadata))
     ],
-  QuerySelector.oneArg "search" "text" false fun text manifest =>
+  QuerySelector.oneArg "search" "text" fun text manifest =>
     responseJson [
       ("query", Json.str text),
-      ("labels", Json.arr (manifest.queryableStatementEntries |>.filter
-        (fun entry => entry.matchesText text) |>.map entrySummaryJson))
+      ("labels", Json.arr (nodeSummaries manifest fun node _ => node.matchesText text))
     ],
-  QuerySelector.oneArg "code" "decl" false fun decl manifest =>
+  QuerySelector.oneArg "code" "decl" fun decl manifest =>
     responseJson [
       ("query", Json.str decl),
-      ("labels", Json.arr (manifest.queryableStatementEntries |>.filter
-        (fun entry => entry.matchesCode decl || (manifest.findBlockEntriesByLabel entry.authoredLabel).any
-          (·.matchesCode decl)) |>.map entrySummaryJson))
+      ("labels", Json.arr (nodeSummaries manifest fun node entry =>
+        entry.any (·.matchesCode decl) || (manifest.findBlockEntriesByLabel node.authoredLabel).any
+          (·.matchesCode decl)))
     ],
-  QuerySelector.noArg "stats" false statsJson
+  QuerySelector.noArg "stats" statsJson
 ]
 
 def querySelectorLines : List String :=
@@ -373,12 +403,9 @@ private def readManifestWith
 def readManifestForSite (site : FilePath) : IO ManifestFile :=
   readManifestWith Informal.PreviewManifest.readFile site
 
-/-- Read exactly the manifest projection required by a validated query. -/
-def readManifestForQuery (site : FilePath) (plan : QueryPlan) : IO ManifestFile := do
-  if plan.needsGraphData then
-    readManifestForSite site
-  else
-    readManifestWith Informal.PreviewManifest.readFileWithoutGraphs site
+/-- Read query metadata without reconstructing graph projections. -/
+def readManifestForQuery (site : FilePath) : IO ManifestFile :=
+  readManifestWith Informal.PreviewManifest.readFileWithoutGraphs site
 
 def readHtmlCacheForSite (site : FilePath) : IO HtmlCacheFile := do
   let htmlCachePath ← htmlCachePathForSite site
@@ -411,7 +438,10 @@ private def checkPreviewReference
     (index : PreviewArtifactIndex) (context key : String) (errors : Array String) :
     Array String :=
   let errors := pushMissingManifestKey index errors context key
-  pushMissingCacheKey index errors context key
+  let errors := pushMissingCacheKey index errors context key
+  if index.hasManifestKey key && index.hasCacheKey key && !index.resolves key then
+    errors.push s!"preview for {context} has no usable Lean fragments: {key}"
+  else errors
 
 private def checkRelatedEntries
     (index : PreviewArtifactIndex) (context : String) (entries : Array RelatedEntry)
@@ -479,63 +509,100 @@ private def checkManifestGroupIntegrity
                 Informal.PreviewManifest.labelString group.label
       | none =>
           memberGroups := memberGroups.insert member.label group.label
-  let mut matchedMembers : NameSet := {}
-  for entry in manifest.previews do
-    if entry.targetKind != .block && entry.targetKind != .externalMarkup then
-      continue
-    if entry.label == .anonymous then
-      errors := errors.push s!"entry {entry.key} is missing label"
-      continue
-    match entry.parent with
+  let checkJoin (state : Array String × NameSet) (context : String)
+      (label : Name) (parent : Option Name) (parentTitle : Option String) := Id.run do
+    let mut errors := state.1
+    let matchedMembers := state.2
+    if label == .anonymous then
+      return (errors.push s!"{context} is missing label", matchedMembers)
+    match parent with
     | none =>
-        if entry.parentTitle.isSome then
-          errors := errors.push s!"entry {entry.key} has parentTitle without parent"
-        if let some group := memberGroups.get? entry.label then
+        if parentTitle.isSome then
+          errors := errors.push s!"{context} has parentTitle without parent"
+        if let some group := memberGroups.get? label then
           errors := errors.push <|
-            s!"entry {entry.key} has no parent but is listed in manifest group: " ++
+            s!"{context} has no parent but is listed in manifest group: " ++
               Informal.PreviewManifest.labelString group
     | some parent =>
         if parent == .anonymous then
-          errors := errors.push s!"entry {entry.key} has invalid parent"
-          continue
+          return (errors.push s!"{context} has invalid parent", matchedMembers)
         match groupsByLabel.get? parent with
         | none =>
           errors := errors.push <|
-            s!"entry {entry.key} references missing manifest group: " ++
+            s!"{context} references missing manifest group: " ++
               Informal.PreviewManifest.labelString parent
         | some group =>
-            if entry.parentTitle != some group.title then
+            if parentTitle != some group.title then
               errors := errors.push <|
-                s!"entry {entry.key} has inconsistent parentTitle for manifest group: " ++
+                s!"{context} has inconsistent parentTitle for manifest group: " ++
                   Informal.PreviewManifest.labelString parent
-        match memberGroups.get? entry.label with
+        match memberGroups.get? label with
         | none =>
             errors := errors.push <|
-              s!"entry {entry.key} is missing from manifest group: " ++
+              s!"{context} is missing from manifest group: " ++
                 Informal.PreviewManifest.labelString parent
         | some memberGroup =>
             if memberGroup == parent then
-              matchedMembers := matchedMembers.insert entry.label
+              return (errors, matchedMembers.insert label)
             else
               errors := errors.push <|
-                s!"entry {entry.key} belongs to manifest group " ++
+                s!"{context} belongs to manifest group " ++
                   s!"{Informal.PreviewManifest.labelString memberGroup} but references " ++
                   Informal.PreviewManifest.labelString parent
-  -- Semantic group members survive blank resource omission. A member only
-  -- requires a preview entry when it advertises a preview key.
+    return (errors, matchedMembers)
+  let mut joins : Array String × NameSet := (errors, {})
+  for entry in manifest.previews do
+    if entry.targetKind == .block || entry.targetKind == .externalMarkup then
+      joins := checkJoin joins s!"entry {entry.key}" entry.label entry.parent entry.parentTitle
+  for row in manifest.nodes do
+    if let some node := row.bodyless then
+      let label := Informal.PreviewManifest.labelString row.label
+      joins := checkJoin joins s!"bodyless node {label}" row.label node.parent node.parentTitle
+  errors := joins.1
+  let matchedMembers := joins.2
+  -- Every member joins to a facet or to the metadata of its bodyless node.
   for group in manifest.groups do
     for member in group.entries do
-      if member.previewKey.isSome && !matchedMembers.contains member.label then
+      unless matchedMembers.contains member.label do
         errors := errors.push <|
           s!"manifest group {Informal.PreviewManifest.labelString group.label} member " ++
             s!"{Informal.PreviewManifest.labelString member.label} has no matching manifest entry"
   return errors
 
+private def duplicateKeyErrors (kind : String) (keys : Array String) : Array String := Id.run do
+  let mut seen : Std.HashSet String := {}
+  let mut errors := #[]
+  for key in keys do
+    if seen.contains key then
+      errors := errors.push s!"duplicate {kind} key: {key}"
+    else
+      seen := seen.insert key
+  return errors
+
+private def checkDefaultPreviews (index : PreviewArtifactIndex) (entries : Array Entry)
+    (errors : Array String) : Array String := Id.run do
+  let mut seen : NameSet := {}
+  let mut errors := errors
+  for entry in entries do
+    if !entry.defaultPreview then continue
+    let label := Informal.PreviewManifest.labelString entry.label
+    if seen.contains entry.label then
+      errors := errors.push s!"duplicate default preview for {label}"
+    else seen := seen.insert entry.label
+    if entry.targetKind != .block && entry.targetKind != .externalMarkup then
+      errors := errors.push s!"default preview for {label} is not a node preview"
+    errors := checkPreviewReference index s!"default preview of {label}" entry.key errors
+  return errors
+
 def checkGeneratedData (data : PersistedGeneratedData) : Array String :=
   let manifest := data.manifest
   let index := Informal.PreviewManifest.PreviewArtifactIndex.ofPersistedFiles data
-  let cacheErrors := data.htmlCache.entries.foldl (init := #[]) fun errors entry =>
+  -- Membership indexes collapse duplicates; audit the original arrays as well.
+  let keyErrors := duplicateKeyErrors "manifest preview" (manifest.previews.map (·.key)) ++
+    duplicateKeyErrors "HTML cache" (data.htmlCache.entries.map (·.key))
+  let cacheErrors := data.htmlCache.entries.foldl (init := keyErrors) fun errors entry =>
     if entry.hasBody then errors else errors.push s!"empty HTML cache body for key {entry.key}"
+  let manifestIndex := manifest.index
   let errors := manifest.previews.foldl
     (fun errors entry =>
       let errors :=
@@ -545,12 +612,19 @@ def checkGeneratedData (data : PersistedGeneratedData) : Array String :=
           errors
       let errors := entry.leanCodePreviewKeys.foldl
         (fun errors key =>
-          let errors :=
-            if index.hasManifestKey key then
-              errors
-            else
-              errors.push s!"missing manifest entry for Lean preview key {key}"
-          pushMissingCacheKey index errors s!"Lean preview key on {entry.key}" key)
+          if key == entry.key then
+            errors.push s!"self-referential Lean preview key on {entry.key}"
+          else
+            let errors :=
+              match manifestIndex.findEntry? key with
+              | none =>
+                errors.push s!"missing manifest entry for Lean preview key {key}"
+              | some target =>
+                if target.targetKind == .leanDecl || target.targetKind == .inlineLeanCode then
+                  errors
+                else
+                  errors.push s!"Lean preview key on {entry.key} does not target a Lean code preview: {key}"
+            pushMissingCacheKey index errors s!"Lean preview key on {entry.key}" key)
         errors
       let errors := checkRelatedEntries index s!"uses of {entry.key}" entry.uses errors
       checkRelatedEntries index s!"used-by of {entry.key}" entry.usedBy errors)
@@ -561,8 +635,68 @@ def checkGeneratedData (data : PersistedGeneratedData) : Array String :=
         s!"group {Informal.PreviewManifest.labelString group.label}"
         group.entries errors)
     errors
+  let errors := manifest.nodes.foldl (init := errors) fun errors row =>
+    match row.bodyless with
+    | none => errors
+    | some node =>
+      let label := Informal.PreviewManifest.labelString row.label
+      let errors := checkRelatedEntries index s!"uses of {label}" node.uses errors
+      checkRelatedEntries index s!"used-by of {label}" node.usedBy errors
   let errors := checkManifestGroupIntegrity manifest errors
+  let errors := checkDefaultPreviews index manifest.previews errors
   manifest.graphs.foldl (fun errors graph => checkGraphPreviewKeys index graph errors) errors
+
+/-- Current Verso section routes also cover pages with no Blueprint previews. -/
+private def currentSectionRoutes (xref : Json) : Except String (Std.HashSet String) := do
+  let domain ← xref.getObjVal? Verso.Genre.Manual.sectionDomain.toString
+  let contents ← (← domain.getObjVal? "contents").getObj?
+  let mut routes : Std.HashSet String := {}
+  for (_, targets) in contents.toList do
+    for target in ← targets.getArr? do
+      routes := routes.insert (← target.getObjValAs? String "address")
+  return routes
+
+/-- Identify a stock Verso manual page from its head and the relative base it
+uses to address this site. The read is bounded, including for user HTML. -/
+private def hasVersoPageHeader (path : FilePath) (depth : Nat) : IO Bool := do
+  let header ← IO.FS.withFile path .read (·.read 4096)
+  let signature := ("<!DOCTYPE html>\n<html>\n  <head>\n    <script>\n      (function(){\n" ++
+    "  const {protocol:proto, host:hostName, pathname:path, search:srch, hash:hsh} = window.location;").toUTF8
+  unless (header.extract 0 signature.size).data == signature.data do return false
+  let relativeRoot := "./" ++ String.join (List.replicate depth "../")
+  let base := s!"<base href=\"{relativeRoot}\">".toUTF8
+  for offset in [signature.size:header.size - base.size + 1] do
+    if header[offset]? == some '<'.toUInt8 && (header.extract offset (offset + base.size)).data == base.data then
+      return true
+  return false
+
+/-- Report known Verso manual pages outside the current section routes. This
+audit reads regular index files in the selected HTML tree and leaves the tree
+untouched. Artifact-only directories have no Verso cross-reference table. -/
+def checkHtmlRoutes (site : FilePath) : IO (Array String) := do
+  let html ← htmlDirForSite site
+  let xrefPath := html / "xref.json"
+  let .ok metadata ← xrefPath.symlinkMetadata.toBaseIO | return #[]
+  unless metadata.type == .file do return #[]
+  let .ok routes := Json.parse (← IO.FS.readFile xrefPath) >>= currentSectionRoutes
+    | throw <| IO.userError s!"cannot read Verso section routes from {xrefPath}"
+  -- A current root entry distinguishes a manual from an unrelated xref table.
+  unless routes.contains "/" do return #[]
+  let mut pending := #[(html, "/", 0)]
+  let mut stale := #[]
+  repeat
+    let some (directory, route, depth) := pending.back? | break
+    pending := pending.pop
+    for entry in ← directory.readDir do
+      if depth == 0 && #["-verso-data", "-verso-search"].contains entry.fileName then continue
+      let fileType := (← entry.path.symlinkMetadata).type
+      if fileType == .dir then
+        pending := pending.push (entry.path, route ++ entry.fileName ++ "/", depth + 1)
+      else if fileType == .file && entry.fileName == "index.html" &&
+          !routes.contains route && route != "/find/" && route != "/search/" then
+        if ← hasVersoPageHeader entry.path depth then
+          stale := stale.push (s!"stale generated HTML route: {route}")
+  return stale.qsort (· < ·)
 
 def checkJsonFromErrors (data : PersistedGeneratedData) (errors : Array String) : Json :=
   responseJson [

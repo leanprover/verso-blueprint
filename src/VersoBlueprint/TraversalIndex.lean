@@ -7,6 +7,8 @@ Author: Emilio J. Gallego Arias
 import Lean
 import VersoManual
 import VersoBlueprint.Informal.Block.Model
+import VersoBlueprint.Realizations.Capture
+import VersoBlueprint.Realizations.Projection
 import VersoBlueprint.Informal.GroupData
 import VersoBlueprint.Informal.LeanCodePreviewKey
 import VersoBlueprint.Graph
@@ -148,6 +150,14 @@ private def objectHasRenderablePreview (object : Verso.Multi.Object) : Bool :=
 def hasRenderablePreview (state : TraverseState) (label : Name) (facet : PreviewCache.Facet) : Bool :=
   (object? state (key label facet)).any objectHasRenderablePreview
 
+/-- Candidate facets in preview priority order, before any bodies are rendered. -/
+def previewFacets (state : TraverseState) (label : Name) : Array PreviewCache.Facet :=
+  let facets := #[PreviewCache.Facet.statement, PreviewCache.Facet.proof]
+  let prose := facets.filter fun facet =>
+    (object? state (key label facet)).any objectHasBody
+  prose ++ facets.filter fun facet =>
+    !prose.contains facet && hasRenderablePreview state label facet
+
 private def selectBody? (state : TraverseState) (label : Name) :
     Option (PreviewCache.Facet × Verso.Multi.Object) :=
   select? state label objectHasBody
@@ -155,12 +165,6 @@ private def selectBody? (state : TraverseState) (label : Name) :
 /-- The preferred nonempty facet, without decoding its document body. -/
 def selectedFacet? (state : TraverseState) (label : Name) : Option PreviewCache.Facet :=
   (selectBody? state label).map (·.1)
-
-/-- Prefer actual statement/proof prose, then a code-backed facet. Unlike
-`selectedFacet?`, this selects a preview identity, not a nonempty Manual body. -/
-def selectedPreviewFacet? (state : TraverseState) (label : Name) : Option PreviewCache.Facet :=
-  selectedFacet? state label <|>
-    (select? state label objectHasRenderablePreview).map (·.1)
 
 /-- Decode the selected nonempty body only when the caller needs its content. -/
 def selectedEntry? (state : TraverseState) (label : Name) : Option PreviewCache.Entry := do
@@ -192,10 +196,6 @@ def saveSelected (state : TraverseState) (id : Verso.Multi.InternalId)
     (entry : PreviewCache.Entry) : TraverseState :=
   let previewKey := key entry.label entry.facet
   saveId (saveData state previewKey (toJson { entry with target := some id })) previewKey id
-
-
-def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
-  state.domains.get? domainName
 
 /-- Decode every statement/proof traversal-preview entry, preserving per-entry decode errors. -/
 def entries (state : TraverseState) :
@@ -295,13 +295,39 @@ def saveOccurrence (state : TraverseState) (occurrence : Informal.BlockOccurrenc
     saveObjectData state domainName occurrence.label.toString
       (object.data.setObjVal! "occurrence" (toJson (some occurrence)))
 
-def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
-  state.domains.get? domainName
+/-- Capture only populates the exact selected document after checking its owner and bytes. -/
+def adoptedStatementVerified (snapshot : Informal.Realizations.Capture.Snapshot)
+    (source : Informal.SourceData.SourceSelection) : Bool :=
+  source.adoption.isSome &&
+    (snapshot.registry.document? source.selectedDocumentKey).any (! ·.text.trimAscii.isEmpty)
 
-/-- Capture the rendering projection without retaining elaboration or provenance state. -/
-def capture (state : Informal.Environment.State) : Array Informal.RenderNode :=
-  state.data.toArray.map fun (label, node) =>
-    Informal.RenderNode.ofNode label node (node.owner.bind state.authors.get?)
+/-- Project an optional completed capture into the node records used by rendering.
+Without a capture, checks are absent and adopted statement bodies stay hidden. -/
+def capture (state : Informal.Environment.State)
+    (snapshot? : Option Informal.Realizations.Capture.Snapshot := none)
+    (assessmentFor? : Name → Option Informal.Realizations.NodeAssessment :=
+      fun label => snapshot?.map (·.assessmentFor label)) :
+    Array Informal.RenderNode :=
+  let nativeChecks : Std.HashMap Informal.Realizations.ObjectKey
+      Informal.Validation.NativeLean.CheckedDeclaration :=
+    (snapshot?.map (·.nativeChecks)).getD #[] |>.foldl
+      (fun checks checked => checks.insert checked.declaration checked) {}
+  state.inventory.toArray.map fun (label, node) =>
+    let acceptedChecks := snapshot?.map fun snapshot =>
+      (snapshot.nativeCheckContracts (snapshot.nativeRealizationsFor label)).foldl (init := {}) fun statuses contract =>
+        match nativeChecks[contract.object]? with
+        | some checked =>
+          if snapshot.acceptsNativeCheck contract checked then
+            statuses.insert (contract.realization, contract.object) checked.status
+          else statuses
+        | none => statuses
+    let rendered := Informal.RenderNode.ofNode label node (node.owner.bind state.authors.get?)
+      (assessmentFor? label) acceptedChecks
+    if let some snapshot := snapshot? then
+      if let some source := node.sources.find? (·.adoption.isSome) then
+        { rendered with adoptedStatementAvailable := some (adoptedStatementVerified snapshot source) }
+      else rendered
+    else rendered
 
 def install (state : TraverseState) (nodes : Array Informal.RenderNode) : TraverseState :=
   nodes.foldl saveNode state
@@ -428,9 +454,6 @@ def object? (state : TraverseState) (label : Name) : Option Verso.Multi.Object :
 def data? (state : TraverseState) (label : Name) : Option Informal.Rust.InlineCodeData :=
   objectData? state domainName label.toString
 
-def href? (state : TraverseState) (label : Name) : Option String :=
-  Resolve.resolveDomainHref? state domainName label.toString
-
 def saveId (state : TraverseState) (label : Name) (id : Verso.Multi.InternalId) : TraverseState :=
   saveObjectId state domainName label.toString id
 
@@ -451,9 +474,6 @@ def spec : StoreSpec := {
 }
 
 def domainName : Name := spec.name
-
-def object? (state : TraverseState) (id : String) : Option Verso.Multi.Object :=
-  state.getDomainObject? domainName id
 
 def data? (state : TraverseState) (id : String) : Option Informal.Source.Document :=
   objectData? state domainName id
@@ -480,9 +500,6 @@ def spec : StoreSpec := {
 
 def domainName : Name := spec.name
 
-def object? (state : TraverseState) (label : Name) : Option Verso.Multi.Object :=
-  state.getDomainObject? domainName label.toString
-
 def data? (state : TraverseState) (label : Name) : Option Informal.Data.ExternalMarkupData :=
   objectData? state domainName label.toString
 
@@ -491,9 +508,6 @@ def saveId (state : TraverseState) (label : Name) (id : Verso.Multi.InternalId) 
 
 def saveData (state : TraverseState) (label : Name) (data : Json) : TraverseState :=
   saveObjectData state domainName label.toString data
-
-def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
-  state.domains.get? domainName
 
 /-- Decode every external-markup store entry, preserving per-entry decode errors. -/
 def entries (state : TraverseState) :
@@ -534,12 +548,6 @@ def spec : StoreSpec := {
 
 def domainName : Name := spec.name
 
-def object? (state : TraverseState) (key : String) : Option Verso.Multi.Object :=
-  state.getDomainObject? domainName key
-
-def data? (state : TraverseState) (key : String) : Option Informal.Graph.CachedGraphData :=
-  objectData? state domainName key
-
 def saveId
     (state : TraverseState) (key : String) (id : Verso.Multi.InternalId) : TraverseState :=
   saveObjectId state domainName key id
@@ -547,9 +555,6 @@ def saveId
 def saveData (state : TraverseState) (key : String) (data : Informal.Graph.CachedGraphData) :
     TraverseState :=
   saveObjectData state domainName key (toJson data)
-
-def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
-  state.domains.get? domainName
 
 /-- Decode every cached graph entry, preserving per-entry decode errors. -/
 def entries (state : TraverseState) :
@@ -584,18 +589,12 @@ def object? (state : TraverseState) (previewKey : String) : Option Verso.Multi.O
 def href? (state : TraverseState) (previewKey : String) : Option String :=
   (Resolve.resolveDomainHrefs state domainName previewKey)[0]?
 
-def hrefFor? (state : TraverseState) (decl : Name) : Option String :=
-  href? state (lookupKey decl)
-
 def saveId
     (state : TraverseState) (previewKey : String) (id : Verso.Multi.InternalId) : TraverseState :=
   saveObjectId state domainName previewKey id
 
 def saveData (state : TraverseState) (previewKey : String) (data : Json) : TraverseState :=
   saveObjectData state domainName previewKey data
-
-def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
-  state.domains.get? domainName
 
 end LeanCodePreviews
 
@@ -616,9 +615,6 @@ def key (occurrence : Verso.Multi.InternalId) (decl : Name) : String :=
 
 def object? (state : TraverseState) (targetKey : String) : Option Verso.Multi.Object :=
   state.getDomainObject? domainName targetKey
-
-def href? (state : TraverseState) (label decl : Name) : Option String :=
-  Resolve.resolveRenderedExternalDeclHref? state label decl
 
 /-- HTML `id` attributes for a registered rendered external-declaration row. -/
 def htmlIdAttrs (state : TraverseState) (occurrence : Verso.Multi.InternalId) (decl : Name) : Array (String × String) :=
@@ -647,14 +643,8 @@ def spec : StoreSpec := {
 
 def domainName : Name := spec.name
 
-def object? (state : TraverseState) (previewKey : String) : Option Verso.Multi.Object :=
-  state.getDomainObject? domainName previewKey
-
 def saveData (state : TraverseState) (previewKey : String) (data : Json) : TraverseState :=
   saveObjectData state domainName previewKey data
-
-def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
-  state.domains.get? domainName
 
 end CitationPreviews
 

@@ -18,9 +18,10 @@ open Verso.VersoBlueprintTests.Blueprint.Support
     | throw <| IO.userError "Invalid choice A key"
   let some keyB := PreviewKey.ofString? (PreviewCache.statementKey `choice_b)
     | throw <| IO.userError "Invalid choice B key"
-  let a := PreviewResources.deferred keyA (fun _ => .text true "A+") (fun _ => .text true "A-")
-  let b := PreviewResources.deferred keyB (fun _ => .text true "B+") (fun _ => .text true "B-")
-  let nested := PreviewResources.deferred keyA (fun _ => .seq #[a, b]) (fun _ => b)
+  let exact key present absent := PreviewResources.deferred key present absent false
+  let a := exact keyA (fun _ => .text true "A+") (fun _ => .text true "A-")
+  let b := exact keyB (fun _ => .text true "B+") (fun _ => .text true "B-")
+  let nested := exact keyA (fun _ => .seq #[a, b]) (fun _ => b)
   let combined : Output.Html := .seq #[a, b, nested, a]
   let .ok resolved := PreviewResources.finish (· == keyA) combined
     | throw <| IO.userError "Independent choices failed to compose"
@@ -38,10 +39,10 @@ open Verso.VersoBlueprintTests.Blueprint.Support
   let malformed : Output.Html := .tag "verso-blueprint-preview-choice" #[] .empty
   let emptyKey : Output.Html := .tag "verso-blueprint-preview-choice" #[("key", "")]
     (.seq #[.text true "present", .text true "absent"])
-  let presence := PreviewResources.deferred keyA (fun _ => .text true "body") (fun _ => .empty)
+  let presence := exact keyA (fun _ => .text true "body") (fun _ => .empty)
   unless !PreviewResources.htmlIsBlank malformed && !PreviewResources.htmlIsBlank presence do
     throw <| IO.userError "Blank-body filtering concealed an invalid choice"
-  let discarded := PreviewResources.deferred keyA (fun _ => .text true "selected") (fun _ => malformed)
+  let discarded := exact keyA (fun _ => .text true "selected") (fun _ => malformed)
   let .ok selected := PreviewResources.finish (fun _ => true) discarded
     | throw <| IO.userError "Finalization inspected a discarded alternative"
   unless selected.asString == "selected" &&
@@ -131,6 +132,15 @@ This semantic-only node must remain in the graph without a preview link.
 
 private def model : RenderModel := blueprint_render_model%
 
+-- The render model transports one accepted capture to every node occurrence.
+#eval show IO Unit from do
+  let some node := model.nodes.find? (·.label == `resource_statement)
+    | throw <| IO.userError "Render model omitted the captured resource node"
+  let some assessment := node.assessment
+    | throw <| IO.userError "Render model omitted its realization assessment"
+  unless (assessment.details.getObjVal? "assessment").isOk do
+    throw <| IO.userError "Render model lost the exact node report"
+
 private def siteDirectory (config : Manual.Config) (mode : Mode) : System.FilePath :=
   config.destination / (match mode with | .single => "html-single" | .multi => "html-multi")
 
@@ -200,6 +210,13 @@ private def readFiles (root : System.FilePath) : IO PreviewManifest.PersistedFil
       let validationErrors := VersoBlueprint.Vbp.checkGeneratedData emitted
       unless validationErrors.isEmpty do
         throw <| IO.userError s!"Prepared output failed data validation: {validationErrors}"
+      let some sourceNode := model.nodes.find? (·.label == `resource_statement)
+        | throw <| IO.userError "Render model lost the resource node"
+      let some sourceAssessment := sourceNode.assessment
+        | throw <| IO.userError "Render model lost the realization assessment"
+      let projected := (emitted.manifest.findNodeRow? "resource_statement").bind (·.assessment)
+      unless projected == some sourceAssessment do
+        throw <| IO.userError "Preview manifest did not preserve the captured node assessment"
       unless toJson files.manifest == toJson emitted.manifest &&
           toJson files.htmlCache == toJson emitted.htmlCache do
         throw <| IO.userError "Export rebuilt or changed the prepared resources"
@@ -382,5 +399,121 @@ private def readFiles (root : System.FilePath) : IO PreviewManifest.PersistedFil
     unless !candidate.edges.isEmpty &&
         toJson (candidate.filterPreviewReferences (fun key => index.resolves key.value)) == toJson graph do
       throw <| IO.userError "Resource selection changed graph facts, links, or topology"
+
+#docs (Manual) proofFallbackDoc "Prepared proof fallback" :=
+:::::::
+:::theorem "blank_statement_with_proof" (lean := "resourceWitness")
+The statement body will render blank.
+:::
+
+:::proof "blank_statement_with_proof"
+The proof's prepared marker.
+:::
+
+:::theorem "blank_statement_with_code" (lean := "resourceWitness")
+This statement body will also render blank.
+:::
+
+:::theorem "references_blank_statement_with_proof"
+This node uses {uses "blank_statement_with_proof"}[] and {uses "blank_statement_with_code"}[].
+:::
+
+{bpref "blank_statement_with_proof"}[Preferred available preview]
+and {bpref "blank_statement_with_code"}[Available Lean preview]
+
+:::theorem "embedded_graph_body"
+{blueprint_graph (direction := LR) (preview := hover) (previewPlacement := anchored)}
+:::
+
+{blueprint_summary}
+:::::::
+
+#eval show IO Unit from do
+  let label := `blank_statement_with_proof
+  let codeLabel := `blank_statement_with_code
+  let statementKey := PreviewCache.statementKey label
+  let proofKey := PreviewCache.proofKey label
+  let codeKey := PreviewCache.statementKey codeLabel
+  let impls : ExtensionImpls := extension_impls%
+  let impls := impls.insertBlock `blankStatementBody {
+    traverse := fun _ _ _ => pure none
+    toHtml := some fun _ _ _ _ _ => pure .empty
+    toTeX := none }
+  let model : RenderModel := blueprint_render_model%
+  let part := proofFallbackDoc.toPart
+  let blocks := (part.content ++ part.subParts.flatMap (·.content)).map fun block => block.rewriteOther
+    (fun go container contents => .other container (contents.map go))
+    (fun _ go container contents =>
+      if container.name == ``Informal.Block.informal &&
+          (fromJson? (α := BlockOccurrence) container.data).toOption.any
+            (fun occurrence => (occurrence.label == label || occurrence.label == codeLabel) &&
+              !occurrence.isProof) then
+        .other container #[.other { name := `blankStatementBody } #[]]
+      else .other container (contents.map go))
+  let (blocks, state) ← Informal.traverseManualBlocks blocks (model.withExtensions impls)
+  let files ← PreviewManifest.buildPreviewDataFiles impls (fun msg => throw (IO.userError msg))
+    (PreviewManifest.PreparedPreviewState.prepare state)
+  let index := PreviewManifest.PreviewArtifactIndex.ofFiles files
+  unless index.resolves statementKey && index.resolves proofKey &&
+      index.defaultKey? label == PreviewKey.ofString? proofKey &&
+      index.facetKey? label .statement == PreviewKey.ofString? statementKey &&
+      index.facetKey? label .proof == PreviewKey.ofString? proofKey &&
+      index.defaultKey? codeLabel == PreviewKey.ofString? codeKey do
+    throw <| IO.userError "Prepared default or exact-facet availability disagreed with rendered bodies"
+  for key in #[statementKey, codeKey] do
+    unless (files.manifest.findEntry? key).any (fun entry =>
+        entry.codeOnlyPreview && !entry.leanCodePreviewKeys.isEmpty &&
+          entry.leanCodePreviewKeys.all index.resolves) do
+      throw <| IO.userError s!"Missing same-facet Lean fallback for {key}"
+  let some graph := files.manifest.graphs[0]? | throw <| IO.userError "Missing fallback graph"
+  unless (graph.nodes.find? (·.label == label)).any (fun node =>
+      node.previewKey == PreviewKey.ofString? proofKey) &&
+      graph.variants.any (·.previewKeyByNodeId.contains (Graph.graphNodeSvgId label, proofKey)) do
+    throw <| IO.userError "Prepared graph and variants did not select the available proof"
+  let some embedded := files.htmlCache.findHtml? (PreviewCache.statementKey `embedded_graph_body)
+    | throw <| IO.userError "Missing theorem preview whose body is an embedded graph"
+  let some afterTag := (embedded.splitOn "class=\"bp-graph-data\">")[1]?
+    | throw <| IO.userError "The theorem preview did not resolve the deferred graph"
+  let .ok embeddedGraph := Json.parse (afterTag.splitOn "</script>").head! >>= fromJson? (α := Graph.GraphData)
+    | throw <| IO.userError "Could not decode the embedded graph in the theorem preview"
+  unless toJson embeddedGraph == toJson graph && !hasSubstr embedded "verso-blueprint-graph-ref" &&
+      hasSubstr embedded "data-bp-graph-direction=\"LR\"" &&
+      hasSubstr embedded "data-bp-graph-default-preview-mode=\"hover\"" &&
+      hasSubstr embedded "data-bp-graph-default-preview-placement=\"anchored\"" do
+    throw <| IO.userError "The theorem preview must use the finalized graph and its available proof target"
+  let sourceKey := PreviewCache.statementKey `references_blank_statement_with_proof
+  let some source := files.manifest.findEntry? sourceKey | throw <| IO.userError "Missing relation source"
+  for (target, key) in #[(label, proofKey), (codeLabel, codeKey)] do
+    unless source.uses.any (fun relation =>
+        relation.label == target && relation.previewKey == PreviewKey.ofString? key) do
+      throw <| IO.userError s!"Persisted relation did not select {key}"
+  let some cached := files.htmlCache.findHtml? sourceKey | throw <| IO.userError "Missing cached relation source"
+  unless hasSubstr cached s!"data-bp-preview-key=\"{proofKey}\"" &&
+      hasSubstr cached s!"data-bp-preview-key=\"{codeKey}\"" &&
+      !hasSubstr cached s!"data-bp-preview-key=\"{statementKey}\"" do
+    throw <| IO.userError "Deferred references did not distinguish the default from the exact resource"
+  let page ← Informal.renderManualBlocksHtmlWithState blocks (files.withPageExtensions impls) state
+  let keyAttr := s!"data-bp-preview-key=\"{proofKey}\""
+  let summaryAttrs := s!"data-bp-preview-label=\"{label}\" {keyAttr}"
+  unless countSubstr page.asString keyAttr > countSubstr page.asString summaryAttrs &&
+      hasSubstr page.asString summaryAttrs &&
+      !hasSubstr page.asString s!"data-bp-preview-key=\"{statementKey}\"" do
+    throw <| IO.userError "Prepared summary and inline references did not share the available proof"
+
+#eval show IO Unit from do
+  let key := PreviewCache.statementKey `code_without_fragment
+  let entry : PreviewManifest.Entry := {
+    label := `code_without_fragment, key, targetKind := .block, facet := .statement
+    title := "Inert code-only body", codeOnlyPreview := true, defaultPreview := true }
+  let files : PreviewManifest.PersistedFiles := {
+    manifest := { previews := #[entry] }
+    htmlCache := { entries := #[{ key, html := "<span></span>" }] } }
+  let index := PreviewManifest.PreviewArtifactIndex.ofPersistedFiles files
+  unless index.hasCacheKey key && !index.resolves key &&
+      (VersoBlueprint.Vbp.checkGeneratedData files).any (fun error => hasSubstr error "no usable Lean fragments") do
+    throw <| IO.userError "An inert code-only body alone satisfied standalone preview validation"
+  let withoutDefault := { files with manifest := { previews := #[{ entry with defaultPreview := false }] } }
+  unless (VersoBlueprint.Vbp.checkGeneratedData withoutDefault).isEmpty do
+    throw <| IO.userError "An unadvertised inert graft body was rejected"
 
 end Verso.VersoBlueprintTests.BlueprintPreviewResources

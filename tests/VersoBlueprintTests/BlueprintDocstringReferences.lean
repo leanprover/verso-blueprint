@@ -20,19 +20,20 @@ private def manualImpls : ExtensionImpls := extension_impls%
 #guard_msgs in
 #eval show CoreM Bool from do
   let state := Informal.Environment.informalExt.getState (← getEnv)
-  let some node := state.data.get? (Name.mkSimple "attr.doc.source") | return false
-  let some statement := node.statement | return false
-  let some proof := node.proof | return false
-  let some late := state.data.get? (Name.mkSimple "attr.doc.late") | return false
+  let some node := state.inventory.get? (Name.mkSimple "attr.doc.source") | return false
+  let some statement := node.proseView `verso `statement | return false
+  let some proof := node.proseView `verso `proof | return false
+  let some late := state.inventory.get? (Name.mkSimple "attr.doc.late") | return false
   pure <|
-    statement.deps == #[
+    statement.hasBody && !proof.hasBody &&
+    node.usesOn `statement == #[
       { label := Name.mkSimple "attr.doc.target", intent := .technical },
       { label := Name.mkSimple "attr.doc.automatic", origin := .automatic, intent := .auxiliary }
     ] &&
-    proof.deps == #[{ label := Name.mkSimple "attr.doc.proof" }] &&
-    late.statement.any (fun body => !body.hasBody && body.dependencyLabels ==
-      #[Name.mkSimple "attr.doc.target"]) &&
-    (state.pendingNodes.getD (Name.mkSimple "attr.doc.source") {}).localPayloads.isEmpty && state.activeDirective.isNone
+      node.usesOn `proof == #[{ label := Name.mkSimple "attr.doc.proof" }] &&
+    (late.proseView `verso `statement).any (fun body => !body.hasBody) &&
+    (late.usesOn `statement).map (·.label) == #[Name.mkSimple "attr.doc.target"] &&
+    (state.nodeRegistrations.getD (Name.mkSimple "attr.doc.source") {}).localRegistrations.isEmpty && state.activeDirective.isNone
 
 #docs (Genre.Manual) includedDoc "Docstring references" :=
 :::::::
@@ -123,11 +124,11 @@ attribute [blueprint "attr.doc.invalid.recovered"] invalidDocstringIntent
 #eval show MetaM Bool from do
   let some (.inr doc) ← findInternalDocString? (← getEnv) ``invalidDocstringIntent
     | return false
-  let (_, dependencies) ← Informal.Docstring.versoDocstringToManualBlocksStx doc
-  let some node ← Informal.Environment.getNode? (Name.mkSimple "attr.doc.invalid.recovered")
+  let (_, dependencies) ← Informal.Docstring.versoDocstringToManualBlocks doc
+  let some node ← Informal.Environment.getNodeInventory? (Name.mkSimple "attr.doc.invalid.recovered")
     | return false
   pure <| dependencies.isEmpty &&
-    node.statement.all (·.deps.isEmpty) &&
+    (node.usesOn `statement).isEmpty &&
     hasSubstr (Informal.Docstring.versoDocstringToHtml doc).asString "bad"
 
 /-- error: Unexpected named argument `intent` -/
@@ -135,5 +136,55 @@ attribute [blueprint "attr.doc.invalid.recovered"] invalidDocstringIntent
 set_option doc.verso true in
 /-- {bpref "attr.doc.target" (intent := "technical")}[] -/
 def rejectedLinkMetadata : Nat := 0
+
+#eval show CoreM Unit from do
+  let some _ ← findInternalDocString? (← getEnv) ``BlueprintAttribute.DocstringProvider.inherited
+    | throwError "Expected Lean to resolve the inherited documentation"
+  let some inherited ← Informal.Environment.getNodeInventory? (Name.mkSimple "attr.doc.inherited")
+    | throwError "Inherited documentation prevented native registration"
+  unless (inherited.defaultProseView `statement).isNone && inherited.uses.isEmpty &&
+      (inherited.nativeRefsOn `statement).size == 1 do
+    throwError "The attribute must not claim inherited prose or its dependencies"
+  let some fallback ← Informal.Environment.getNodeInventory? (Name.mkSimple "attr.doc.markdownFallback")
+    | throwError "Unsupported Markdown prevented native registration"
+  let some body := fallback.proseView `markdown `statement | throwError "Missing Markdown fallback"
+  let #[.para #[.text text]] := body.blocks | throwError "Expected a plain-text fallback"
+  unless text.contains "Before the Markdown separator.\n\n---\n\nAfter the Markdown separator." &&
+      (fallback.nativeRefsOn `statement).size == 1 do
+    throwError "The Markdown fallback lost comment text or native attachment"
+
+#docs (Genre.Manual) adoptedDoc "Adopted statement dependencies" :=
+:::::::
+:::definition "attr.doc.inherited"
+A statement authored for the declaration with inherited documentation.
+:::
+
+:::definition "attr.doc.adopted" (lean := "Verso.VersoBlueprintTests.BlueprintAttribute.DocstringProvider.untagged") (leanDocstring := "Verso.VersoBlueprintTests.BlueprintAttribute.DocstringProvider.untagged")
+:::
+:::::::
+
+open Lean.Elab.Command in
+run_cmd liftTermElabM do
+  let inherited := Name.mkSimple "attr.doc.inherited"
+  let some inheritedNode ← Informal.Environment.getNodeInventory? inherited
+    | throwError "Missing explicit statement for inherited-doc declaration"
+  unless inheritedNode.hasStatementBody && inheritedNode.uses.isEmpty do
+    throwError "The inherited documentation interfered with an explicit replacement statement"
+  let adopted := Name.mkSimple "attr.doc.adopted"
+  let target := Name.mkSimple "attr.doc.target"
+  let expected : Informal.Data.UseRef := { label := target, intent := .technical }
+  let some adoptedNode ← Informal.Environment.getNodeInventory? adopted
+    | throwError "Missing adopted docstring node"
+  let .ok snapshot ← Informal.Realizations.Capture.capture
+    | throwError "Could not capture the adopted docstring and its dependencies"
+  let #[use] := snapshot.uses.filter (·.source == adopted)
+    | throwError "Expected one dependency from the adopted docstring"
+  let graph := (Informal.Graph.buildModel snapshot #[adopted]).finish "adopted-docstring" {}
+  unless adoptedNode.usesOn `statement == #[expected] && use.role == `statement &&
+      use.reference == expected && use.selected.isOk &&
+      graph.edges.any (fun edge => edge.source == target && edge.target == adopted &&
+        edge.axes == #[Informal.Graph.EdgeAxis.statement]) &&
+      !(graph.nodes.any (·.label == Name.mkSimple "attr.doc.link")) do
+    throwError "The adopted Verso uses must reach capture and the graph, with its intent and axis"
 
 end Verso.VersoBlueprintTests.BlueprintDocstringReferences

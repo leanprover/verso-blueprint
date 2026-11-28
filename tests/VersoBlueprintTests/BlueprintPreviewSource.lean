@@ -24,8 +24,7 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSource
     pure <|
       selection.facet == .statement &&
       selection.key == PreviewCache.statementKey label &&
-      !selection.preview.blocks.isEmpty &&
-      selection.preview.stxs.isEmpty
+      !selection.blocks.isEmpty
 
 /-- info: true -/
 #guard_msgs in
@@ -37,8 +36,7 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSource
     pure <|
       selection.facet == .proof &&
       selection.key == PreviewCache.proofKey label &&
-      !selection.preview.blocks.isEmpty &&
-      selection.preview.stxs.isEmpty
+      !selection.blocks.isEmpty
 
 /-- info: true -/
 #guard_msgs in
@@ -166,7 +164,7 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSource
     let (_out, st) ← renderManualDocHtmlStringAndState extension_impls%
       Verso.VersoBlueprintTests.BlueprintPreviewSource.Provider.externalMarkupPreviewSourceDoc
     let label := Name.mkSimple "preview.external_bodyless"
-    let externalKey := Informal.PreviewSource.externalMarkupKey label
+    let statementKey := PreviewCache.statementKey label
     let semantic : Informal.Graph.GraphModel := {
       nodes := #[{
         label
@@ -179,9 +177,9 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSource
     pure <|
       match finalized.nodes[0]? with
       | some node =>
-        node.previewKey == PreviewKey.ofString? externalKey &&
+        node.previewKey == PreviewKey.ofString? statementKey &&
           finalized.variants.any (fun variant =>
-            variant.previewKeyByNodeId.any (fun (_, key) => key == externalKey))
+            variant.previewKeyByNodeId.any (fun (_, key) => key == statementKey))
       | none => false
 
 /-- info: true -/

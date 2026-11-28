@@ -24,6 +24,15 @@ input_file mathLintWorkerJs where
   path := "static-web/katex-lint.mjs"
   text := true
 
+-- Current source/config for the three-way example, never a foreign artifact.
+input_file realizationFlagRocqSource where
+  path := "tests/fixtures/realizations/rocq/Flag.v"
+  text := true
+
+input_file realizationFlagRocqProject where
+  path := "tests/fixtures/realizations/rocq/_RocqProject"
+  text := true
+
 -- Optional VIR resource API; neither the core library nor generator imports it.
 lean_lib VersoBlueprintVir where
   srcDir := "src"
@@ -59,7 +68,32 @@ lean_exe «vbp» where
 @[default_target, test_driver]
 lean_lib VersoBlueprintTests where
   srcDir := "tests"
+  leanOptions := #[⟨`weak.verso.blueprint.project, "blueprintFixtures"⟩]
+  -- Coarse test-library wiring keeps both non-Lean fixture inputs content tracked.
+  needs := #[realizationFlagRocqSource, realizationFlagRocqProject]
   roots := #[
+    `VersoBlueprintTests.BlueprintSHA256,
+    `VersoBlueprintTests.BlueprintMerkle,
+    `VersoBlueprintTests.BlueprintSemanticFingerprint,
+    `VersoBlueprintTests.BlueprintNativeFixture,
+    `VersoBlueprintTests.ReferenceNameAdmission,
+    `VersoBlueprintTests.BlueprintCanonicalNativePersistence,
+    `VersoBlueprintTests.BlueprintCanonicalSourcePersistence,
+    `VersoBlueprintTests.BlueprintRealizationCapture,
+    `VersoBlueprintTests.BlueprintRealizationFlag,
+    `VersoBlueprintTests.BlueprintCanonicalSourcePersistence.Conflict,
+    `VersoBlueprintTests.BlueprintCanonicalNativePersistence.Conflict,
+    `VersoBlueprintTests.BlueprintRealizations,
+    `VersoBlueprintTests.BlueprintTranslations,
+    `VersoBlueprintTests.BlueprintRealizationAdapter,
+    `VersoBlueprintTests.BlueprintExternalDocstring,
+    `VersoBlueprintTests.BlueprintRealizationThreeWay,
+    `VersoBlueprintTests.BlueprintRealizationDependencies,
+    `VersoBlueprintTests.BlueprintRealizationAuthoring,
+    `VersoBlueprintTests.BlueprintAssessmentSnapshot,
+    `VersoBlueprintTests.BlueprintRealizationSemantics,
+    `VersoBlueprintTests.BlueprintCanonicalSources,
+    `VersoBlueprintTests.BlueprintRealizationKernelGraph,
     `VersoBlueprintTests.Blueprint.Support,
     `VersoBlueprintTests.BlueprintAssets,
     `VersoBlueprintTests.BlueprintContributions,

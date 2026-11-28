@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
+import VersoBlueprintTests.BlueprintNativeFixture
 import VersoBlueprintTests.BlueprintImportedContributions.Statement
 
 open Lean Informal Lean.Elab.Command
@@ -17,7 +18,8 @@ private def testRecord (label : Name) (site : Nat)
     subject := label
     site
     slot := 0 }
-  label, references, priority, source := none }
+  label, nativeAssociations := BlueprintNativeFixture.associations label `statement references
+  priority, source := none }
 
 run_cmd discard <| Environment.contributeRecord (testRecord `key_theorem 1 (priority := some "high")) {}
 
@@ -30,7 +32,7 @@ run_cmd discard <| Environment.contributeRecord (testRecord `key_theorem 1 (prio
   discard <| Environment.contributeRecord
     (testRecord `rejected_new_node 2 #[{ canonical := `rejectedNewDecl, written := `rejectedNewDecl, present := true }]) {
     count := before.nextCount + 100
-    proofUses := #[{ label := `dep }, { label := `dep, intent := .technical }]
+    uses := SourceData.usesFor `rejected_new_node (some `lean) `proof #[{ label := `dep }, { label := `dep, intent := .technical }]
   }
   let after := Environment.informalExt.getState (← getEnv)
   unless reprStr before == reprStr after do
@@ -55,7 +57,8 @@ error: AtomicFailure.«test.synthetic»:key_theorem@3/0 label=key_theorem refs=[
     count := before.nextCount + 100
     tags := #["rejected"]
     issueUrl := some "https://example.com/issues/1"
-    proofBody := some { stx := .missing, previewBlocks := #[.para #[.text "Rejected proof"]] }
+    sources := #[BlueprintNativeFixture.source `key_theorem `verso (some `proof) `verso
+      (.prose { sourceText := some "Rejected proof", blocks := #[.para #[.text "Rejected proof"]] })]
   }
   let after := Environment.informalExt.getState (← getEnv)
   unless reprStr before == reprStr after do
@@ -91,11 +94,11 @@ theorem atomicWitness : True := atomicDependency
 /--
 error: Label atomic_directive declares conflicting priorities including 'high'
 ---
-error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@3631/0 label=atomic_directive refs=[] priority=(some high)
+error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@3905/0 label=atomic_directive refs=[] priority=(some high)
 ---
 error: Label atomic_directive declares conflicting priorities including 'low'
 ---
-error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@4334/0 label=atomic_directive refs=[atomicWitness] priority=(some low)
+error: VersoBlueprintTests.BlueprintImportedContributions.AtomicFailure.blueprint.directive:atomic_directive@4608/0 label=atomic_directive refs=[atomicWitness] priority=(some low)
 -/
 #guard_msgs in
 #check_blueprint_atomic
@@ -135,7 +138,7 @@ Inner statement.
 :::::::
 
 -- This reports an error without throwing out of the body elaborator.
-/-- error: Label atomic_duplicate_rust already has associated Rust code -/
+/-- error: Label atomic_duplicate_rust: duplicate-source: realization 'rust' already has an implementation source -/
 #guard_msgs in
 #check_blueprint_atomic
 #docs (Manual) loggedAtomicFailure "Logged body failure" :=
@@ -174,18 +177,19 @@ A valid statement after rejected declarations.
 run_cmd do
   let state := Environment.informalExt.getState (← getEnv)
   unless state.activeDirective.isNone &&
-      (state.data.get? `atomic_recovered).any (·.hasStatementBody) do
+      (state.inventory.get? `atomic_recovered).any (·.hasStatementBody) do
     throwError "Directive scope did not recover after failure"
 
 -- Standalone producers must agree with the accepted registry, even during recovery.
 run_cmd do
   discard <| Environment.contribute `atomic_standalone {
-    proofUses := #[{ label := `atomic_dependency, origin := .automatic, intent := .technical }] }
+    uses := SourceData.usesFor `atomic_standalone (some `lean) `proof #[{ label := `atomic_dependency, origin := .automatic, intent := .technical }] }
   discard <| Environment.contribute `atomic_standalone_markup {
-    externalMarkup := ({} : Data.ExternalMarkupSet).insert {
-      language := .markdown, slot := Data.defaultExternalMarkupSlot, raw := "Accepted markup" } }
+    sources := #[← liftCoreM <| Environment.sourceAt `atomic_standalone_markup `markdown.default `statement `markdown
+      (.markup { language := .markdown, slot := Data.defaultExternalMarkupSlot, raw := "Accepted markup" }) (← getRef)] }
   discard <| Environment.contribute `atomic_standalone_rust {
-    rustCode := some { raw := "pub fn accepted() {}" } }
+    sources := #[← liftCoreM <| Environment.sourceAt `atomic_standalone_rust `rust (some `implementation) `rust
+      (.text "pub fn accepted() {}") (← getRef)] }
 
 -- Attribute registration must not publish a module-catalog entry when its
 -- contribution is rejected. The shared checker also covers declaration indexes.
@@ -205,7 +209,7 @@ theorem rejectedStandaloneWitness : True := atomicDependency
 ```
 :::::::
 
-/-- error: Label atomic_standalone_markup already has associated markdown external markup in slot 'default' -/
+/-- error: Label atomic_standalone_markup: duplicate-source: realization 'markdown.default' already has a statement source -/
 #guard_msgs in
 #check_blueprint_atomic
 #docs (Manual) rejectedStandaloneMarkup "Rejected standalone markup" :=
@@ -215,7 +219,7 @@ Rejected markup.
 ```
 :::::::
 
-/-- error: Label atomic_standalone_rust already has associated Rust code -/
+/-- error: Label atomic_standalone_rust: duplicate-source: realization 'rust' already has an implementation source -/
 #guard_msgs in
 #check_blueprint_atomic
 #docs (Manual) rejectedStandaloneRust "Rejected standalone Rust" :=
@@ -305,12 +309,16 @@ def attrAutoReverse : Nat := 0
 /-- error: Label attr_inference_conflict declares conflicting statement dependency intents for 'atomic_type' (automatic): existing 'regular', new 'technical' -/
 #guard_msgs in
 #check_blueprint_atomic
-/-- {uses "atomic_type" (origin := "automatic") (intent := "technical")}[]. -/
-@[blueprint "attr_inference_conflict" (autoDeps := true) (uses := ["atomic_type"])]
+/--
+{uses "atomic_type" (origin := "automatic")}[] and
+{uses "atomic_type" (origin := "automatic") (intent := "technical")}[].
+-/
+@[blueprint "attr_inference_conflict" (autoDeps := false)]
 def attrInferenceConflict : AtomicType := (0 : Nat)
 
--- Equal declarations deduplicate, but manual precedence only projects the
--- effective edge; it must retain the automatic declaration for later validation.
+-- Raw registrations retain repeated declarations, while effective display
+-- collapses exact duplicates and manual metadata wins without erasing the
+-- automatic declaration needed for later validation.
 /-- {uses "atomic_type"}[] and again {uses "atomic_type"}[]. -/
 @[blueprint "attr_authorities" (autoDeps := true) (uses := ["atomic_type"])]
 def attrAuthorities : AtomicType := (0 : Nat)
@@ -324,21 +332,43 @@ Manual external-code authoring retains the same authority evidence.
 
 run_cmd do
   for label in #[`attr_authorities, `manual_authorities] do
-    let some node ← Environment.getNode? label | throwError "Missing node"
-    let some statement := node.statement | throwError "Missing statement"
-    unless statement.useDeclarations == #[
-        { label := `atomic_type, origin := .automatic }, { label := `atomic_type }] &&
-        statement.deps == #[{ label := `atomic_type }] do
+    let some node ← Environment.getNodeInventory? label | throwError "Missing node"
+    let statementUses := (node.uses.filter (·.role == `statement)).map (·.reference)
+    let expectedUses := if label == `attr_authorities then #[
+        { label := `atomic_type, origin := .automatic },
+        { label := `atomic_type }, { label := `atomic_type }, { label := `atomic_type }]
+      else #[{ label := `atomic_type, origin := .automatic }, { label := `atomic_type }]
+    unless statementUses == expectedUses &&
+        node.usesOn `statement == #[{ label := `atomic_type }] do
       throwError "Normalization erased authority evidence or retained equal duplicates"
 
 /-- error: Label attr_authorities declares conflicting statement dependency intents for 'atomic_type' (automatic): existing 'regular', new 'technical' -/
 #guard_msgs in
 #check_blueprint_atomic
 run_cmd discard <| Environment.contribute `attr_authorities {
-  statementUses := #[{ label := `atomic_type, origin := .automatic, intent := .technical }] }
+  uses := SourceData.usesFor `attr_authorities (some `lean) `statement #[{ label := `atomic_type, origin := .automatic, intent := .technical }] }
 
 /-- error: Label manual_authorities declares conflicting statement dependency intents for 'atomic_type' (automatic): existing 'regular', new 'technical' -/
 #guard_msgs in
 #check_blueprint_atomic
 run_cmd discard <| Environment.contribute `manual_authorities {
-  statementUses := #[{ label := `atomic_type, origin := .automatic, intent := .technical }] }
+  uses := SourceData.usesFor `manual_authorities (some `lean) `statement #[{ label := `atomic_type, origin := .automatic, intent := .technical }] }
+
+-- A failed standalone fence leaves all Blueprint stores as they were, even
+-- when an earlier recovered Lean command ran the Blueprint attribute.
+/-- error: Unknown identifier `atomicFenceMissing` -/
+#guard_msgs in
+#check_blueprint_atomic
+#docs (Manual) failedStandaloneFence "Failed standalone fence" :=
+:::::::
+```lean "atomic_failed_fence"
+@[blueprint "atomic_attr_in_fence"]
+theorem atomicFenceGood : True := True.intro
+
+theorem atomicFenceBad : True := atomicFenceMissing
+```
+:::::::
+
+run_cmd
+  unless (← getEnv).contains `atomicFenceGood do
+    throwError "A rejected fence discarded the recovered Lean environment"

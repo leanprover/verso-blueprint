@@ -5,7 +5,7 @@ import VersoBlueprint
 open Lean Informal
 
 private def record (label : Name) (priority : Option String) (id : Contributions.ContributionId) :
-    Contributions.Record := { id, label, references := #[], priority, source := none }
+    Contributions.Record := { id, label, priority, source := none }
 
 run_cmd do
   discard <| Environment.contributeRecord

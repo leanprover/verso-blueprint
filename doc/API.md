@@ -160,9 +160,8 @@ generated browser APIs described here rather than depending on those markers.
 On the Lean 4.35 line, declaration `range` and `selectionRange` source positions
 use Lean's object encoding: `pos` and `endPos` contain `{ "line": ..., "column": ... }`
 instead of the former `[line, column]` arrays. Update consumers to read those
-named fields and regenerate sites with `lake exe vbp build`; the internal
-manifest schema marker advances to 10. LSP ranges still use `line` and
-`character`.
+named fields and regenerate sites with `lake exe vbp build`. LSP ranges still
+use `line` and `character`.
 
 In practice:
 
@@ -361,39 +360,151 @@ Regenerate old artifacts after changes to the generated-data contract. The
 reader's stale-artifact diagnostic supplies the required rebuild guidance;
 clients must not depend on the value of the internal schema marker.
 
-Custom registration calls to `Environment.contribute` return `Option Node`:
-`some` is the accepted node; `none` means diagnostics were logged and the
-registration was rejected. Combine dependent changes into one `NodeContribution`;
-discard the result only when no following operation depends on acceptance.
-External references on either facet and priority require
-`Environment.contributeRecord record payload`, with a stable producer identity.
-The record exclusively owns its label, priority, and associations.
-`NodeContribution` contains only body, dependency, metadata, and literate-code
-inputs; selected facts cannot be supplied through that payload type.
-`Record.references` carries statement associations; `Record.proofReferences`
-carries proof associations. Both are normal associations for membership and status,
-and both are supplied only through the identified record.
-Directive expanders use `Environment.withDirective` for scoped error recovery
-and atomic Blueprint-state updates. The unscoped push/pop API and attachment helpers that discarded rejection are
-removed. Standalone code and markup expanders must emit no semantic occurrence
-when registration fails. Required source identities must be checked before
-committing a contribution.
-`Node.externalRefs` and `Node.proofExternalRefs` retain the statement and proof
-facet snapshots; both contribute to the node. `Node.leanDecls` and accepted
-declaration indexing include both facets and literate declarations.
-`Node.associatedExternalRefs` and `Node.summaryExternalRefs` in
-`VersoBlueprint.Data` deduplicate canonical declarations and merge their status
-evidence conservatively. The same merge preserves evidence when repeated
-contributions occur on one facet. Rendering uses the original facet snapshots
-to retain the location of each annotation.
-`Node.summaryLiterateCodes` and `BlockCodeData.summaryLiterateDeclarations`
-prefer one inline display entry while retaining status evidence from every
-association of that canonical declaration, including external proof annotations.
-`NodeContribution.literateCodes : Array Code` supplies literate blocks. Migrate
-external groups and priority from the former mixed payload to `Record.references`,
-`Record.proofReferences`, and `Record.priority`. The mixed `CodeRef` type and
-`Record.toNodeContribution` adapter have been removed. Directive configuration
-and in-progress directives carry `externalRefs` directly.
+### Keyed source and realization data
+
+`Informal.Data.NodeInventory` is the compiled node information for one Blueprint
+label: the checked assembly of every registration, with its module provenance
+(`origin`, `modules`). It stores keyed `sources`, scoped `uses`, and typed
+`nativeAssociations`; it no longer stores a fixed statement/proof body or fixed
+external-reference arrays. The persisted input is the label's
+`Environment.NodeRegistrations`; the inventory is rebuilt from it on import and is
+read with `Environment.getNodeInventory?`.
+Use `NodeInventory.proseView realization role`, `usesOn role`,
+`nativeRefsOn placement`, and the other `NodeInventory` helpers for display. These
+are derived views and must not be written back as semantic input: they
+intentionally omit some destination and scope information retained by the keyed
+arrays.
+
+Custom source producers submit an `Informal.SourceData.Registration` through
+`Informal.Environment.contribute`. The registration extends the shared node
+metadata and carries `SourceData.SourceSelection` values with a
+`SourceDestination` (realization and role), language/project context, document
+identity, source location, and typed payload. Prose, text and markup sources
+state their role, such as `statement`, `proof` or `implementation`; Rust code
+blocks are `implementation`. Compiled Lean payloads state no role
+(`role := none`): capture derives each declaration's roles from its checked
+classification. Each use also carries its role, the statement's or the proof's
+dependency, and an optional realization scope. A missing scope means a
+concept-level prerequisite, not an unknown or default realization.
+
+A `SourceData.NativeAssociation` attaches a compiled declaration to a node. Its
+`placement`, such as `statement` or `proof`, only says where the declaration is
+presented. The declaration's roles come from its checked classification: a
+theorem contributes both a statement and a proof, a definition an
+implementation, and a proposition definition a statement, wherever it is placed.
+Only a declaration that cannot be classified falls back to its placement, so it
+stays visible where its author put it.
+
+Identified records in `Informal.Contributions.Record` carry native declaration
+associations and priority. Call `Environment.contributeRecord` when supplying
+those selected facts; its producer-site identity must be stable across import
+replay. Ordinary directives and attributes already use the same environment
+admission path. A registration/import candidate is committed as a unit;
+capture rejects structural conflicts instead of returning a partial registry.
+
+Use `Informal.Realizations.Capture.capture` for consumer validation rather than
+assembling a `Registry` from display data. Capture gathers the ordinary source
+inventory and explicit authoring records, checks current Lean inputs, admits the
+complete model, and returns one snapshot for graph, summary, headings, and CLI
+queries. Pure `Validation`/`Translations` APIs can evaluate supplied contracts
+and observations, but a supplied `passed` observation is not authenticated or
+rechecked by those pure functions. Use the native capture/provider path when a
+real Lean check is required. See [Lean completeness and realization
+assessment](#lean-completeness-evidence) for the public query contract.
+
+`Commands.CoverageSplit` uses `nativeCompleteRequirementsPending` and
+`requirementsComplete`, replacing `formalizedWithoutAncestors` and `fullyClosed`.
+`requirementsComplete` counts entries whose generated native checks and selected
+Blueprint prerequisites pass. `nativeCompleteRequirementsPending` counts entries
+whose local native checks pass while a selected prerequisite is unfinished.
+Independent expected propositions and reviews have their own detailed results.
+
+`NodeAssessment.selectedLeanUseCount` counts the uses selected for that ordinary
+Lean realization in its exact context, including unresolved target selections.
+Each use requires all of its target's ordinary Lean declarations; its axis picks
+a theorem's statement or proof check (see the
+[dependency rule](MANUAL.md#dependency-graph)).
+Its dependency-completion booleans assess that same subset. A zero count means
+no Lean prerequisites were selected, not that some prerequisites were checked
+successfully. `details.uses` retains the full edge inventory, including other
+realizations and contexts; it replaces the misleading `details.selectedUses`
+name. Widgets and code headings share `NodeAssessment.leanDependencyMessage`
+instead of inferring the selected subset from the JSON inventory.
+
+Node labels are stable global concept identifiers within the Blueprint.
+Realization keys are node-scoped selectors for current representations, with no
+cross-revision stability guarantee. Agent workflows should retain the node label
+and query its current realizations; persisted evidence must still match current
+content and requirements.
+
+Ordinary capture validates public labels before returning a snapshot: labels must
+be nonempty, round-trip through Lean name JSON, and have distinct readable CLI
+spellings. The same check includes unresolved dependency targets and parent group
+names (groups have their own namespace). For example, a simple string label
+`"A.b"` and the hierarchical Lean name `A.b` are individually supported but cannot
+identify different nodes in one capture because both query as `A.b`. Choose
+explicit distinct labels to resolve the diagnostic. Pure registries can still
+represent arbitrary typed names; they are not a bypass for public capture checks.
+
+Report JSON is an inspection projection, not a lossless import format for arbitrary
+Lean `Name` values: name fields retain Lean's display encoding. Internal admission,
+producer identities, and content bindings use structural identities instead.
+
+Native expected-goal results expose `Goal.fingerprint`, an opaque structural
+identity scoped by its context. This replaces `Goal.proposition`; it is not
+readable proposition text, and comparing fingerprints does not perform Lean
+conversion checking. The native provider still checks the independently authored
+expectation and witness using definitional equality and the kernel.
+
+Realizations have explicit roles and owned source selections. A Lean theorem can
+supply separate statement and proof realizations from one declaration: the
+statement selects its proposition, while the proof selects its implementation.
+Translation endpoints name realizations directly; they do not select semantic
+facets. Rewriting proof content does not change a statement binding when the
+selected statement and its interpretation stay unchanged. A proof required only
+as a completion prerequisite remains a separate gate and is not implicitly added
+to the reviewed content. Native completeness is still checked against the
+current source.
+
+Each review obligation names its criterion and required reviewer. A
+`ReviewSelection` explicitly selects its current judgment, or selects none;
+stale, missing, rejected or unsuitable selected judgments do not fall back to an
+older approval. Requirement bindings include the selected subject/content and
+its local contract, while evidence and review-selection state affect eligibility
+and completion rather than the binding. The `vbp-binding-sha256-v3` encoding
+makes older bindings stale; recapture and reassess affected judgments. See the
+[bindings and prerequisites](design/REALIZATIONS_AND_TRANSLATIONS.md#bindings-and-prerequisites)
+for source identity and migration limits.
+
+`NativeLean.SemanticContext` takes `ContentScope`, project and roots. Create it
+with `NativeLean.newSemanticContext` within one immutable checked environment;
+reuse it sequentially within that capture only. `NativeLean.Checked` and
+`NativeSource.Prepared` expose implementation `semanticContext` and
+`statementContext` descriptors separately. These opaque descriptors are freshness
+inputs, never proof certificates. Ordinary consumers should use capture rather
+than assemble provider descriptors themselves.
+
+Standalone source adapters can use `NativeSource.prepare` for checked declaration
+identity and `NativeSource.prepareDocumented` for the declaration's own comment.
+Ordinary graph and query consumers use `Capture.capture` for admitted models and
+validation evidence.
+
+Capture resolves native declarations, including inline Lean code and named
+specifications, from the checked environment. Direct documentation comes from
+Lean's compiled metadata. Markdown binds the stored string and Verso binds a
+tagged encoding of its elaborated structure and supported extension payloads.
+An unsupported extension produces `unsupported-docstring-extension` and
+leaves the declaration's native checks available. Rebuild the owner to update
+any of these inputs.
+
+Verso registration copies the authored prose or fence body during elaboration.
+Directive headers and options are separate from the prose selection. Inline
+Lean registrations carry the typed module that compiled their declarations.
+The `DocumentKey` encodes the module name losslessly and identifies the selection.
+Source links and physical paths are presentation metadata. Only `AuthoredBatch.sources`
+uses the document reader. Those keys must have project-relative paths to
+external non-Lean files. Reviews over migrated selections may need to be
+recaptured and reassessed.
 
 During Manual traversal, Blueprint records preview identities, rendered bodies, Lean-code
 associations, citations, graph data, and external-markup witnesses in traversal
@@ -488,6 +599,9 @@ Persisted or externally supplied manifest/cache pairs enter maintainer audits
 as `PreviewManifest.PersistedFiles`, not as emission-ready `Files`. Parsing each
 file cannot by itself establish their cross-artifact reference invariants;
 `vbp check` reports violations without repairing or promoting the decoded pair.
+Preview keys must be unique within each file: repeated manifest preview keys or
+HTML cache entry keys are audit errors, even when their payloads agree. Matching
+keys across the two files are expected and are not duplicates.
 A cache key with an empty or whitespace-only body is unavailable and receives an
 audit diagnostic even if nothing references it. Blank detection agrees with the
 browser's `String.trim()` contract, including Unicode whitespace.
@@ -618,22 +732,27 @@ scraping rendered HTML.
 
 Lean-side clients that need common manifest queries should use the helper
 methods on `Informal.PreviewManifest.File` rather than reimplementing filters:
-`queryableStatementEntries`, `findQueryableEntriesByLabel`,
+`nodeEntries`, `findQueryableEntriesByLabel`,
 `findPrimaryQueryableEntry?`, `blockStatementEntries`,
 `findBlockEntriesByLabel`, `findPrimaryBlockEntry?`, `sourceDocument?`,
 `entriesWithSource`, `entriesForSourceDocument`, `ownerValues`, `tagValues`,
-`metadataEntries`, `actionableGraphNode?`, and `workQueueItems`.
-`metadataEntries` selects nodes with owner, tag, priority, or effort metadata.
-`workQueueItems` pairs each selected entry with its actionable graph node and
-next step (`"statement"` or `"proof"`).
-`actionableGraphNode?` performs the corresponding lookup for one label.
-Finalized graph data is the generated planning source of truth: these helpers do
-not infer readiness from tags or other entry metadata, and return no work-queue
-item when no matching graph node is present. Use the queryable helpers for the
+and `workQueueItems`.
+The manifest stores one `nodes` row per included Blueprint label. Its `assessment`
+carries the captured validation. When the label has a display resource,
+`primaryKey` identifies it. For a bodyless occurrence, `primaryKey` is null
+and `bodyless` supplies the occurrence metadata and canonical link. The node
+still participates in status, counts and the work queue.
+The internal manifest schema is version 16. Rebuild generated sites to migrate.
+The `metadata` query selects nodes with owner, tag, priority, or effort metadata.
+`workQueueItems` reports the next actionable statement or proof step from each
+node's assessment. A graph-free chapter has the same work queue as one that
+displays those nodes in a graph. Additional markup previews do not increase
+node counts. Use the queryable helpers for the
 same node selection as `lake exe vbp query`; use the block-only helpers when a
 consumer explicitly needs rendered block entries and should exclude
-source-backed bodyless external-markup nodes. Entry-level helpers
-`Entry.hasSourceDocument`, `Entry.matchesText`, and `Entry.matchesCode` provide
+source-backed bodyless external-markup nodes. Entry- and node-level helpers
+`Entry.hasSourceDocument`, `NodeOccurrenceMetadata.matchesText`, and
+`Entry.matchesCode` provide
 the same source filtering and search predicates used by the `lake exe vbp query`
 interface.
 
@@ -647,8 +766,11 @@ def primaryNodeTitle?
 
 def workQueueNextSteps
     (manifest : Informal.PreviewManifest.File) : Array (String × String) :=
+  let index := manifest.index
   manifest.workQueueItems.map fun item =>
-    (item.entry.authoredLabel, item.nextStep)
+    let label := (index.nodeMetadata? item.node).map (·.authoredLabel)
+      |>.getD (Informal.PreviewManifest.labelString item.node.label)
+    (label, item.nextStep)
 ```
 
 Generator-side Lean callers can configure source-backed external-markup cache
@@ -685,10 +807,9 @@ Group membership is normalized: an informal block or source-backed
 external-markup entry's optional `parent` names one record in the manifest's
 top-level `groups` array. Each group stores its traversal-ordered statement
 members once. Group labels are unique, each member label belongs to at most one
-group, and participating manifest entries must agree with the catalog on group
-ownership and `parentTitle`. A member with a preview key must join to a matching
-block or external-markup entry. A member without a preview key may stand on its
-group metadata alone, for example when rendering its body produced no content.
+group, and participating manifest entries and bodyless node rows must agree with the catalog on group
+ownership and `parentTitle`. Every group member joins either a matching
+block/external-markup preview entry or a `nodes[*].bodyless` row.
 Both `vbp check` and the browser manifest loader enforce these joins and reject
 conflicting ownership, duplicate membership, and broken preview references. Browser clients can join these records
 with `loadGroup(entry.parent)` or enumerate them with `loadGroups()`; Lean
@@ -728,10 +849,10 @@ contains no derived edge, child, or DOT-variant caches:
 ```lean
 import VersoBlueprint.Graph
 
-def semanticGraph (state : Informal.Environment.State) :
+def semanticGraph (snapshot : Informal.Realizations.Capture.Snapshot) :
     Informal.Graph.GraphModel :=
-  let roots := state.data.toArray.map (·.1)
-  Informal.Graph.buildModel state roots
+  let roots := snapshot.registry.nodes.map (·.label)
+  Informal.Graph.buildModel snapshot roots
 ```
 
 `GraphModel` has one topology representation: each node's `statementUses`,
@@ -817,15 +938,27 @@ Generated `blueprint-manifest.json` includes a `graphs` array. Each entry
 contains `schemaVersion`, `nodes`, `edges`, `groups`, and `variants`, with
 status enums, dependency axes, preview keys, hrefs when traversal resolved
 them, and visual metadata for renderers that want Blueprint's default styling.
-Graph schema version 3 identifies records produced under the private-constructor
-topology contract. It retains version 2's string-or-`null` node `previewKey`
-shape, but is semantically incompatible because version 2 did not guarantee
-that edges, group children, and variants agreed with authoritative nodes.
+Graph schema version 8 exports the full legend and, when applicable, the group
+legend in `legends`. A client-created graph uses the same legend as the site.
+The visual fields `gradientangle` and `tooltip` may be omitted. The schema retains the private-constructor topology contract and adds
+`assessment` plus `actionableStage` to every node. An unresolved endpoint has
+`assessment: null`, `actionableStage: null`, and both statuses `unassessed`.
+Each captured assessment includes `proofRoleComplete` for mathematical proofs (or
+`null` when there is no selected proof role). A true result requires a native contract
+for every selected declaration and passing local proof checks. A formalized graph
+proof status also requires all selected native bodies to pass, including computational
+implementations. The graph requires `hasNativeBodyRequirement` on each captured
+assessment to distinguish a pending native body check from a statement-only
+declaration. A captured node exposes local native statement and body checks, the
+combined result of generated native checks and selected prerequisites, and the
+exact assessment details. A node with no ordinary native declarations is
+unassessed on the native tracks. An associated theorem with an unfinished proof
+is `incomplete` even when `actionableStage` is `"proof"`.
 Regenerate generated Blueprint output when adopting this revision; there is no
-version-2 compatibility path.
+older-schema compatibility path.
 
 Generated `edges` and group `children` are guaranteed projections of the
-authoritative node fields. The browser API recognizes version-3 records with
+authoritative node fields. The browser API recognizes version-8 records with valid node assessments/actionable stages and matching status projections,
 all top-level collections and a valid render-variant contract: `full` is first,
 variant keys are unique, and select/hover mappings target variants in the same
 record. It deliberately does not repeat Lean's graph finalization work. Lean's
@@ -1054,10 +1187,9 @@ def renderAuditNode
 
 Use `PreviewManifest.File.findEntry?` and
 `PreviewManifest.HtmlCache.File.findHtml?` when you need direct lookup. For
-client-facing node lists, prefer
-`PreviewManifest.File.queryableStatementEntries` and
-`findPrimaryQueryableEntry?` so label/facet selection matches the generated
-`vbp` query API, including source-backed bodyless external-markup nodes. Code
+client-facing node lists, use `PreviewManifest.File.nodes` or `vbp query labels`.
+`nodeEntries` and `findPrimaryQueryableEntry?` select existing display resources.
+A bodyless occurrence has a node row even when it supplies no preview resource. Code
 panels can reuse `HtmlCache.File.codeHtmlBodies`.
 
 `renderNodeFromManifestCache` has three diagnostic branches that custom
@@ -1386,10 +1518,11 @@ if (result.ok) {
 }
 ```
 
-Use `resolveLabel` when the client starts from a Blueprint block label rather
-than a manifest key. It resolves only block entries, defaults to the statement
-facet, and returns both the generated-page `href` and the manifest
-`sourceLocation` result:
+Use `resolveLabel` to start from a Blueprint label. With an explicit facet it
+looks up that block entry. With no facet it uses the generated default preview
+when available and falls back to block metadata when there is no renderable
+preview. The result includes the generated-page `href` and the manifest
+`sourceLocation`.
 
 ```javascript
 import { createPreview } from "../-verso-data/api/preview.mjs";
@@ -1431,11 +1564,11 @@ if (result.ok) {
 ```
 
 Use `renderNode` when the client starts from a Blueprint label and wants a
-generated Blueprint node. If native rendered content is available, VBP inserts
-the regular generated node shell. If only external markup is available, VBP
-still owns that shell: heading, relation chips, metadata, anchors, and
-hydration. The call-scoped renderer receives only the node's content slot as
-its target. The renderer is not registered globally.
+generated Blueprint node. Omit the facet to use the site's prepared default
+preview. Specify `facet: "statement"` or `facet: "proof"` to request that
+native facet directly. VBP inserts the generated shell for native content or
+prepared external markup. Call-scoped external-markup renderers receive the
+node's content slot as their target.
 
 The ownership boundary is strict:
 
@@ -1562,13 +1695,13 @@ signature and type reference.
 | `api.previewApiModuleUrl()` | Resolve the generated ESM preview/render API module URL for dynamic imports from custom clients. |
 | `api.graphApiModuleUrl()` | Resolve the generated ESM graph API module URL for dynamic imports from custom clients. Use this instead of hard-coding a relative `-verso-data/api/graph.mjs` path when code may run from `html-multi/`, `html-single/`, slides, or embedded contexts. |
 | `api.previewKey(label, facet)` / `api.statementPreviewKey(label)` | Build normalized preview keys for custom render targets. |
-| `api.resolveLabel(label, options)` | Resolve a Blueprint block label and optional `{ facet }`, returning `{ ok, label, facet, key, reason, manifestEntry, href, sourceLocation }`. |
+| `api.resolveLabel(label, options)` | Resolve a Blueprint label through the prepared default or an explicit `{ facet }`, returning `{ ok, label, facet, key, reason, manifestEntry, href, sourceLocation }`. |
 | `api.resolveDeclaration(declName, options)` | Resolve a declaration-keyed Lean preview entry from a Lean declaration name, returning `{ ok, declaration, key, reason, manifestEntry, href, sourceLocation }`. Inline code previews are keyed by their source code-block identity and should be loaded through the explicit key in `leanCodePreviewKeys`. |
 | `api.resolvePreview(key, options)` | Resolve manifest data and a rendered body fragment together, returning `{ ok, key, reason, manifestEntry, htmlCacheEntry, html, diagnosticHtml }`. |
 | `api.renderPreviewInto(element, key, options)` | Write the rendered body fragment or diagnostic HTML into `element`, then hydrate nested previews and math. Render options may set `hydrators`, `inheritPageHydrators`, `templateBinder`, `hydrate: false`, or `renderMath: false`. |
 | `api.resolveCanonicalPreview(key, options)` | Resolve the same data as `resolvePreview`, then load the generated page named by `manifestEntry.href` and return `canonicalHtml` plus `canonicalSourceHref` for the real Blueprint node wrapper. |
 | `api.renderCanonicalPreviewInto(element, key, options)` | Write the canonical Blueprint node wrapper or diagnostic HTML into `element`, then hydrate nested previews and math. It accepts the same hydration options as `renderPreviewInto`. |
-| `api.renderNode(element, request, options)` | Render by label as a generated Blueprint node: native content uses the canonical generated shell, and external markup uses the same shell with a call-scoped TeX/Markdown body renderer from `request.externalMarkup` or `request.preferredExternalMarkup`. It accepts the same hydration options as `renderPreviewInto`. |
+| `api.renderNode(element, request, options)` | Render a generated Blueprint node by label using the prepared default or an explicit facet. For external markup it can use a prepared fragment or a call-scoped TeX/Markdown renderer from `request.externalMarkup` or `request.preferredExternalMarkup`. It accepts the same hydration options as `renderPreviewInto`. |
 | `api.resolveSourceMetadata(source, options)` | Resolve source provenance for a preview key, manifest entry, or render result. It joins `entry.sources` with declared source documents and returns `{ ok, key, manifestEntry, sources }`. |
 | `api.hydrate(element, options)` | Hydrate custom wrappers that inserted cached rendered fragments themselves. It accepts the same hydration options as `renderPreviewInto`. |
 
@@ -1816,16 +1949,49 @@ This shares no negative cache across environments. External directive snapshots
 use this batch entrypoint, and snapshots preserve authored expected kinds when
 import visibility hides the original declaration kind.
 
-`VersoBlueprint.CodeHealth` provides the common `Informal.Graph.CodeHealth`
-projection used by graph status, heading UI, and CLI completeness. Its builder
-merges captured observations by canonical declaration name before counting;
-selecting an inline display cannot erase an external blocker. Facet rows retain
-their separate provenance. `codeHealthOfBlockSources` combines selected facets;
-`localStatementFormalized`, `localProofFormalized`, and `verdict` are the shared
-completion policy. An empty projection is unassociated and blocks both tracks.
-`presentDecls` and `hasAssociatedCode` are derived. Lean callers of the old axis
-and proof counters should use semantic completion/evidence predicates instead;
-`statementBlocked` and `anyGapCount` describe policy and present incompleteness.
+`Informal.Realizations.Capture.capture` collects ordinary accepted source registrations,
+checks their native declarations, admits the full candidate, and binds fresh
+observations to that same snapshot. It returns an admitted registry, selected
+uses and diagnostics; structural/import conflicts reject the whole capture.
+`Snapshot.assessmentFor` projects the existing evaluator for public consumers.
+Source/provider errors in `Snapshot.sourceDiagnostics` retain typed node or
+document associations; their human-readable subjects can name a transitive
+dependency. `Snapshot.diagnostics` is the aggregate view, including unused
+authored-document errors. Node assessments select errors by the originating
+node or complete document identity (language, project and path), never by
+matching diagnostic text. These diagnostics do not change completion policy.
+For bounded performance diagnosis, `set_option trace.blueprint.capture.semantic true`
+reports each semantic request's roots, content scope, elapsed time, raw heartbeat delta and
+committed cache sizes, with progress after the first and every 1,024 collected
+declarations. Progress counts are temporary work, not published evidence.
+Raw heartbeats use Lean's internal units (1,000 per user-facing heartbeat).
+This trace is independently opt-in; `trace.blueprint.capture` alone does not
+enable it. Tracing changes neither the budget nor rollback behavior.
+Observation converts ordinary exceptions to `capture-failed` diagnostics;
+Lean resource exceptions (including heartbeat exhaustion) and interrupts escape
+without returning partial observations. Its scope restores the environment,
+metavariables and info state on every exit, retaining traces for diagnosis.
+Providers share the caller's budget; observation does not reset it per request.
+The standard `BlueprintDocument` capture reuses this assessment for graph,
+summary, headings and manifest queries. Declaration-panel counts describe
+the available native declaration snapshots.
+
+Native validity, independently authored expected propositions and prose
+correspondence are separate contracts. `hasNativeBodyRequirement` records whether a
+proof or computational implementation check applies to any selected native
+declaration. A proposition definition can pass its statement check with both
+`hasNativeBodyRequirement` and `nativeBodyComplete` false. If a node has a checked
+mathematical proof and an unfinished computational body, `proofRoleComplete` is
+true and `nativeBodyComplete` is false.
+`requiredComplete` summarizes the generated native checks for the ordinary Lean
+realizations and their selected Blueprint prerequisites. `nativeBodyComplete`
+can be true while `requiredComplete` is false because a selected prerequisite is
+unfinished. Independent expected propositions and correspondence reviews have
+their own labeled results in `details.assessment`. `details` exposes actual subjects,
+requirements, observations and per-edge diagnostics without raw source or content
+bindings. Graph colors summarize the native track; use the explicit assessment
+for claims about other contracts. Source-only producer previews are uncaptured
+and cannot infer completion from retained declaration snapshots.
 
 Use `status.isProved` or completion predicates for decisions; use `hasKnownSorry`
 and `hasUnverifiedCoverage` to distinguish observed holes from uncertainty.
@@ -1838,23 +2004,35 @@ both known holes and verification gaps. Each gap includes its `location`,
 `declaration`, and `reason`. Direct/inherited/unknown origins and optional source
 counts stay in the known-sorry evidence.
 
-`lake exe vbp query status <label>` reads all statement and proof facet
-associations, including external and inline declarations. It returns that
-per-declaration evidence with facet provenance, aggregate `verdict` and
-`complete`, and separate `statementComplete` and `proofComplete` booleans.
-No declarations yields `unassociated` with all completion booleans false.
-`asOf: "generated-snapshot"` means the answer describes the last generation;
-query does not recheck sources. Build current sources before treating the result
-as current truth. `vbp check` validates persisted artifact consistency and does
-not certify freshness or a hole-free proof. Graph colors and work queues are
-planning projections; use declaration evidence for a completeness claim.
+`lake exe vbp query status <label>` returns `validation` separately from
+`sourceDeclarationSnapshots`. `validation.captured` distinguishes a captured
+assessment from unavailable validation. Captured data includes
+`hasNativeDeclarations`, `nativeStatementComplete`, `hasNativeBodyRequirement`,
+`nativeBodyComplete`, `proofRoleComplete`,
+`requiredComplete`, `statementDependenciesComplete`, `proofDependenciesComplete`
+and `details`. `validation.externalDeclarationChecks` reports each external declaration’s current
+check beside its facet and canonical name. It replaces the former aggregate `verdict`, `complete`,
+`statementComplete`, `proofComplete` and `declarations` fields.
+`asOf: "captured-build"` means the answer describes the last generation;
+`"uncaptured"` means no assessment was supplied. Query does not recheck sources.
+Rebuild current sources before treating a persisted capture as current.
+`vbp check` validates artifact consistency, not freshness or a hole-free proof.
+Browser clients should consume the graph's exported `actionableStage` rather
+than reconstructing readiness from status colors.
 
 Generated data clients can use `resolveLabel(label, { facet: "statement" })`
 and `resolveLabel(label, { facet: "proof" })` from `api/data.mjs`, or `loadManifest`,
-to read each entry's `codeData`. External associations carry `provedStatus` in
-`externalDecls`; inline facts carry it in
+to read each entry's `codeData`. `resolveLabel` matches either canonical `label`
+or `authoredLabel`, and `{ facet: "statement" }` falls back to a statement-facet
+`externalMarkup` entry when no block statement entry exists. An ordinary external directive has `provedStatus: null` in
+`externalDecls` while awaiting capture. The registration inventory persists across
+imports. `externalChecks` contains pairs of canonical names and statuses from
+the current capture. A null result in one of these pairs means the declaration
+could not be checked. Eager producers can supply a registration-time status.
+Inline facts carry their status in
 `literateDeclarations.definedDefs` and `definedTheorems`. Missing external
-references (`present: false`) block completion. A declaration-keyed preview or
+references (`present: false`) are visible in this display inventory. The captured
+assessment is completion authority. A declaration-keyed preview or
 a missing facet is not an aggregate completeness certificate. `readManifestStatus`
 and `readHtmlCacheStatus` report loading state, not Lean proof status.
 
@@ -1863,6 +2041,5 @@ Source counts are obtained only after semantic analysis using
 
 The status payload migrated from `containsSorry: [...]` to
 `incomplete: { knownSorry: [...], unverified: [...] }`; defaults are conservative.
-The internal manifest marker is now 11; the CLI rejects older generations.
 Regenerate persisted artifacts and handle both evidence arrays. The generated
 manifest schema validates the nested axes, origins, and verification reasons.

@@ -31,8 +31,8 @@ private unsafe def withProvider (importAll : Bool) (action : CoreM Bool)
 private def statusOf (name : Name) : CoreM ProvedStatus := do
   analyzeDeclaration name
 
-/-- Evidence attribution is independent of coverage; completion controls below
-check verification explicitly for each visibility boundary. -/
+/-- This suite checks native-provider evidence and visibility-boundary facts.
+Public Blueprint completion is covered by capture-backed consumer tests. -/
 private def checkSorryEvidence (cases : Array (Name × Array SorryInfo)) : CoreM Bool := do
   for (name, expected) in cases do
     let actual ← statusOf name
@@ -49,21 +49,16 @@ private def unlocalized : SorryInfo := { location := .unknown, origin := .unknow
 -- Blueprint itself is still a legacy module. Run its actual classifier in an
 -- environment imported at the ordinary module-system visibility level, rather
 -- than accidentally testing the legacy import-all view of Provider.
-/-- info: true -/
-#guard_msgs in
-#eval
-  withProvider false do
-    let status ← statusOf `sorryImportTypeOnly
-    return status.sorryEvidence == #[statementDependency, unlocalized] && status.hasUnverifiedCoverage &&
-      status.isIncomplete && status.hasTypeGap && !status.hasProofGap &&
-      !status.containsExplicitSorry && status.hasUnlocalizedSorry
+private def ordinaryTypeOnlyControl : CoreM Bool := do
+  let status ← statusOf `sorryImportTypeOnly
+  return status.sorryEvidence == #[statementDependency, unlocalized] && status.hasUnverifiedCoverage &&
+    status.isIncomplete && status.hasTypeGap && !status.hasProofGap &&
+    !status.containsExplicitSorry && status.hasUnlocalizedSorry
 
 -- Hidden bodies prove no local source hole. A clean type can isolate the gap
 -- to the proof, but the origin of that gap remains unknown.
-/-- info: true -/
-#guard_msgs in
-#eval
-  withProvider false <| checkSorryEvidence #[
+private def ordinaryEvidenceControl : CoreM Bool :=
+  checkSorryEvidence #[
     (`sorryImportComplete, #[]),
     (`sorryImportCompleteDef, #[]),
     (`sorryImportAdmitted, #[proofUnknown]),
@@ -92,10 +87,8 @@ private def unlocalized : SorryInfo := { location := .unknown, origin := .unknow
 
 -- Import-all exposes evidence that an ordinary import cannot justify. In
 -- particular, the complete type-only proof stays free of proof-side evidence.
-/-- info: true -/
-#guard_msgs in
-#eval
-  withProvider true <| checkSorryEvidence #[
+private def importAllEvidenceControl : CoreM Bool :=
+  checkSorryEvidence #[
     (`sorryImportComplete, #[]),
     (`sorryImportCompleteDef, #[]),
     (`sorryImportAdmitted, #[proofDirect]),
@@ -118,129 +111,135 @@ private def unlocalized : SorryInfo := { location := .unknown, origin := .unknow
 
 -- Cached absence cannot authorize completion of hidden declarations, whether
 -- the hidden proof is actually complete or hides an omitted constructor hole.
-/-- info: true -/
-#guard_msgs in
-#eval
-  withProvider false do
-    for name in #[`sorryImportComplete, `sorryImportCompleteDef,
-        `sorryImportOpaqueComplete, `sorryImportNestedCompleteHypothesis,
-        `sorryImportHiddenHelper] do
-      let status ← statusOf name
-      unless status.isIncomplete && status.hasUnverifiedCoverage &&
-          !status.containsExplicitSorry do return false
-    let helper ← statusOf `sorryImportExposedHiddenHelper
-    unless (← statusOf `sorryImportAxiom).isAxiomLike do return false
-    for name in #[`sorryImportExposedComplete, `SorryImportCompleteRecord,
-        `SorryImportCompleteRecord.mk, `SorryImportNestedCompleteRecord, ``Quot] do
-      unless (← statusOf name).isProved do
-        throwError "Visible complete control remained unverified: {name}"
-    let cached ← collectAxioms `sorryImportHiddenHelper
-    let exposedCached ← collectAxioms `sorryImportExposedHiddenHelper
-    return cached.isEmpty && exposedCached.isEmpty &&
-      !helper.isProved && helper.hasUnverifiedCoverage
+private def hiddenBodyCoverageControl : CoreM Bool := do
+  for name in #[`sorryImportComplete, `sorryImportCompleteDef,
+      `sorryImportOpaqueComplete, `sorryImportNestedCompleteHypothesis,
+      `sorryImportHiddenHelper] do
+    let status ← statusOf name
+    unless status.isIncomplete && status.hasUnverifiedCoverage &&
+        !status.containsExplicitSorry do return false
+  let helper ← statusOf `sorryImportExposedHiddenHelper
+  unless (← statusOf `sorryImportAxiom).isAxiomLike do return false
+  for name in #[`sorryImportExposedComplete, `SorryImportCompleteRecord,
+      `SorryImportCompleteRecord.mk, `SorryImportNestedCompleteRecord, ``Quot] do
+    unless (← statusOf name).isProved do
+      throwError "Visible complete control remained unverified: {name}"
+  let cached ← collectAxioms `sorryImportHiddenHelper
+  let exposedCached ← collectAxioms `sorryImportExposedHiddenHelper
+  return cached.isEmpty && exposedCached.isEmpty &&
+    !helper.isProved && helper.hasUnverifiedCoverage
 
 -- Batching retains independent evidence, hidden-body coverage, and authored
 -- theorem kind when ordinary import visibility presents a public axiom view.
-/-- info: true -/
-#guard_msgs in
-#eval
-  withProvider false do
-    let names := #[`sorryImportExposedComplete, `sorryImportComplete,
-      `sorryImportAdmitted, `sorryImportAxiom]
-    let statuses ← analyzeDeclarations names
-    let individual ← names.mapM statusOf
-    let refs ← externalRefSnapshotsAtCurrentDir {} <| names.map fun name =>
-      { (ExternalRef.ofName name) with kind := .theorem }
-    return statuses == individual && statuses[0]!.isProved &&
-      statuses[1]!.isUnverified && statuses[2]!.hasKnownSorry &&
-      statuses[3]!.isAxiomLike && refs.map (·.provedStatus) == statuses &&
-      refs[1]!.kind == .theorem && refs[2]!.kind == .theorem
+private def batchingAndKindControl : CoreM Bool := do
+  let names := #[`sorryImportExposedComplete, `sorryImportComplete,
+    `sorryImportAdmitted, `sorryImportAxiom]
+  let statuses ← analyzeDeclarations names
+  let individual ← names.mapM statusOf
+  let refs ← registerExternalRefsAtCurrentDir {} <| names.map fun name =>
+    { (ExternalRef.ofName name) with kind := .theorem }
+  return statuses == individual && statuses[0]!.isProved &&
+    statuses[1]!.isUnverified && statuses[2]!.hasKnownSorry &&
+    statuses[3]!.isAxiomLike && refs.all (fun ref => ref.present && ref.provedStatus.isNone) &&
+    refs[1]!.kind == .theorem && refs[2]!.kind == .theorem
 
 -- Independently inspecting actual bodies resolves both clean and omitted-hole
 -- cases. Import-all must verify complete controls, not merely lack evidence.
-/-- info: true -/
-#guard_msgs in
-#eval
-  withProvider true do
-    unless (← statusOf `sorryImportAxiom).isAxiomLike do return false
-    let batch ← analyzeDeclarations #[`sorryImportComplete, `sorryImportCompleteDef,
-      `sorryImportAxiom]
-    unless batch.size == 3 && batch[0]!.isProved && batch[1]!.isProved &&
-        batch[2]!.isAxiomLike do return false
-    for name in #[`sorryImportComplete, `sorryImportCompleteDef,
-        `sorryImportOpaqueComplete, `sorryImportStandardAxioms,
-        `SorryImportCompleteRecord, `SorryImportNestedCompleteRecord,
-        `sorryImportNestedCompleteHypothesis] do
-      unless (← statusOf name).isProved do
-        throwError "Complete control remained unverified: {name}"
-    let helper ← statusOf `sorryImportHiddenHelper
-    let exposed ← statusOf `sorryImportExposedHiddenHelper
-    return helper.dependsOnSorry && helper.hasProofGap && !helper.isProved &&
-      exposed.dependsOnSorry && !exposed.isProved
+private def importAllBodyCoverageControl : CoreM Bool := do
+  unless (← statusOf `sorryImportAxiom).isAxiomLike do return false
+  let batch ← analyzeDeclarations #[`sorryImportComplete, `sorryImportCompleteDef,
+    `sorryImportAxiom]
+  unless batch.size == 3 && batch[0]!.isProved && batch[1]!.isProved &&
+      batch[2]!.isAxiomLike do return false
+  for name in #[`sorryImportComplete, `sorryImportCompleteDef,
+      `sorryImportOpaqueComplete, `sorryImportStandardAxioms,
+      `SorryImportCompleteRecord, `SorryImportNestedCompleteRecord,
+      `sorryImportNestedCompleteHypothesis] do
+    unless (← statusOf name).isProved do
+      throwError "Complete control remained unverified: {name}"
+  let helper ← statusOf `sorryImportHiddenHelper
+  let exposed ← statusOf `sorryImportExposedHiddenHelper
+  return helper.dependsOnSorry && helper.hasProofGap && !helper.isProved &&
+    exposed.dependsOnSorry && !exposed.isProved
 
-/-- info: true -/
-#guard_msgs in
-#eval
-  withProvider false do
-    let ref ← externalRefSnapshotAtCurrentDir {} {
-      (ExternalRef.ofName `sorryImportTypeOnly) with kind := .theorem }
-    let proofRef ← externalRefSnapshotAtCurrentDir {} {
-      (ExternalRef.ofName `sorryImportComposed) with kind := .theorem }
-    let completeRef ← externalRefSnapshotAtCurrentDir {} {
-      (ExternalRef.ofName `sorryImportComplete) with kind := .theorem }
-    let missingRef ← externalRefSnapshotAtCurrentDir {} (ExternalRef.ofName `unknownSorryImport)
-    let nestedRef ← externalRefSnapshotAtCurrentDir {} {
-      (ExternalRef.ofName `sorryImportNestedHypothesis) with kind := .theorem }
-    let node : Node := { kind := .theorem, externalRefs := #[ref] }
-    let health := Graph.nodeCodeHealth {} node
-    let proofNode : Node := { kind := .theorem, externalRefs := #[proofRef] }
-    let completeNode : Node := { kind := .theorem, externalRefs := #[completeRef] }
-    let renderHasUnknown := match ref.render with
-      | .ok html => html.html.contains "depends on sorry"
-      | _ => false
-    let proofRenderHasUnknown := match proofRef.render with
-      | .ok html => html.html.contains "sorry detected" &&
-          !html.html.contains "depends on sorry" && !html.html.contains "contains sorry"
-      | _ => false
-    return ref.present && renderHasUnknown && proofRenderHasUnknown &&
-      ref.provedStatus.sorryEvidence == #[statementDependency, unlocalized] && ref.provedStatus.hasUnverifiedCoverage &&
-      health.provedStatus == ref.provedStatus && health.hasStatementGaps && health.anyGapCount == 1 &&
-      !Graph.nodeLocalProofFormalized {} node &&
-      Graph.proofStatus {} {} `typeOnly node == .incomplete &&
-      Graph.nodeLocalStatementFormalized {} proofNode && !Graph.nodeLocalProofFormalized {} proofNode &&
-      !Graph.nodeLocalProofFormalized {} completeNode && completeRef.provedStatus.isUnverified &&
-      nestedRef.provedStatus.sorryEvidence == #[statementDependency] && nestedRef.provedStatus.hasUnverifiedCoverage &&
-      !missingRef.present && missingRef.provedStatus == .missing
+private def externalRefRenderingControl : CoreM Bool := do
+  let checkedReference (reference : ExternalRef) : CoreM ExternalRef := do
+    let reference ← registerExternalRefAtCurrentDir {} reference
+    return { reference with provedStatus := some (← statusOf reference.canonical) }
+  let ref ← checkedReference {
+    (ExternalRef.ofName `sorryImportTypeOnly) with kind := .theorem }
+  let proofRef ← checkedReference {
+    (ExternalRef.ofName `sorryImportComposed) with kind := .theorem }
+  let completeRef ← registerExternalRefAtCurrentDir {} {
+    (ExternalRef.ofName `sorryImportComplete) with kind := .theorem }
+  let missingRef ← registerExternalRefAtCurrentDir {} (ExternalRef.ofName `unknownSorryImport)
+  let nestedRef ← checkedReference {
+    (ExternalRef.ofName `sorryImportNestedHypothesis) with kind := .theorem }
+  let html := (ExternalCode.renderPreviewHtml #[ref]).asString
+  let proofHtml := (ExternalCode.renderPreviewHtml #[proofRef]).asString
+  let renderHasUnknown := html.contains "depends on sorry"
+  let proofRenderHasUnknown := proofHtml.contains "sorry detected" &&
+    !proofHtml.contains "depends on sorry" && !proofHtml.contains "contains sorry"
+  -- These refs are provider inventory only. A rendered ref or cached status
+  -- does not establish current Blueprint completion.
+  return ref.present && renderHasUnknown && proofRenderHasUnknown &&
+    ref.provedStatus.any (fun status => status.sorryEvidence == #[statementDependency, unlocalized] && status.hasUnverifiedCoverage) &&
+    completeRef.present &&
+    nestedRef.provedStatus.any (fun status => status.sorryEvidence == #[statementDependency] && status.hasUnverifiedCoverage) &&
+    !missingRef.present && missingRef.provedStatus == some .missing
 
 -- A missing collector extension cannot authorize body absence. The exposed
 -- numeric consumer actually uses the admitted value; this is not an unused-let
 -- control. Lean's original-kind module entries remain available in this import.
-/-- info: true -/
-#guard_msgs in
-#eval
-  withProvider false (loadExts := false) do
-    let names := #[`sorryImportNumber, `sorryImportExposed, `sorryImportAxiom,
-      `sorryImportExposedComplete, `sorryImportComplete]
-    let statuses ← analyzeDeclarations names
-    let individual ← names.mapM analyzeDeclaration
-    return statuses == individual &&
-      statuses[0]!.isUnverified && !statuses[0]!.isAxiomLike &&
-      statuses[1]!.isUnverified && !statuses[1]!.isProved &&
-      statuses[2]!.isAxiomLike && statuses[3]!.isProved &&
-      statuses[4]!.isUnverified && !statuses[4]!.isAxiomLike
+private def noExtsWithoutBodiesControl : CoreM Bool := do
+  let names := #[`sorryImportNumber, `sorryImportExposed, `sorryImportAxiom,
+    `sorryImportExposedComplete, `sorryImportComplete]
+  let statuses ← analyzeDeclarations names
+  let individual ← names.mapM analyzeDeclaration
+  return statuses == individual &&
+    statuses[0]!.isUnverified && !statuses[0]!.isAxiomLike &&
+    statuses[1]!.isUnverified && !statuses[1]!.isProved &&
+    statuses[2]!.isAxiomLike && statuses[3]!.isProved &&
+    statuses[4]!.isUnverified && !statuses[4]!.isAxiomLike
 
 -- Loading bodies supplies evidence even without initialized summary extensions.
 -- Clean controls remain complete, and genuine axioms retain their own policy.
+private def noExtsWithBodiesControl : CoreM Bool := do
+  let hidden ← statusOf `sorryImportNumber
+  let exposed ← statusOf `sorryImportExposed
+  let axiomStatus ← statusOf `sorryImportAxiom
+  let clean ← statusOf `sorryImportComplete
+  return hidden.containsExplicitSorry && !hidden.isProved &&
+    exposed.dependsOnSorry && !exposed.isProved &&
+    axiomStatus.isAxiomLike && clean.isProved
+
+-- Group the read-only controls by the exact import visibility pair so every
+-- pair builds one environment and every check runs against that same snapshot.
 /-- info: true -/
 #guard_msgs in
-#eval
-  withProvider true (loadExts := false) do
-    let hidden ← statusOf `sorryImportNumber
-    let exposed ← statusOf `sorryImportExposed
-    let axiomStatus ← statusOf `sorryImportAxiom
-    let clean ← statusOf `sorryImportComplete
-    return hidden.containsExplicitSorry && !hidden.isProved &&
-      exposed.dependsOnSorry && !exposed.isProved &&
-      axiomStatus.isAxiomLike && clean.isProved
+#eval withProvider false do
+  let typeOnly ← ordinaryTypeOnlyControl
+  let evidence ← ordinaryEvidenceControl
+  let hiddenBodies ← hiddenBodyCoverageControl
+  let batching ← batchingAndKindControl
+  let refs ← externalRefRenderingControl
+  return #[typeOnly, evidence, hiddenBodies, batching, refs].all id
+
+/-- info: true -/
+#guard_msgs in
+#eval withProvider true do
+  let evidence ← importAllEvidenceControl
+  let bodyCoverage ← importAllBodyCoverageControl
+  return #[evidence, bodyCoverage].all id
+
+/-- info: true -/
+#guard_msgs in
+#eval withProvider false (loadExts := false) do
+  noExtsWithoutBodiesControl
+
+/-- info: true -/
+#guard_msgs in
+#eval withProvider true (loadExts := false) do
+  noExtsWithBodiesControl
 
 end Verso.VersoBlueprintTests.SorryImport.Classification

@@ -11,7 +11,7 @@ import VersoManual
 import VersoBlueprint.Commands.Common
 import VersoBlueprint.Commands.SerializedExtension
 import VersoBlueprint.Commands.Summary.Collect
-import VersoBlueprint.Commands.Summary.Render
+import VersoBlueprint.Commands.Summary.Sections
 
 namespace Informal.Commands
 
@@ -27,7 +27,7 @@ def mkSummaryPart (stx : Syntax) (endPos : String.Pos.Raw) : PartElabM FinishedP
   reportImportedConflicts
   let options ← Lean.getOptions
   if verso.blueprint.debug.commands.get (← Lean.getOptions) then
-    let count := (informalExt.getState (← getEnv)).data.size
+    let count := (informalExt.getState (← getEnv)).inventory.size
     logInfo m!"Blueprint summary for {count} entries"
   let block ← serializedBlockTerm `Informal.Commands.Block.summary
     ({ showDebugDiagnostics := verso.blueprint.summary.debugDiagnostics.get options } : SummaryBlockData)

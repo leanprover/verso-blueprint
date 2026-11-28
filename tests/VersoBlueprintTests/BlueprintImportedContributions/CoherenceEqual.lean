@@ -14,11 +14,11 @@ open Lean Informal Verso.Genre
 /-- info: true -/
 #guard_msgs in
 #eval show CoreM Bool from do
-  let some node ← Environment.getNode? `coherent_equal | return false
+  let some node ← Environment.getNodeInventory? `coherent_equal | return false
   let labelsA ← Environment.labelsForLeanDecl `CoherenceEqualA.declaration
   let labelsB ← Environment.labelsForLeanDecl `CoherenceEqualB.declaration
   return (← Environment.importedConflicts).isEmpty &&
-    node.priority == some "high" && node.externalRefs.size == 2 &&
+    node.priority == some "high" && (node.nativeRefsOn `statement).size == 2 &&
     labelsA == #[`coherent_equal] && labelsB == #[`coherent_equal]
 
 #docs (Manual) coherenceEqualDoc "Equal selected facts" :=
