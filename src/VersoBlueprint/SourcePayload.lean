@@ -123,25 +123,43 @@ deriving Repr, Inhabited
 structure LiterateThm extends LiterateDef
 deriving Repr, Inhabited
 
-def ConstantInfo.blueprintNodeKind? : ConstantInfo → Option NodeKind
-  | .defnInfo _ => some .definition
-  | .thmInfo _ => some .theorem
-  | .axiomInfo _ => none
-  | .opaqueInfo _ => none
-  | .quotInfo _ => none
-  | .inductInfo _ => some .definition
-  | .ctorInfo _ => none
-  | .recInfo _ => none
+def ConstantKind.blueprintNodeKind? : ConstantKind → Option NodeKind
+  | .defn => some .definition
+  | .thm => some .theorem
+  | .induct => some .definition
+  | .axiom | .opaque | .quot | .ctor | .recursor => none
 
-def ConstantInfo.blueprintKindText : ConstantInfo → String
-  | .defnInfo _ => "definition"
-  | .thmInfo _ => "theorem"
-  | .axiomInfo _ => "axiom"
-  | .opaqueInfo _ => "opaque"
-  | .quotInfo _ => "quotient"
-  | .inductInfo _ => "inductive"
-  | .ctorInfo _ => "constructor"
-  | .recInfo _ => "recursor"
+def ConstantKind.blueprintKindText : ConstantKind → String
+  | .defn => "definition"
+  | .thm => "theorem"
+  | .axiom => "axiom"
+  | .opaque => "opaque"
+  | .quot => "quotient"
+  | .induct => "inductive"
+  | .ctor => "constructor"
+  | .recursor => "recursor"
+
+def ConstantInfo.blueprintNodeKind? (info : ConstantInfo) : Option NodeKind :=
+  ConstantKind.blueprintNodeKind? (ConstantKind.ofConstantInfo info)
+
+def ConstantInfo.blueprintKindText (info : ConstantInfo) : String :=
+  ConstantKind.blueprintKindText (ConstantKind.ofConstantInfo info)
+
+/-- Resolve the stored {name}`NodeKind` for an external Lean reference,
+recovering the original declaration kind for exported module axiom views via
+{name}`ConstantInfo.originalKind` while preserving {name}`authoredKind` for
+axioms, opaques, and unrecovered axiom views. Returns {name}`none` for
+unsupported declaration kinds (quotients, constructors, recursors). -/
+def ConstantInfo.externalBlueprintNodeKind? (env : Environment) (info : ConstantInfo)
+    (authoredKind : NodeKind) : Option NodeKind :=
+  match ConstantInfo.blueprintNodeKind? info with
+  | some kind => some kind
+  | none =>
+    match info with
+    | .axiomInfo _ =>
+      some <| ((ConstantInfo.originalKind env info).bind ConstantKind.blueprintNodeKind?).getD authoredKind
+    | .opaqueInfo _ => some authoredKind
+    | _ => none
 
 structure Code where
   stx : Syntax

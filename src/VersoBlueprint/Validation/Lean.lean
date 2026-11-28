@@ -120,10 +120,9 @@ def rolesForDeclarationKind (kind : Option ConstantKind) (proofValued propositio
   ((classifyDeclarationKind kind proofValued propositionValued).map (·.roles)).getD #[]
 
 private def declarationClassification (info : ConstantInfo) : CoreM (Option DeclarationClassification) := do
-  -- Module imports can expose theorems and definitions as axioms.
+  -- Module imports can expose theorems, definitions, and opaques as axioms.
   let env ← getEnv
-  let originalKind := if info.isAxiom then getOriginalConstKind? env info.name
-    else some (ConstantKind.ofConstantInfo info)
+  let originalKind := Data.ConstantInfo.originalKind env info
   if originalKind.isNone then return none
   Meta.MetaM.run' do
     let proofValued ← Meta.isProp info.type

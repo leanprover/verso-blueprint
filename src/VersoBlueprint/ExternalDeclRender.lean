@@ -15,6 +15,37 @@ open Lean Meta
 
 namespace Informal
 
+namespace Data
+
+/-- Recover a declaration's original `ConstantKind` across exported module
+imports, where body-hidden theorems, definitions, and opaques appear as
+`.axiomInfo`. Non-axiom constants keep `ConstantKind.ofConstantInfo info`;
+exported `.axiomInfo` consults `Lean.getOriginalConstKind? env info.name`. -/
+def ConstantInfo.originalKind (env : Environment) (info : ConstantInfo) : Option ConstantKind :=
+  if info.isAxiom then
+    Lean.getOriginalConstKind? env info.name
+  else
+    some (ConstantKind.ofConstantInfo info)
+
+/-- Shared presentation descriptor for an exported `.axiomInfo` view recovered
+from its original `ConstantKind`. Covers `.thm`, `.defn`, `.opaque`, and genuine
+`.axiom`; returns `none` for missing or non-axiom-exported kinds so callers fall
+back conservatively. -/
+structure ExportedAxiomPresentation where
+  kindClass : String
+  kindMarker : String
+  keywordText : String
+deriving Repr, DecidableEq, Inhabited
+
+def ConstantKind.exportedAxiomPresentation? : ConstantKind → Option ExportedAxiomPresentation
+  | .thm => some { kindClass := "theorem", kindMarker := "theorem", keywordText := "theorem" }
+  | .defn => some { kindClass := "def", kindMarker := "def", keywordText := "def" }
+  | .opaque => some { kindClass := "opaque", kindMarker := "opaque", keywordText := "opaque" }
+  | .axiom => some { kindClass := "axiom", kindMarker := "axiom", keywordText := "axiom" }
+  | _ => none
+
+end Data
+
 abbrev ExternalDeclHtml := Verso.Output.Html
 
 inductive ExternalDeclRenderError where
@@ -382,7 +413,7 @@ private def keywordTextOfDefinitionSafety (safety : DefinitionSafety) (base : St
   | .safe => base
 
 private def externalDeclPresentation
-    (env : Environment) (decl : Name)
+    (env : Environment)
     (declType : Verso.Genre.Manual.Block.Docstring.DeclType) (cinfo : ConstantInfo) :
     ExternalDeclPresentation :=
   let kindMarker := kindMarkerOfDeclType declType
@@ -401,13 +432,13 @@ private def externalDeclPresentation
         keywordText := keywordTextOfDefinitionSafety defn.safety "def"
       }
   | .axiomInfo _ =>
-    -- Exported module imports expose body-hidden theorems and definitions as
-    -- `.axiomInfo`; recover their original declaration presentation while
-    -- keeping genuine axioms rendered as `axiom`.
-    match Lean.getOriginalConstKind? env decl with
-    | some .thm => { kindClass := "theorem", kindMarker := "theorem", keywordText := "theorem" }
-    | some .defn => { kindClass := "def", kindMarker := "def", keywordText := "def" }
-    | _ => { kindClass := kindMarker, kindMarker, keywordText := kindMarker }
+    -- Exported module imports expose body-hidden theorems, definitions, and
+    -- opaques as `.axiomInfo`; recover their original declaration presentation
+    -- while keeping genuine axioms and unrecovered views conservative.
+    match (Data.ConstantInfo.originalKind env cinfo).bind Data.ConstantKind.exportedAxiomPresentation? with
+    | some pres =>
+      { kindClass := pres.kindClass, kindMarker := pres.kindMarker, keywordText := pres.keywordText }
+    | none => { kindClass := kindMarker, kindMarker, keywordText := kindMarker }
   | _ =>
       {
         kindClass := kindMarker
@@ -640,7 +671,7 @@ private def renderDeclHtmlDocstringFromInfoE
     if let some s := inductiveCtorsSection? then
       sections := sections.push s
 
-    let presentation := externalDeclPresentation env decl declType cinfo
+    let presentation := externalDeclPresentation env declType cinfo
     let signatureHtml ← signatureToHtml presentation.keywordText signature
     let headerMeta := safetyHeaderMeta cinfo ++ renderExternalDeclHeaderMeta declType
 

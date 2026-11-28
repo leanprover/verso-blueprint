@@ -27,7 +27,7 @@ def ConstantInfo.blueprintBodyAccess (env : Environment) (info : ConstantInfo) :
   | some value => .available value
   | none =>
     match info with
-    | .axiomInfo _ => if getOriginalConstKind? env info.name == some .axiom then .absent else .unavailable
+    | .axiomInfo _ => if ConstantInfo.originalKind env info == some .axiom then .absent else .unavailable
     | _ => .absent
 
 /-- Actual dependencies read from a checked declaration, with explicit coverage.
