@@ -100,6 +100,12 @@ def CheckedDeclaration.body (checked : CheckedDeclaration) : CheckObservation :=
   checked.observation bodyValidator (checked.roles.contains `proof)
     (checked.classification.map fun _ => bodyDisposition checked.status)
 
+/-- Select the native check observation matching a declaration role spec. -/
+def CheckedDeclaration.observationFor (checked : CheckedDeclaration) (spec : RoleSpec) : CheckObservation :=
+  match spec.projection with
+  | .statement => checked.statement
+  | .implementation => checked.body
+
 def classifyDeclarationKind (originalKind : Option ConstantKind) (proofValued propositionValued : Bool) :
     Option DeclarationClassification := do
   let kind ← originalKind

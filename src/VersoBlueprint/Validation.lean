@@ -59,13 +59,19 @@ structure RoleSpec where
   contextName : Name
   deriving Repr, Inhabited, BEq, DecidableEq
 
-def roleSpec? : Name → Option RoleSpec
-  | `statement => some ⟨.statement, statementValidator, statementContext⟩
-  | `proof => some ⟨.implementation, bodyValidator, sourceContext⟩
-  | `implementation => some ⟨.implementation, bodyValidator, sourceContext⟩
-  | _ => none
+def roleSpecs : List (Name × RoleSpec) :=
+  [ (`statement, ⟨.statement, statementValidator, statementContext⟩)
+  , (`proof, ⟨.implementation, bodyValidator, sourceContext⟩)
+  , (`implementation, ⟨.implementation, bodyValidator, sourceContext⟩)
+  ]
+
+def roleSpec? (role : Name) : Option RoleSpec :=
+  roleSpecs.lookup role
 
 def isNativeRole (role : Name) : Bool := (roleSpec? role).isSome
+
+def isNativeValidator (validator : Name) : Bool :=
+  roleSpecs.any fun (_, spec) => spec.validator == validator
 
 end NativeLean
 
@@ -78,7 +84,7 @@ def selectedUsesFor (key : RequirementKey) : Name := selectedUses ++ key.name
 def mathematicalProofCriterion : Name := `mathematicalProof
 
 def Expectation.isNativeDeclarationCheck : Expectation → Bool
-  | .check validator => validator == NativeLean.statementValidator || validator == NativeLean.bodyValidator
+  | .check validator => NativeLean.isNativeValidator validator
   | _ => false
 
 inductive Coverage where

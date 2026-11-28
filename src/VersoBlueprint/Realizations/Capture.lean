@@ -140,9 +140,6 @@ contributions. Full authored alternatives remain available in `registry`. -/
 def Snapshot.nativeRealizationsFor (snapshot : Snapshot) (label : Name) : Array Realization :=
   ordinaryNativeRealizations snapshot.registry.contributions label
 
-private def nativeValidator (role : Name) : Name :=
-  (NativeLean.roleSpec? role).map (·.validator) |>.getD NativeLean.bodyValidator
-
 /-- Derive a consumer view from the same admitted snapshot. No source/status
 fallbacks, new checker invocation or second dependency evaluator occur here. -/
 def Snapshot.assessmentFor (snapshot : Snapshot) (label : Name) : NodeAssessment := Id.run do
@@ -154,9 +151,10 @@ def Snapshot.assessmentFor (snapshot : Snapshot) (label : Name) : NodeAssessment
     ⟨.declaration model.key declaration.object, model.role⟩
   let checks := nativeModels.flatMap fun model => model.declarations.map fun declaration =>
     let key := nativeKey model declaration
-    let contract := (registry.requirement? key).filter fun value =>
-      declaration.required.contains key && value.expected == .check (nativeValidator model.role) &&
-        value.coverage == .dependencyClosure
+    let contract := (NativeLean.roleSpec? model.role).bind fun spec =>
+      (registry.requirement? key).filter fun value =>
+        declaration.required.contains key && value.expected == .check spec.validator &&
+          value.coverage == .dependencyClosure
     (model.role, contract.map (·.key))
   -- A declaration retained at its fallback placement may have no classified
   -- role. Every selected declaration must have its native contract before a
@@ -202,12 +200,15 @@ def Snapshot.assessmentFor (snapshot : Snapshot) (label : Name) : NodeAssessment
     -- accepted check, while a rejected role-disagreement check cannot borrow a
     -- sibling's accepted check.
     hasAxiomLike := snapshot.nativeChecks.any fun checked =>
-      checked.status.isAxiomLike && nativeModels.any fun model => model.declarations.any fun declaration =>
-        let key := nativeKey model declaration
-        let accepted := if model.role == `statement then checked.statement else checked.body
-        declaration.object == checked.declaration && declaration.required.contains key &&
-          registry.evidence.any fun evidence =>
-            evidence.requirement == key && evidence.observation == .check accepted
+      checked.status.isAxiomLike && nativeModels.any fun model =>
+        match NativeLean.roleSpec? model.role with
+        | none => false
+        | some spec => model.declarations.any fun declaration =>
+          let key := nativeKey model declaration
+          let accepted := checked.observationFor spec
+          declaration.object == checked.declaration && declaration.required.contains key &&
+            registry.evidence.any fun evidence =>
+              evidence.requirement == key && evidence.observation == .check accepted
     nativeStatementComplete := statementComplete
     hasNativeBodyRequirement := !bodyChecks.isEmpty
     nativeBodyComplete := bodyComplete
@@ -768,6 +769,7 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
         let declarations := declarationResults.filterMap fun result => Id.run do
           let roles := declarationRoles result.name
           unless roles.contains role do return none
+          let some spec := NativeLean.roleSpec? role | return none
           let witness := object result.name
           let nativeRoles := rolesForName result.name
           let requirement : RequirementKey := ⟨.declaration (base.forRole role) witness, role⟩
@@ -775,7 +777,7 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
           let required := if selected then #[requirement] else #[]
           return some {
             object := witness,
-            projection := (NativeLean.roleSpec? role).map (·.projection) |>.getD .implementation,
+            projection := spec.projection,
             required, sourceIssues := match result.prepared with
               | .error issues => issues
               | .ok _ => #[] }
@@ -799,14 +801,16 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
             collected := { collected with
               sourceDiagnostics := collected.sourceDiagnostics.addNode label prepared.semanticDiagnostics
               input.bindingInputs := collected.input.bindingInputs ++ nativeRoles.flatMap fun role =>
-                let spec := (NativeLean.roleSpec? role).getD ⟨.implementation, NativeLean.bodyValidator, NativeLean.sourceContext⟩
-                let (slot, content?) := match spec.projection with
-                  | .statement => (`nativeStatementContext, prepared.statementContext)
-                  | .implementation => (`nativeContext, prepared.semanticContext)
-                content?.toArray.map fun content => contribution slot
-                  (BindingEncoding.subject (Subject.declaration (base.forRole role) witness)) {
-                    subject := .declaration (base.forRole role) witness,
-                    name := spec.contextName, content } }
+                match NativeLean.roleSpec? role with
+                | none => #[]
+                | some spec =>
+                  let (slot, content?) := match spec.projection with
+                    | .statement => (`nativeStatementContext, prepared.statementContext)
+                    | .implementation => (`nativeContext, prepared.semanticContext)
+                  content?.toArray.map fun content => contribution slot
+                    (BindingEncoding.subject (Subject.declaration (base.forRole role) witness)) {
+                      subject := .declaration (base.forRole role) witness,
+                      name := spec.contextName, content } }
             pure (.ok ())
         -- Any successful association resolves the shared object. The owned
         -- selection keeps its own failure even if a sibling succeeds.
@@ -817,8 +821,9 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
         associationsByObject := associationsByObject.insert witness combined
         for role in nativeRoles do
           unless (rolesForName declaration.name).contains role do continue
+          let some spec := NativeLean.roleSpec? role | continue
           let key : RequirementKey := ⟨.declaration (base.forRole role) witness, role⟩
-          let validator := nativeValidator role
+          let validator := spec.validator
           let prerequisites := if role == `proof then
             #[⟨.declaration (base.forRole `statement) witness, `statement⟩] else #[]
           collected := { collected with
@@ -827,8 +832,7 @@ private def collectOrdinary [Monad m] (providers : Providers m) (p : Plan) : Exc
                 key, expected := .check validator, coverage := .dependencyClosure, prerequisites }) }
           match declaration.checked with
           | .ok checked =>
-            collected := recordObservation collected key
-              (.check (if role == `statement then checked.statement else checked.body))
+            collected := recordObservation collected key (.check (checked.observationFor spec))
           | .error diagnostic =>
             collected := recordObservation collected key (.check {
               validator, declaration := some witness, outcome := .unavailable,
@@ -987,8 +991,7 @@ private def selectTarget (collected : Collected) (context : Context) (axis : Nam
   unless input.nodes.any (·.value.label == target) do
     return ← fail "missing-target" "No accepted dependency target"
   let candidates := (ordinaryNativeRealizations input target).filter fun model =>
-    model.context == context &&
-      (model.role == `proof || model.role == `implementation || model.role == `statement)
+    model.context == context && NativeLean.isNativeRole model.role
   let statements := candidates.filter (·.role == `statement)
   let objects := canonical (candidates.flatMap (·.declarations.map (·.object)))
   if objects.isEmpty then
@@ -1010,7 +1013,9 @@ private def selectTarget (collected : Collected) (context : Context) (axis : Nam
         "Dependency declaration belongs to several ordinary native realizations of the selected role"
     let some (model, declaration) := selectedOwners[0]?
       | return ← fail "invalid-native-contract" "Dependency declaration has no contract for its selected role"
-    let validator := nativeValidator role
+    let some spec := NativeLean.roleSpec? role
+      | return ← fail "invalid-native-contract" "Dependency declaration has no contract for its selected role"
+    let validator := spec.validator
     let key : RequirementKey := ⟨.declaration model.key object, role⟩
     let contracts := canonical ((input.requirements.filter (·.value.key == key)).map (·.value))
     let #[contract] := contracts
@@ -1076,14 +1081,15 @@ private def connectUses (collected : Collected) (uses : Array SelectedUse) : Col
   let mut collected := collected
   let mut additions : Std.HashMap RequirementKey (Array RequirementKey) := {}
   for model in collected.input.realizations.map (·.value) do
-    if model.context.language != `lean || !NativeLean.isNativeRole model.role then continue
+    if model.context.language != `lean then continue
+    let some spec := NativeLean.roleSpec? model.role | continue
     let relevant := uses.filter fun use => use.context == some model.context &&
       useSelectsRealization use.source use.realization use.role model
     if relevant.isEmpty then continue
     for declaration in model.declarations do
       let subject := Subject.declaration model.key declaration.object
       let name := model.role
-      let validator := nativeValidator name
+      let validator := spec.validator
       let key : RequirementKey := ⟨subject, name⟩
       unless nativeContracts[key]? == some validator do continue
       let selectionKey : RequirementKey := ⟨subject, name ++ `dependencySelection⟩
