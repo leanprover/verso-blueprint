@@ -38,36 +38,48 @@ in `verso-blueprint` until the upstream query lands.
 Confirmed against Lean `v4.35.0` in `Lean/DocString/Extension.lean`:
 - `docStringExt` (L126) and `versoDocStringExt` (L138) are public.
 - `inheritDocStringExt` (L132) is `private`.
-- `findInternalDocString?` (L196) queries `inheritDocStringExt.find? (level := .server) env declName`.
+- `addInheritedDocString` (L183-188) rejects only 2-cycles; self-inheritance
+  (`attribute [inherit_doc foo] foo`) and cycles of length ≥ 3 can be accepted,
+  sometimes without a warning.
+- `findInternalDocString?` (L196) is a `partial def` that queries
+  `inheritDocStringExt.find? (level := .server) env declName` and recurses with
+  no fuel, so any self-cycle or ≥ 3-cycle hangs `findInternalDocString?` (and
+  `findDocString?`) indefinitely.
 
 ## Preliminary Analysis
 
 `Lean/DocString/Extension.lean` already persists `inheritDocStringExt` in
-`.olean.server` and `.olean.private`. Exposing a read-only lookup:
+`.olean.server` and `.olean.private`. Exposing a read-only, non-recursive lookup
+that returns only the direct target:
 
 ```lean
 def getInheritedDocStringTarget? (env : Environment) (declName : Name) : Option Name :=
   inheritDocStringExt.find? (level := .server) env declName
 ```
 
-requires no serialization or elaboration changes and preserves encapsulation of
-mutation (`addInheritedDocString`).
+requires no serialization or elaboration changes, preserves encapsulation of
+mutation (`addInheritedDocString`), and never loops on cyclic inheritance
+entries. Upstream should also consider general cycle detection in
+`addInheritedDocString` (not just 2-cycles).
 
 ## Scope Boundary
 
-This card covers only read-only visibility of `inheritDocStringExt`. It does
-not ask Lean to retain unnormalized raw docstring source bytes.
+This card covers read-only visibility of `inheritDocStringExt` (direct target
+only, non-recursive) and optionally full cycle detection in
+`addInheritedDocString`. It does not ask Lean to retain unnormalized raw
+docstring source bytes.
 
 ## Expected Behavior
 
 Downstream tools can call `Lean.getInheritedDocStringTarget? env declName` to
-distinguish direct docstrings from `@[inherit_doc]` definitively, including in
-the degenerate case where a declaration has both an own doc comment and
-`@[inherit_doc target]` with identical text.
+distinguish direct docstrings from `@[inherit_doc]` definitively without
+traversing inheritance chains, including when a declaration has both an own doc
+comment and `@[inherit_doc target]` with identical text or a cyclic
+`@[inherit_doc]` attribute.
 
 ## Evidence
 
-- `Lean/DocString/Extension.lean:132,196-204` (`v4.35.0`)
+- `Lean/DocString/Extension.lean:132,183-188,196-204` (`v4.35.0`)
 - `src/VersoBlueprint/Docstring/Compiled.lean`
 - `src/VersoBlueprint/Realizations/NativeSource.lean` (`ownDocstringMetadata`)
 
@@ -78,6 +90,7 @@ against `Lean.findInternalDocString? env name (includeBuiltin := false)` using
 pointer identity (`unsafe ptrEq`). That catches differing Markdown docstrings
 as well as differing `Lean.VersoDocString` custom `Dynamic` payloads elided by
 `Repr` (such as `{name}` links to different constants), while identical content
-deduplicated during `.olean` compaction remains indistinguishable without
-exposing `inheritDocStringExt`. Once `getInheritedDocStringTarget?` is available
-in Lean, replace this workaround with a direct `Option.isSome` check.
+deduplicated during `.olean` compaction remains indistinguishable and cyclic
+`@[inherit_doc]` entries accepted by `addInheritedDocString` can hang
+`findInternalDocString?`. Once `getInheritedDocStringTarget?` is available in
+Lean, replace this workaround with a direct `Option.isSome` check.

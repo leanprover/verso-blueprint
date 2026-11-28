@@ -331,6 +331,9 @@ private def ownDocstringMetadata (name : Name) : CoreM (Except Diagnostic (Optio
       return .error <| issue "unsupported-docstring" name "No direct own native docstring metadata"
     | .error .ambiguous =>
       return .error <| issue "ambiguous-docstring" name "Conflicting own native docstring formats"
+  -- Note: `Lean.findInternalDocString?` is partial without fuel and loops on
+  -- self-inheritance (`attribute [inherit_doc foo] foo`) or ≥3-cycles accepted
+  -- by `addInheritedDocString`; see UPC-0022 for a direct, non-recursive query.
   let effective? ← liftM <| Lean.findInternalDocString? env name (includeBuiltin := false)
   match direct, effective? with
   | .inl markdown, some (.inl effective) =>
